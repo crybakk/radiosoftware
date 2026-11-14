@@ -76,9 +76,22 @@ Regola chiave: **tutte le connessioni partono dal PC di regia verso il server**.
 ### 4.1.2 Registro di trasmissione e report SIAE
 
 - Ogni brano effettivamente andato in onda viene registrato con data, ora, durata reale trasmessa, titolo, artista, autori/compositori, ISRC ed etichetta. Vengono registrati anche i brani mandati dal remoto e quelli dell'AutoDJ di riserva, letti da AzuraCast.
-- Esportazione del report per periodo nel **formato richiesto da SIAE**, più CSV/Excel generico.
-- Schermata "brani incompleti" per completare a mano i dati mancanti prima dell'invio.
-- Il tracciato esatto del report va definito sul modello che usi oggi con SIAE: non lo invento.
+- Licenza: SIAE "radio personale". Serve solo il report SIAE (niente SCF).
+- Esportazione per periodo nel tracciato del fac simile SIAE ([docs/siae/template.csv](siae/template.csv)): CSV separato da punto e virgola, **una riga per opera**, con il numero di passaggi nel periodo.
+
+| Colonna SIAE | Da dove arriva |
+|---|---|
+| TITOLO OPERA | Tag del brano, corretto con MusicBrainz |
+| AUTORE | Autori e compositori (MusicBrainz, relazioni "composer" e "lyricist" dell'opera) |
+| EDITORE | MusicBrainz, se presente, altrimenti inserimento manuale |
+| INTERPRETE | Artista del brano |
+| UTILIZZAZIONI | Conteggio dei passaggi effettivi nel periodo |
+| PREZZO DI VENDITA | Da chiarire |
+| CODICE OPERA | Codice SIAE dell'opera: non è su MusicBrainz, inserimento manuale |
+| CODICE ISWC | MusicBrainz (opera) |
+| CODICE ISRC | MusicBrainz (registrazione) o tag ID3 TSRC |
+
+- Schermata "brani incompleti" per completare a mano i dati mancanti prima dell'invio. I dati inseriti restano salvati per le esportazioni successive.
 
 ### 4.2 Ponte (sul server di AzuraCast)
 
@@ -127,4 +140,4 @@ Ogni fase si chiude con una versione usabile e testata prima di passare alla suc
 
 ## 7. Domande ancora aperte
 
-Vedi il thread di progetto: versione di AzuraCast, risorse del server, porte apribili, eventuale migrazione da RadioDJ, dettagli di Fluidstream, immagine per YouTube/Facebook, tracciato e licenza SIAE.
+Vedi il thread di progetto: versione di AzuraCast, risorse del server, porte apribili, eventuale migrazione da RadioDJ, dettagli di Fluidstream, immagine per YouTube/Facebook, dettagli residui del report SIAE.
