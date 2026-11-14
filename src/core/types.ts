@@ -83,7 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
 /** Evento a orario fisso. */
 export interface ScheduledEvent {
   id: number
-  /** Orario "HH:MM". */
+  /** Orario "HH:MM", oppure "*:MM" per ogni ora al minuto MM. */
   time: string
   /** Giorni attivi, 0 = domenica ... 6 = sabato. */
   days: number[]

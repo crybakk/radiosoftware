@@ -447,7 +447,7 @@ export class RadioDb {
   // ---------- eventi ----------
 
   listEvents(): ScheduledEvent[] {
-    return (this.db.prepare('SELECT * FROM events ORDER BY time').all() as Row[]).map((r) => ({
+    return (this.db.prepare("SELECT * FROM events ORDER BY CASE WHEN time LIKE '*%' THEN 0 ELSE 1 END, time").all() as Row[]).map((r) => ({
       id: Number(r.id),
       time: String(r.time),
       days: String(r.days)
@@ -462,7 +462,7 @@ export class RadioDb {
   }
 
   saveEvent(e: Omit<ScheduledEvent, 'id'> & { id?: number }): number {
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(e.time)) throw new Error('Orario non valido, usa HH:MM')
+    if (!/^([01]\d|2[0-3]|\*):[0-5]\d$/.test(e.time)) throw new Error('Orario non valido, usa HH:MM')
     const days = e.days.filter((d) => d >= 0 && d <= 6).join(',')
     if (e.id) {
       this.db

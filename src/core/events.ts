@@ -11,7 +11,19 @@ export function dueEvents(events: ScheduledEvent[], from: Date, to: Date): { eve
   const out: { event: ScheduledEvent; at: Date }[] = []
   for (const ev of events) {
     if (!ev.enabled) continue
-    const [hh, mm] = ev.time.split(':').map(Number)
+    const [hPart, mPart] = ev.time.split(':')
+    const mm = Number(mPart)
+    if (hPart === '*') {
+      // ogni ora al minuto indicato
+      const at = new Date(start)
+      at.setMinutes(mm, 0, 0)
+      if (at <= start) at.setHours(at.getHours() + 1)
+      for (; at <= to; at.setHours(at.getHours() + 1)) {
+        if (ev.days.includes(at.getDay())) out.push({ event: ev, at: new Date(at) })
+      }
+      continue
+    }
+    const hh = Number(hPart)
     // controlla il giorno di "start" e quello di "to" (l'intervallo può scavalcare la mezzanotte)
     const days = new Set([start.toDateString(), to.toDateString()])
     for (const ds of days) {

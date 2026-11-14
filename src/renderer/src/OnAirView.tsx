@@ -1,0 +1,229 @@
+import { useEffect, useState } from 'react'
+import type { Track } from '../../core/types'
+import { hhmm, KIND_LABEL, mmss } from './format'
+import { TrackSearch } from './TrackSearch'
+import type { Radio } from './useRadio'
+
+function Meter({ radio }: { radio: Radio }) {
+  const [level, setLevel] = useState(0)
+  useEffect(() => {
+    let raf = 0
+    let held = 0
+    const loop = (): void => {
+      const p = radio.backend.peak()
+      held = Math.max(p, held * 0.92)
+      setLevel(held)
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [radio.backend])
+  const db = level > 0 ? 20 * Math.log10(level) : -60
+  const pct = Math.max(0, Math.min(100, ((db + 48) / 48) * 100))
+  return (
+    <div className="meter" title={`${db.toFixed(1)} dBFS`}>
+      <div className={`meter-fill ${db > -1 ? 'clip' : db > -6 ? 'hot' : ''}`} style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+
+function PreviewButton({ radio, track }: { radio: Radio; track: Track }) {
+  const [, force] = useState(0)
+  const active = radio.preview.trackId === track.id && radio.preview.playing
+  return (
+    <button
+      className={`small ${active ? 'on' : ''}`}
+      title="Preascolto in cuffia"
+      onClick={async () => {
+        if (active) radio.preview.stop()
+        else await radio.preview.play(window.radio.mediaUrl(track.id), track.id, track.cueIn)
+        force((n) => n + 1)
+      }}
+    >
+      {active ? '■ Cuffia' : '🎧'}
+    </button>
+  )
+}
+
+export function OnAirView({ radio }: { radio: Radio }) {
+  const { snapshot: s, engine } = radio
+  const main = s.onAir.at(-1)
+  const fading = s.onAir.slice(0, -1)
+  const progress = main ? Math.min(100, (main.position / Math.max(1, main.track.cueOut || main.track.duration)) * 100) : 0
+  const ending = main && main.remaining < 10
+
+  return (
+    <div className="onair-view">
+      <section className="left">
+        <div className={`now ${ending ? 'ending' : ''}`}>
+          {main ? (
+            <>
+              <div className="now-kind">{KIND_LABEL[main.track.kind]}</div>
+              <div className="now-title">{main.track.title}</div>
+              <div className="now-artist">{main.track.artist}</div>
+              <div className="progress">
+                <div className="progress-fill" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="now-times">
+                <span>{mmss(main.position)}</span>
+                <span className="remaining">-{mmss(main.remaining)}</span>
+              </div>
+              {s.mode === 'auto' && s.queue.length > 0 && (
+                <div className="now-mix">Prossimo tra {mmss(main.toMix)}</div>
+              )}
+            </>
+          ) : (
+            <div className="now-empty">Nessun brano in onda</div>
+          )}
+          {fading.map((f) => (
+            <div key={f.uid} className="now-fading">
+              In uscita: {f.track.artist} – {f.track.title}
+            </div>
+          ))}
+          <Meter radio={radio} />
+        </div>
+
+        <div className="transport">
+          <button className="big play" disabled={!!main || !s.queue.length} onClick={() => void engine.play()}>
+            ▶ PLAY
+          </button>
+          <button className="big next" disabled={!s.queue.length} onClick={() => void engine.next()}>
+            ⏭ AVANTI
+          </button>
+          <button className="big stop" disabled={!main} onClick={() => engine.stop()}>
+            ■ STOP
+          </button>
+        </div>
+
+        <div className="queue">
+          <div className="section-title">
+            In coda
+            {s.queue.length > 0 && (
+              <button className="small" onClick={() => engine.clearQueue()}>
+                Svuota
+              </button>
+            )}
+          </div>
+          {s.queue.length === 0 && (
+            <div className="empty">
+              {s.mode === 'auto'
+                ? 'La coda si riempie da sola…'
+                : 'Coda vuota: aggiungi brani dalla ricerca qui a destra o passa in AUTOMATICO.'}
+            </div>
+          )}
+          <ul className="track-list queue-list">
+            {s.queue.map((q, i) => (
+              <li key={q.uid} className={q.origin === 'event' ? 'event' : ''}>
+                <div className="t-eta">{hhmm(q.eta)}</div>
+                <div className="t-main">
+                  <div className="t-title">{q.track.title}</div>
+                  <div className="t-artist">
+                    {q.track.artist}
+                    {q.track.kind !== 'music' && <span className="tag">{KIND_LABEL[q.track.kind]}</span>}
+                    {q.origin === 'event' && <span className="tag event">Evento</span>}
+                  </div>
+                </div>
+                <div className="t-dur">{mmss(q.track.duration)}</div>
+                <div className="t-actions">
+                  <PreviewButton radio={radio} track={q.track} />
+                  <button className="small" disabled={i === 0} onClick={() => engine.move(q.uid, -1)} title="Su">
+                    ▲
+                  </button>
+                  <button
+                    className="small"
+                    disabled={i === s.queue.length - 1}
+                    onClick={() => engine.move(q.uid, 1)}
+                    title="Giù"
+                  >
+                    ▼
+                  </button>
+                  <button className="small danger" onClick={() => engine.remove(q.uid)} title="Togli dalla coda">
+                    ✕
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="right">
+        <TrackSearch
+          actions={(t) => (
+            <>
+              <PreviewButton radio={radio} track={t} />
+              <button className="small" title="Metti come prossimo" onClick={() => engine.enqueue(t, 0)}>
+                Prossimo
+              </button>
+              <button className="small primary" title="Aggiungi in fondo alla coda" onClick={() => engine.enqueue(t)}>
+                + Coda
+              </button>
+            </>
+          )}
+        />
+        <Cartwall radio={radio} />
+      </section>
+    </div>
+  )
+}
+
+function Cartwall({ radio }: { radio: Radio }) {
+  const [assigning, setAssigning] = useState<number | null>(null)
+  const playing = new Set(radio.snapshot.carts.map((c) => c.track.id))
+
+  const assign = async (slot: number, trackId: number | null): Promise<void> => {
+    const cw = [...radio.settings.cartwall]
+    cw[slot] = trackId
+    await radio.saveSettings({ cartwall: cw })
+    setAssigning(null)
+  }
+
+  return (
+    <div className="cartwall">
+      <div className="section-title">
+        Jingle istantanei
+        {radio.snapshot.carts.length > 0 && (
+          <button className="small danger" onClick={() => radio.engine.stopCarts()}>
+            Ferma jingle
+          </button>
+        )}
+      </div>
+      <div className="cart-grid">
+        {radio.cartTracks.map((t, i) => (
+          <div key={i} className={`cart ${t ? '' : 'unassigned'} ${t && playing.has(t.id) ? 'playing' : ''}`}>
+            <button className="cart-play" disabled={!t} onClick={() => t && void radio.engine.playCart(t)}>
+              <span className="cart-n">{i + 1}</span>
+              <span className="cart-name">{t ? t.title : 'vuoto'}</span>
+            </button>
+            <button className="cart-edit" title="Assegna" onClick={() => setAssigning(i)}>
+              ✎
+            </button>
+          </div>
+        ))}
+      </div>
+      {assigning != null && (
+        <div className="modal" onClick={() => setAssigning(null)}>
+          <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+            <div className="section-title">
+              Tasto {assigning + 1}: scegli un jingle
+              <button className="small" onClick={() => void assign(assigning, null)}>
+                Svuota tasto
+              </button>
+              <button className="small" onClick={() => setAssigning(null)}>
+                Chiudi
+              </button>
+            </div>
+            <TrackSearch
+              autoFocus
+              actions={(t) => (
+                <button className="small primary" onClick={() => void assign(assigning, t.id)}>
+                  Assegna
+                </button>
+              )}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

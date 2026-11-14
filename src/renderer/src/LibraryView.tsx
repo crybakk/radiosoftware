@@ -1,0 +1,226 @@
+import { useEffect, useState } from 'react'
+import type { TrackEdit } from '../../core/db'
+import { TRACK_KINDS, type LibraryFolder, type Track, type TrackKind } from '../../core/types'
+import type { LibraryStatus } from '../../shared/api'
+import { KIND_LABEL, mmss } from './format'
+import { TrackSearch } from './TrackSearch'
+import type { Radio } from './useRadio'
+
+export function LibraryView({ radio: _radio }: { radio: Radio }) {
+  const [folders, setFolders] = useState<LibraryFolder[]>([])
+  const [status, setStatus] = useState<LibraryStatus | null>(null)
+  const [newKind, setNewKind] = useState<TrackKind>('music')
+  const [editing, setEditing] = useState<Track | null>(null)
+  const [refresh, setRefresh] = useState(0)
+
+  useEffect(() => {
+    void window.radio.listFolders().then(setFolders)
+    void window.radio.libraryStatus().then(setStatus)
+    return window.radio.onLibraryStatus(setStatus)
+  }, [])
+
+  const analyzed = status ? status.total - status.pendingAnalysis : 0
+
+  return (
+    <div className="library-view">
+      <section className="panel">
+        <div className="section-title">Cartelle della libreria</div>
+        <p className="hint">
+          Ogni cartella ha un tipo: la musica va in rotazione, i jingle si alternano alla musica e si possono mettere
+          sui tasti istantanei.
+        </p>
+        <ul className="folder-list">
+          {folders.map((f) => (
+            <li key={f.id}>
+              <span className="tag">{KIND_LABEL[f.kind]}</span>
+              <span className="folder-path">{f.path}</span>
+              <button className="small danger" onClick={async () => setFolders(await window.radio.removeFolder(f.id))}>
+                Rimuovi
+              </button>
+            </li>
+          ))}
+          {folders.length === 0 && <li className="empty">Nessuna cartella: aggiungi quella della musica per iniziare.</li>}
+        </ul>
+        <div className="row">
+          <select value={newKind} onChange={(e) => setNewKind(e.target.value as TrackKind)}>
+            {TRACK_KINDS.map((k) => (
+              <option key={k.value} value={k.value}>
+                {k.label}
+              </option>
+            ))}
+          </select>
+          <button className="primary" onClick={async () => setFolders(await window.radio.chooseAndAddFolder(newKind))}>
+            + Aggiungi cartella
+          </button>
+          <button
+            className="primary"
+            disabled={!folders.length || !!status?.scanning}
+            onClick={() => void window.radio.scan()}
+          >
+            {status?.scanning ? 'Scansione in corso…' : 'Aggiorna libreria'}
+          </button>
+        </div>
+        {status && (
+          <div className="lib-status">
+            <div>
+              <b>{status.total}</b> brani ·{' '}
+              {Object.entries(status.byKind)
+                .map(([k, n]) => `${KIND_LABEL[k] ?? k}: ${n}`)
+                .join(' · ')}
+            </div>
+            {status.scanning && (
+              <div>
+                Scansione: {status.scanning.seen} file letti, {status.scanning.added} nuovi, {status.scanning.updated}{' '}
+                aggiornati
+              </div>
+            )}
+            {status.total > 0 && (
+              <div>
+                Analisi volume e punti di mix: {analyzed} di {status.total}
+                {status.analyzing ? ' (in corso, puoi continuare a lavorare)' : ''}
+                <div className="progress thin">
+                  <div className="progress-fill" style={{ width: `${(analyzed / Math.max(1, status.total)) * 100}%` }} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="panel grow">
+        <div className="section-title">Brani</div>
+        <TrackSearch
+          refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}-${status?.analyzing ? 1 : 0}`}
+          limit={300}
+          actions={(t) => (
+            <button className="small" onClick={() => setEditing(t)}>
+              Scheda
+            </button>
+          )}
+        />
+      </section>
+
+      {editing && (
+        <TrackEditor
+          track={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null)
+            setRefresh((n) => n + 1)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+const TEXT_FIELDS: { key: keyof TrackEdit; label: string; hint?: string }[] = [
+  { key: 'title', label: 'Titolo' },
+  { key: 'artist', label: 'Interprete' },
+  { key: 'album', label: 'Album' },
+  { key: 'genre', label: 'Genere' },
+  { key: 'composer', label: 'Autori / compositori', hint: 'Per il report SIAE' },
+  { key: 'publisher', label: 'Editore', hint: 'Per il report SIAE' },
+  { key: 'siaeCode', label: 'Codice opera SIAE' },
+  { key: 'isrc', label: 'ISRC' },
+  { key: 'iswc', label: 'ISWC' }
+]
+
+function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose: () => void; onSaved: () => void }) {
+  const [edit, setEdit] = useState<TrackEdit>({})
+  const value = <K extends keyof TrackEdit>(k: K): TrackEdit[K] =>
+    (k in edit ? edit[k] : (track as unknown as TrackEdit)[k]) as TrackEdit[K]
+
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="modal-body editor" onClick={(e) => e.stopPropagation()}>
+        <div className="section-title">Scheda brano</div>
+        <div className="file-path">{track.path}</div>
+        <div className="form-grid">
+          {TEXT_FIELDS.map((f) => (
+            <label key={f.key}>
+              <span>
+                {f.label}
+                {f.hint && <em> · {f.hint}</em>}
+              </span>
+              <input
+                value={String(value(f.key) ?? '')}
+                onChange={(e) => setEdit({ ...edit, [f.key]: e.target.value })}
+              />
+            </label>
+          ))}
+          <label>
+            <span>Anno</span>
+            <input
+              type="number"
+              value={value('year') ?? ''}
+              onChange={(e) => setEdit({ ...edit, year: e.target.value ? Number(e.target.value) : null })}
+            />
+          </label>
+          <label>
+            <span>Tipo</span>
+            <select value={value('kind')} onChange={(e) => setEdit({ ...edit, kind: e.target.value as TrackKind })}>
+              {TRACK_KINDS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Inizio audio (s)</span>
+            <input
+              type="number"
+              step="0.1"
+              value={value('cueIn')}
+              onChange={(e) => setEdit({ ...edit, cueIn: Number(e.target.value) })}
+            />
+          </label>
+          <label>
+            <span>Punto di mix (s)</span>
+            <input
+              type="number"
+              step="0.1"
+              value={value('mixPoint')}
+              onChange={(e) => setEdit({ ...edit, mixPoint: Number(e.target.value) })}
+            />
+          </label>
+          <label>
+            <span>Fine audio (s)</span>
+            <input
+              type="number"
+              step="0.1"
+              value={value('cueOut')}
+              onChange={(e) => setEdit({ ...edit, cueOut: Number(e.target.value) })}
+            />
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={!!value('enabled')}
+              onChange={(e) => setEdit({ ...edit, enabled: e.target.checked })}
+            />
+            <span>Attivo (in rotazione e nella ricerca)</span>
+          </label>
+        </div>
+        <div className="info-line">
+          Durata {mmss(track.duration)} · {track.bitrate ? `${track.bitrate} kbps` : 'bitrate sconosciuto'} ·{' '}
+          {track.loudness != null ? `${track.loudness.toFixed(1)} LUFS` : 'non ancora analizzato'}
+        </div>
+        <div className="row end">
+          <button onClick={onClose}>Annulla</button>
+          <button
+            className="primary"
+            disabled={!Object.keys(edit).length}
+            onClick={async () => {
+              await window.radio.updateTrack(track.id, edit)
+              onSaved()
+            }}
+          >
+            Salva
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

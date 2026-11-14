@@ -25,4 +25,10 @@ describe('eventi a orario', () => {
     expect(dueEvents([ev({ enabled: false })], new Date(2026, 10, 16, 9), new Date(2026, 10, 16, 11))).toHaveLength(0)
     expect(dueEvents([ev({})], new Date(2026, 10, 16, 9), new Date(2026, 10, 16, 11))).toHaveLength(0)
   })
+  it('ogni ora al minuto indicato', () => {
+    const e = ev({ time: '*:00' })
+    expect(dueEvents([e], new Date(2026, 10, 16, 9, 59, 59), new Date(2026, 10, 16, 10, 0, 0))).toHaveLength(1)
+    expect(dueEvents([e], new Date(2026, 10, 16, 10, 0, 0), new Date(2026, 10, 16, 10, 0, 1))).toHaveLength(0)
+    expect(dueEvents([e], new Date(2026, 10, 16, 23, 59, 59), new Date(2026, 10, 17, 0, 0, 0))).toHaveLength(1)
+  })
 })
