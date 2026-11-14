@@ -92,6 +92,8 @@ Regola chiave: **tutte le connessioni partono dal PC di regia verso il server**.
 | CODICE ISRC | MusicBrainz (registrazione) o tag ID3 TSRC |
 
 - Schermata "brani incompleti" per completare a mano i dati mancanti prima dell'invio. I dati inseriti restano salvati per le esportazioni successive.
+- Come in MB Music Report (MB Studio), il report sarà **configurabile**: scelta, ordine e nome delle colonne, campi di testo fissi, filtri (per esempio solo brani con ISRC), modalità "una riga per passaggio" o "una riga per opera con conteggio". Il tracciato SIAE sarà un modello già pronto; se SIAE cambia il fac simile si aggiorna senza toccare il codice.
+- Opzione per proteggere da Excel gli zeri iniziali dei codici (per esempio CODICE OPERA).
 
 ### 4.2 Ponte (sul server di AzuraCast)
 
