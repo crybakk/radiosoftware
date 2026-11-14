@@ -106,7 +106,7 @@ Come funziona:
 4. **Anteprima e modifica:** vedi la giornata o la settimana generata, puoi correggerla a parole ("meno brani lenti il venerdì sera") o a mano, e la approvi prima che vada in onda.
 5. **Segnalazioni:** se il database non basta a coprire una fascia, per esempio troppi pochi brani di quel genere e troppe ripetizioni, il sistema te lo dice invece di riempire a caso.
 
-Dove gira l'AI: **modello locale** (scelto il 14/11/2026), nessun costo e nessun dato fuori. Proposta: un modello open di piccola taglia (circa 7-8 miliardi di parametri) eseguito con Ollama, con uscita in formato strutturato (JSON) validata dal programma prima di usarla. Si usa solo quando generi o modifichi il palinsesto, non durante la messa in onda. Se gira sul PC di regia o sul server dipende dall'hardware disponibile (da verificare): su sola CPU una generazione può richiedere qualche minuto.
+Dove gira l'AI: **modello locale e leggero** (scelto il 14/11/2026), nessun costo e nessun dato fuori. Il compito è limitato: scegliere, tra le categorie disponibili nel database (generi e tag di MusicBrainz), quelle adatte a ogni fascia del palinsesto, più i parametri delle regole. Basta quindi un modello piccolo (circa 1-4 miliardi di parametri) eseguito con Ollama, con uscita vincolata a uno schema JSON che ammette **solo** le categorie realmente presenti nel database, così l'AI non può inventarne. Gira sul PC di regia anche su sola CPU, in pochi secondi, e si usa solo quando generi o modifichi il palinsesto.
 
 ### 4.2 Ponte (sul server di AzuraCast)
 
