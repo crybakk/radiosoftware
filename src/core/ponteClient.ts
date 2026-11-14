@@ -14,11 +14,12 @@ export interface PonteBackup {
 
 export interface PonteState {
   studioConnected: boolean
+  externalConnected?: boolean
   lastHeartbeat: string | null
   reconnectsLast10Min: number
   lastAzuracastError: string | null
   alarms: PonteAlarm[]
-  liquidsoap: { studio?: boolean } | null
+  liquidsoap: { studio?: boolean; esterna?: boolean } | null
   notifiche: string[]
 }
 

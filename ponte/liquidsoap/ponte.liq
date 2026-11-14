@@ -28,6 +28,11 @@ az_user = env("AZURACAST_DJ_UTENTE", "")
 az_password = env("AZURACAST_DJ_PASSWORD", "")
 station_name = env("NOME_RADIO", "Radio")
 
+esterna_port = int_of_string(default=9010, env("ESTERNA_PORTA", "9010"))
+esterna_mount = env("ESTERNA_MOUNT", "/")
+esterna_user = env("ESTERNA_UTENTE", "esterna")
+esterna_password = env("ESTERNA_PASSWORD", "")
+
 # --- notifiche al servizio di controllo (non bloccanti) ---
 def notify(kind, detail) =
   thread.run(
@@ -74,7 +79,43 @@ studio =
   end
 
 # --- titolo e artista in onda, inviati dalla regia tramite il controllo ---
-programma = insert_metadata(studio)
+titoli = insert_metadata(studio)
+programma = titoli
+
+# --- diretta esterna (stessa app usata finora come DJ su AzuraCast) ---
+# Quando un'app si collega qui ha la precedenza sulla regia; quando si scollega
+# si torna da soli alla regia.
+esterna_attiva = esterna_password != ""
+esterna =
+  if
+    esterna_attiva
+  then
+    input.harbor(
+      id="esterna",
+      port=esterna_port,
+      user=esterna_user,
+      password=esterna_password,
+      buffer=2.,
+      max=10.,
+      on_connect=fun (_) -> notify("esterna_collegata", ""),
+      on_disconnect=fun () -> notify("esterna_scollegata", ""),
+      esterna_mount
+    )
+  else
+    log.important("ESTERNA_PASSWORD vuota: ingresso per le dirette esterne disattivato")
+    source.fail()
+  end
+
+def dissolvenza(a, b) =
+  add(normalize=false, [fade.in(duration=1., b), fade.out(duration=1., a)])
+end
+programma =
+  fallback(
+    id="selettore",
+    track_sensitive=false,
+    transitions=[dissolvenza, dissolvenza],
+    [esterna, programma]
+  )
 
 # --- processore audio ---
 def processa(s) =
@@ -110,7 +151,7 @@ uscita =
 def set_metadata(req) =
   try
     let json.parse (m : {artist: string, title: string}) = req.body()
-    programma.insert_metadata([("artist", m.artist), ("title", m.title)])
+    titoli.insert_metadata([("artist", m.artist), ("title", m.title)])
     http.response(content_type="application/json", data="{\"ok\":true}")
   catch _ do
     http.response(status_code=400, content_type="application/json", data="{\"ok\":false}")
@@ -121,7 +162,7 @@ harbor.http.register.simple(port=8092, method="POST", "/metadata", set_metadata)
 def stato(_) =
   http.response(
     content_type="application/json",
-    data=json.stringify({studio=studio.is_ready()})
+    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready()})
   )
 end
 harbor.http.register.simple(port=8092, method="GET", "/stato", stato)

@@ -7,14 +7,33 @@ AutoDJ di riserva; quando la regia si ricollega, la diretta riprende senza fare 
 ```
 Regia (Windows, 4G) ──SRT/UDP──▶ Ponte (Liquidsoap) ──DJ/Icecast──▶ AzuraCast ──▶ ascoltatori
         └──────HTTP + token────▶ Controllo (allarmi, titoli, backup)
+App per le esterne ──Icecast──▶ Ponte (ha la precedenza sulla regia finché è collegata)
 ```
+
+Verso AzuraCast il DJ collegato è sempre e solo il ponte. Le dirette in esterna non si collegano più ad
+AzuraCast ma al ponte, che le manda in onda al posto della regia e, quando finiscono, torna alla regia da solo.
+
+## Installazione rapida su Proxmox (VM nuova)
+
+1. Copia `proxmox/crea-vm.sh` sul nodo Proxmox ed eseguilo come root: `bash crea-vm.sh`.
+   Crea una VM Ubuntu 24.04 con 4 core, 8 GB di RAM e 150 GB di disco, che parte da sola insieme a Proxmox.
+   Per indirizzo fisso, storage o dimensioni diverse: `IP=192.168.1.50/24 GATEWAY=192.168.1.1 STORAGE=local-lvm DISCO=200G bash crea-vm.sh`.
+2. Entra nella VM (`ssh radio@<indirizzo>`), copia la cartella `ponte` ed esegui `sudo bash installa-server.sh`.
+   Installa AzuraCast con l'installatore ufficiale e poi il ponte, genera frase segreta, token e password,
+   e alla fine stampa i valori da inserire nella regia e le porte da aprire sul router.
+3. Completa i punti 1 e 4 qui sotto (account DJ in AzuraCast, impostazioni della regia).
+
+Le sezioni seguenti spiegano gli stessi passaggi a mano, per esempio su un server già esistente.
 
 ## Cosa serve
 
 - Il server dove gira AzuraCast, con Docker e Docker Compose (AzuraCast li usa già).
-- Due porte libere da aprire nel firewall del server:
-  - **UDP 9000** (o quella scelta in `SRT_PORT`) per l'audio dalla regia;
-  - **TCP 8090** (o quella scelta in `CONTROLLO_PORTA`) per allarmi, titoli e backup.
+- Porte da aprire nel firewall del server (e da inoltrare sul router, se il server è in casa):
+  - **UDP 9000** (`SRT_PORT`) per l'audio dalla regia;
+  - **TCP 9080** (`CONTROLLO_PORTA`) per allarmi, titoli e backup;
+  - **TCP 9010** (`ESTERNA_PORTA`) per le dirette esterne.
+
+  Non usare porte tra 8000 e 8496: AzuraCast le riserva alle sue stazioni.
 
 ## 1. In AzuraCast: account DJ per il ponte
 
@@ -45,6 +64,7 @@ Valori da compilare (le spiegazioni sono nel file):
 | `AZURACAST_HOST` | `host.docker.internal` se AzuraCast è sullo stesso server |
 | `AZURACAST_PORTA_DJ`, `AZURACAST_MOUNT_DJ` | Porta DJ e mount del punto 1 |
 | `AZURACAST_DJ_UTENTE`, `AZURACAST_DJ_PASSWORD` | Account streamer del punto 1 |
+| `ESTERNA_PASSWORD` | Password per l'app delle dirette esterne (vuota = ingresso spento) |
 | `TELEGRAM_*`, `SMTP_*`, `EMAIL_*` | Facoltativi: dove ricevere gli allarmi |
 
 ## 3. Avvio
@@ -60,7 +80,8 @@ Apri nel firewall le due porte (esempio con `ufw`):
 
 ```bash
 sudo ufw allow 9000/udp
-sudo ufw allow 8090/tcp
+sudo ufw allow 9080/tcp
+sudo ufw allow 9010/tcp
 ```
 
 Se il server è presso un provider con firewall esterno (pannello web), apri le stesse porte anche lì.
@@ -78,11 +99,23 @@ Scheda **Collegamento**:
 
 Con **Invia notifica di prova** controlli che Telegram o l'email arrivino.
 
+## Dirette esterne
+
+Nell'app che usavi per collegarti come DJ ad AzuraCast (BUTT, Larix, Luci Live o simili, in modalità Icecast)
+cambia soltanto:
+
+- **porta**: `ESTERNA_PORTA` (9010) invece della porta DJ di AzuraCast;
+- **mount**, **utente** e **password**: `ESTERNA_MOUNT`, `ESTERNA_UTENTE`, `ESTERNA_PASSWORD`.
+
+Quando l'app si collega, il ponte passa alla diretta esterna con una breve dissolvenza; quando si scollega
+torna alla regia. Le due cose arrivano anche come notifica. Nel frattempo la regia può restare accesa: il suo
+audio arriva al ponte ma non va in onda.
+
 ## Allarmi
 
 | Allarme | Quando |
 |---|---|
-| Regia scollegata | il ponte non riceve audio dalla regia da `ALLARME_SCOLLEGATO_SECONDI` |
+| Regia scollegata | il ponte non riceve audio dalla regia da `ALLARME_SCOLLEGATO_SECONDI` (se è in onda una diretta esterna, il messaggio lo dice) |
 | Regia muta | la regia non dà segni di vita da `ALLARME_REGIA_MUTA_SECONDI` (PC spento, programma chiuso) |
 | Silenzio | la regia è collegata ma manda silenzio da `ALLARME_SILENZIO_SECONDI` |
 | Collegamento instabile | più di `ALLARME_RICONNESSIONI` riconnessioni in 10 minuti |
@@ -111,3 +144,5 @@ docker compose up -d --build
 - **"Frase segreta errata"**: `SRT_PASSPHRASE` diversa tra `.env` e regia.
 - **"token del ponte errato"**: `CONTROLLO_TOKEN` diverso.
 - **Allarme AzuraCast**: controlla utente, password, porta e mount del DJ, e che RadioDJ non sia ancora collegato.
+- **L'app delle esterne non si collega**: porta 9010 non inoltrata sul router, o mount/utente/password diversi da `.env`.
+  Alcune app vogliono il mount con la barra iniziale (`/`), altre senza: prova entrambi.

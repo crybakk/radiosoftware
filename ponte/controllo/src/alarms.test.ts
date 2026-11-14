@@ -68,4 +68,18 @@ describe('allarmi del ponte', () => {
     expect(sent.some((s) => s.text.includes('instabile') && s.open)).toBe(true)
     expect(a.status().alarms.map((x) => x.key)).toContain('collegamento_instabile')
   })
+
+  it('diretta esterna: avvisa all\'inizio e alla fine, e cambia il messaggio della regia scollegata', () => {
+    const { a, sent, advance } = setup()
+    a.onEvent('esterna_collegata')
+    expect(sent[0].text).toContain('Diretta esterna collegata')
+    advance(31)
+    expect(sent[1].text).toContain('diretta esterna')
+    expect(sent[1].text).not.toContain('AutoDJ')
+    a.onEvent('silenzio', '20')
+    expect(sent[2].text).toContain('Silenzio')
+    a.onEvent('esterna_scollegata')
+    expect(sent.at(-1)!.text).toContain('AutoDJ')
+    expect(a.status().externalConnected).toBe(false)
+  })
 })

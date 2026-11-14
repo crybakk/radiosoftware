@@ -1,7 +1,7 @@
 /**
  * Servizio di controllo del ponte.
  *
- * Porta pubblica (CONTROLLO_PORTA, predefinita 8090), protetta da token:
+ * Porta pubblica (CONTROLLO_PORTA, predefinita 9080), protetta da token:
  *   POST /api/heartbeat   segnali di vita e stato dalla regia
  *   POST /api/metadata    titolo/artista in onda → Liquidsoap → AzuraCast
  *   PUT  /api/backup      copia del database della regia
@@ -28,7 +28,7 @@ const num = (k: string, d: number): number => {
 }
 
 const TOKEN = env('CONTROLLO_TOKEN')
-const PUBLIC_PORT = num('CONTROLLO_PORTA', 8090)
+const PUBLIC_PORT = num('CONTROLLO_PORTA', 9080)
 const INTERNAL_PORT = num('CONTROLLO_PORTA_INTERNA', 8091)
 const LIQUIDSOAP = env('LIQUIDSOAP_INTERNO', 'http://liquidsoap:8092')
 const DATA_DIR = env('CARTELLA_DATI', '/data')
@@ -60,7 +60,7 @@ const alarms = new Alarms(
     heartbeatSeconds: num('ALLARME_REGIA_MUTA_SECONDI', DEFAULT_ALARM_CONFIG.heartbeatSeconds),
     flapCount: num('ALLARME_RICONNESSIONI', DEFAULT_ALARM_CONFIG.flapCount)
   },
-  (text: string, key: AlarmKey, open: boolean) => {
+  (text: string, key: AlarmKey | 'esterna', open: boolean) => {
     console.log(`[allarme] ${open ? 'APERTO' : 'chiuso'} ${key}: ${text}`)
     void notifier.send(text)
   }

@@ -135,7 +135,8 @@ export function ConnectionView({ radio }: { radio: Radio }) {
             )}
             {remote && (
               <p className="info-line">
-                Il ponte riceve la regia: {remote.liquidsoap?.studio ? 'sì' : remote.liquidsoap ? 'no' : 'Liquidsoap non risponde'} · notifiche:{' '}
+                Il ponte riceve la regia: {remote.liquidsoap?.studio ? 'sì' : remote.liquidsoap ? 'no' : 'Liquidsoap non risponde'}
+                {remote.liquidsoap?.esterna ? ' · in onda c\'è la diretta esterna' : ''} · notifiche:{' '}
                 {remote.notifiche.length ? remote.notifiche.join(', ') : 'nessuna configurata'}
               </p>
             )}

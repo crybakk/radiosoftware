@@ -17,6 +17,8 @@ services:
     ports:
       # SRT dalla regia (UDP): va aperta nel firewall del server
       - "${SRT_PORT:-9000}:${SRT_PORT:-9000}/udp"
+      # dirette esterne (Icecast, TCP): va aperta nel firewall se si usa
+      - "${ESTERNA_PORTA:-9010}:${ESTERNA_PORTA:-9010}/tcp"
     extra_hosts:
       # permette di raggiungere AzuraCast sullo stesso server con AZURACAST_HOST=host.docker.internal
       - "host.docker.internal:host-gateway"
@@ -32,7 +34,7 @@ services:
     volumes:
       - dati:/data
     ports:
-      - "${CONTROLLO_PORTA:-8090}:${CONTROLLO_PORTA:-8090}/tcp"
+      - "${CONTROLLO_PORTA:-9080}:${CONTROLLO_PORTA:-9080}/tcp"
 
 volumes:
   dati:

@@ -106,7 +106,7 @@ export const DEFAULT_PONTE: PonteSettings = {
   bitrateKbps: 128,
   source: 'programma',
   inputDeviceId: '',
-  controlPort: 8090,
+  controlPort: 9080,
   controlToken: '',
   sendMetadata: true,
   backupHour: 4

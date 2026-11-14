@@ -43,17 +43,18 @@ const MESSAGES: Record<AlarmKey, [string, string]> = {
 export class Alarms {
   private active = new Map<AlarmKey, ActiveAlarm>()
   private studioConnected = false
+  private externalConnected = false
   private disconnectedAt: number | null = null
   private lastHeartbeat: number | null = null
   private reconnects: number[] = []
   private lastAzuraError: string | null = null
   private config: AlarmConfig
-  private notify: (text: string, alarm: AlarmKey, open: boolean) => void
+  private notify: (text: string, alarm: AlarmKey | 'esterna', open: boolean) => void
   private now: () => number
 
   constructor(
     config: AlarmConfig,
-    notify: (text: string, alarm: AlarmKey, open: boolean) => void,
+    notify: (text: string, alarm: AlarmKey | 'esterna', open: boolean) => void,
     now: () => number = () => Date.now()
   ) {
     this.config = config
@@ -65,7 +66,8 @@ export class Alarms {
 
   private open(key: AlarmKey, detail = ''): void {
     if (this.active.has(key)) return
-    const message = MESSAGES[key][0] + (detail ? ` (${detail})` : '')
+    let message = MESSAGES[key][0] + (detail ? ` (${detail})` : '')
+    if (key === 'studio_scollegato' && this.externalConnected) message = '📡 La regia è scollegata dal ponte (in onda c\'è la diretta esterna).'
     this.active.set(key, { key, since: new Date(this.now()).toISOString(), message })
     this.notify(message, key, true)
   }
@@ -89,16 +91,30 @@ export class Alarms {
         this.studioConnected = false
         this.disconnectedAt = t
         break
+      case 'esterna_collegata':
+        this.externalConnected = true
+        this.notify('🎙️ Diretta esterna collegata: è in onda al posto della regia.', 'esterna', true)
+        break
+      case 'esterna_scollegata':
+        this.externalConnected = false
+        this.notify(
+          this.studioConnected
+            ? '🏠 Diretta esterna terminata: è tornata in onda la regia.'
+            : '🏠 Diretta esterna terminata. La regia non è collegata: AzuraCast passa alla sua AutoDJ di riserva.',
+          'esterna',
+          false
+        )
+        break
       case 'silenzio':
-        // il silenzio con la regia scollegata è già coperto da un altro allarme
-        if (this.studioConnected) this.open('silenzio', detail ? `da ${detail} secondi` : '')
+        // il silenzio con nessuna sorgente collegata è già coperto da un altro allarme
+        if (this.studioConnected || this.externalConnected) this.open('silenzio', detail ? `da ${detail} secondi` : '')
         break
       case 'audio_ripreso':
         this.close('silenzio')
         break
       case 'azuracast_errore':
         this.lastAzuraError = detail
-        if (this.studioConnected) this.open('azuracast', detail)
+        if (this.studioConnected || this.externalConnected) this.open('azuracast', detail)
         break
       case 'azuracast_collegato':
         this.lastAzuraError = null
@@ -131,6 +147,7 @@ export class Alarms {
   status() {
     return {
       studioConnected: this.studioConnected,
+      externalConnected: this.externalConnected,
       lastHeartbeat: this.lastHeartbeat ? new Date(this.lastHeartbeat).toISOString() : null,
       reconnectsLast10Min: this.reconnects.length,
       lastAzuracastError: this.lastAzuraError,

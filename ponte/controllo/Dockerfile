@@ -6,5 +6,5 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY src ./src
 USER node
-EXPOSE 8090
+EXPOSE 9080
 CMD ["node", "src/server.ts"]
