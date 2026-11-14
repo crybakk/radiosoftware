@@ -1,0 +1,38 @@
+# Ponte di Radio Regia: da avviare sul server di AzuraCast (o su un altro server).
+#   cp .env.esempio .env   → compila i valori
+#   docker compose up -d
+name: radio-ponte
+
+services:
+  liquidsoap:
+    image: savonet/liquidsoap:v2.3.3
+    command: ["liquidsoap", "/cfg/ponte.liq"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: Europe/Rome
+      CONTROLLO_INTERNO: http://controllo:8091
+    volumes:
+      - ./liquidsoap:/cfg:ro
+    ports:
+      # SRT dalla regia (UDP): va aperta nel firewall del server
+      - "${SRT_PORT:-9000}:${SRT_PORT:-9000}/udp"
+    extra_hosts:
+      # permette di raggiungere AzuraCast sullo stesso server con AZURACAST_HOST=host.docker.internal
+      - "host.docker.internal:host-gateway"
+
+  controllo:
+    build: ./controllo
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: Europe/Rome
+      LIQUIDSOAP_INTERNO: http://liquidsoap:8092
+      CARTELLA_DATI: /data
+    volumes:
+      - dati:/data
+    ports:
+      - "${CONTROLLO_PORTA:-8090}:${CONTROLLO_PORTA:-8090}/tcp"
+
+volumes:
+  dati:

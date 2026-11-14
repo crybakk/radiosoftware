@@ -1,0 +1,13 @@
+{
+  "name": "radio-ponte-controllo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Controllo del ponte di Radio Regia: allarmi, metadati, backup",
+  "scripts": {
+    "start": "node src/server.ts"
+  },
+  "dependencies": {
+    "nodemailer": "^10.5.0"
+  }
+}
