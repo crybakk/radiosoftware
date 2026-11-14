@@ -139,6 +139,22 @@ Il 4G della regia carica il flusso **una sola volta**: tutte le uscite partono d
     - **interviste e parlato:** tipo "Interview" o "Spoken word" su MusicBrainz e prevalenza di voce parlata rilevata dall'analisi audio.
   - Lo stesso filtro si può usare anche per escludere questi brani dalle rotazioni automatiche.
 
+### 4.4 Funzioni aggiuntive (scelte il 14/11/2026)
+
+| Funzione | Dove | Fase |
+|---|---|---|
+| **Processore audio** sull'uscita (compressore multibanda e limiter, livello costante) | Ponte, prima delle uscite | 2 |
+| **Allarmi:** silenzio, regia scollegata, AzuraCast in riserva, uplink instabile; notifiche Telegram e email | Ponte (controllo) + regia | 2 |
+| **Preascolto in cuffia** su un canale separato del RodeCaster Duo | Regia | 1 |
+| **Eventi a orario fisso:** jingle orario, sigle, avvio di programmi registrati, con tolleranza per non tagliare i brani | Regia | 1 |
+| **Backup automatico** di database e impostazioni sul server, con ripristino guidato | Regia → ponte | 2 |
+| **Registrazione della messa in onda:** archivio continuo e registrazione dei singoli programmi come podcast | Ponte (registra il flusso finale, anche in diretta autonoma) | 6 |
+| **Download automatico** di notiziari e podcast esterni (RSS o URL) da mandare in onda a orario | Regia | 6 |
+| **Annunci con voce sintetica** dell'ora e del titolo, generati in locale (per esempio Piper, voci italiane) | Regia | 6 |
+| **Più utenti** con ruoli: amministratore, conduttore, ospite | Ponte (accesso) + regia | 3 |
+
+Escluse per ora: voice tracking, "ora in onda" sul sito e richieste degli ascoltatori, gestione spot.
+
 ## 5. Latenze attese (stime da verificare in test)
 
 | Percorso | Stima |
