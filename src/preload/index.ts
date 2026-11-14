@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { PonteStatus } from '../main/ponte'
 import type { LibraryStatus, RadioApi } from '../shared/api'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,6 +33,21 @@ const api: RadioApi = {
     const listener = (_e: unknown, s: LibraryStatus): void => cb(s)
     ipcRenderer.on('libraryStatus', listener)
     return () => ipcRenderer.removeListener('libraryStatus', listener)
+  },
+  ponteStatus: call('ponteStatus'),
+  ponteCapture: call('ponteCapture'),
+  sendPcm: (pcm: ArrayBuffer) => ipcRenderer.send('uplink:pcm', new Uint8Array(pcm)),
+  ponteReport: call('ponteReport'),
+  ponteBackupNow: call('ponteBackupNow'),
+  ponteListBackups: call('ponteListBackups'),
+  ponteState: call('ponteState'),
+  ponteTestNotification: call('ponteTestNotification'),
+  ponteRestore: call('ponteRestore'),
+  restoredFrom: call('restoredFrom'),
+  onPonteStatus: (cb: (s: PonteStatus) => void) => {
+    const listener = (_e: unknown, s: PonteStatus): void => cb(s)
+    ipcRenderer.on('ponteStatus', listener)
+    return () => ipcRenderer.removeListener('ponteStatus', listener)
   }
 }
 

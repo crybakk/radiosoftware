@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import {
+  DEFAULT_PONTE,
   DEFAULT_SETTINGS,
   type EventAction,
   type LibraryFolder,
@@ -275,7 +276,14 @@ export class RadioDb {
       if (Array.isArray(out.cartwall)) out.cartwall.slice(0, 12).forEach((v, i) => (cw[i] = v))
       out.cartwall = cw
     }
+    // campi aggiunti nelle versioni successive: completati con i predefiniti
+    out.ponte = { ...DEFAULT_PONTE, ...(out.ponte && typeof out.ponte === 'object' ? out.ponte : {}) }
     return out
+  }
+
+  /** Copia coerente del database in un file nuovo (anche mentre la regia è in onda). */
+  backupTo(path: string): void {
+    this.db.prepare('VACUUM INTO ?').run(path)
   }
 
   saveSettings(patch: Partial<Settings>): Settings {

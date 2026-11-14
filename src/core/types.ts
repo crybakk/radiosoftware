@@ -68,6 +68,48 @@ export interface Settings {
   cartwall: (number | null)[]
   /** Profilo di rotazione attivo, impostato dagli eventi (null = rotazione normale). */
   rotationProfile: RotationProfile | null
+  /** Collegamento con il server ponte (invio del programma, allarmi, backup). */
+  ponte: PonteSettings
+}
+
+export interface PonteSettings {
+  /** Invio del programma al ponte acceso. */
+  enabled: boolean
+  /** Indirizzo del server ponte (nome o IP), lo stesso di AzuraCast. */
+  host: string
+  srtPort: number
+  /** Frase segreta SRT, uguale a SRT_PASSPHRASE del ponte. */
+  passphrase: string
+  /** Margine contro i buchi del 4G, in millisecondi. */
+  latencyMs: number
+  bitrateKbps: number
+  /** Cosa inviare: il solo programma del computer o un ingresso della scheda audio (es. il mix del RodeCaster). */
+  source: 'programma' | 'ingresso'
+  /** Ingresso audio usato quando source = 'ingresso' ('' = predefinito). */
+  inputDeviceId: string
+  /** Porta del servizio di controllo del ponte. */
+  controlPort: number
+  /** Token del servizio di controllo, uguale a CONTROLLO_TOKEN del ponte. */
+  controlToken: string
+  /** Invia artista e titolo dei brani ad AzuraCast. */
+  sendMetadata: boolean
+  /** Ora del backup automatico giornaliero (0-23, -1 = mai). */
+  backupHour: number
+}
+
+export const DEFAULT_PONTE: PonteSettings = {
+  enabled: false,
+  host: '',
+  srtPort: 9000,
+  passphrase: '',
+  latencyMs: 2000,
+  bitrateKbps: 128,
+  source: 'programma',
+  inputDeviceId: '',
+  controlPort: 8090,
+  controlToken: '',
+  sendMetadata: true,
+  backupHour: 4
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -80,7 +122,8 @@ export const DEFAULT_SETTINGS: Settings = {
   outputDeviceId: '',
   previewDeviceId: '',
   cartwall: Array(12).fill(null),
-  rotationProfile: null
+  rotationProfile: null,
+  ponte: DEFAULT_PONTE
 }
 
 /** Profilo di rotazione attivato da un evento (per esempio "dalle 22 musica tranquilla"). */

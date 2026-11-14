@@ -29,7 +29,7 @@ const num = (k: string, d: number): number => {
 
 const TOKEN = env('CONTROLLO_TOKEN')
 const PUBLIC_PORT = num('CONTROLLO_PORTA', 8090)
-const INTERNAL_PORT = 8091
+const INTERNAL_PORT = num('CONTROLLO_PORTA_INTERNA', 8091)
 const LIQUIDSOAP = env('LIQUIDSOAP_INTERNO', 'http://liquidsoap:8092')
 const DATA_DIR = env('CARTELLA_DATI', '/data')
 const BACKUP_DIR = join(DATA_DIR, 'backup')

@@ -10,6 +10,7 @@ import { RotationService } from '../core/rotationService'
 import type { ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
 import { LibraryService } from './library'
 import { serveFile } from './media'
+import { applyPendingRestore, PonteService, type StudioReport } from './ponte'
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'media', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }
@@ -63,10 +64,18 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(() => {
+  let restoredFrom: string | null = null
+  try {
+    restoredFrom = applyPendingRestore(app.getPath('userData'))
+  } catch (e) {
+    dialog.showErrorBox('Ripristino non riuscito', e instanceof Error ? e.message : String(e))
+  }
   const db = new RadioDb(join(app.getPath('userData'), 'radio.db'))
   db.closeDanglingLog(new Date())
   const library = new LibraryService(db, ffmpegPath())
   const rotation = new RotationService(db)
+  const ponte = new PonteService(db, app.getPath('userData'), ffmpegPath())
+  ponte.applySettings(db.getSettings().ponte)
 
   protocol.handle('media', async (request) => {
     const url = new URL(request.url)
@@ -125,7 +134,11 @@ app.whenReady().then(() => {
 
   // impostazioni
   handle('getSettings', () => db.getSettings())
-  handle('saveSettings', (patch: Partial<Settings>) => db.saveSettings(patch))
+  handle('saveSettings', (patch: Partial<Settings>) => {
+    const s = db.saveSettings(patch)
+    if (patch.ponte) ponte.applySettings(s.ponte)
+    return s
+  })
 
   // eventi
   handle('listEvents', () => db.listEvents())
@@ -149,6 +162,7 @@ app.whenReady().then(() => {
   handle('logStart', (track: Track, at: string) => {
     // per i brani della libreria usiamo i dati aggiornati del database (autori, codici SIAE)
     const t = track.id > 0 ? (db.getTrack(track.id) ?? track) : track
+    ponte.onTrackStart(t)
     return db.logStart(t, new Date(at), track.id > 0 ? 'regia' : 'flusso esterno')
   })
   handle('expandEvent', (event: ScheduledEvent) =>
@@ -186,6 +200,23 @@ app.whenReady().then(() => {
     return res.filePath
   })
 
+  // ponte
+  handle('ponteStatus', () => ponte.getStatus())
+  handle('ponteCapture', (active: boolean, sampleRate: number) => ponte.setCapture(active, sampleRate))
+  handle('ponteReport', (r: StudioReport) => ponte.setReport(r))
+  handle('ponteBackupNow', () => ponte.backupNow())
+  handle('ponteListBackups', () => ponte.listBackups())
+  handle('ponteState', () => ponte.remoteState())
+  handle('ponteTestNotification', () => ponte.testNotification())
+  handle('ponteRestore', async (name: string) => {
+    await ponte.prepareRestore(name)
+    app.relaunch()
+    app.quit()
+  })
+  handle('restoredFrom', () => restoredFrom)
+  ipcMain.on('uplink:pcm', (_e, pcm: Uint8Array) => ponte.writePcm(pcm))
+  ponte.onStatus((s) => win?.webContents.send('ponteStatus', s))
+
   library.onStatus((s) => win?.webContents.send('libraryStatus', s))
 
   createWindow()
@@ -194,6 +225,7 @@ app.whenReady().then(() => {
 
   app.on('before-quit', () => {
     library.stop()
+    ponte.stop()
     db.closeDanglingLog(new Date())
   })
 })

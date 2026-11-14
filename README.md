@@ -16,6 +16,13 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 - Preascolto in cuffia su una scheda audio separata; scelta dell'uscita in onda (per esempio il RodeCaster Duo).
 - Registro di trasmissione con esportazione CSV (il report SIAE nel formato del fac simile arriva con la fase 7).
 
+**Fase 2 – ponte e collegamento** (in prova):
+
+- Ponte sul server di AzuraCast (Docker): riceve il programma dalla regia via SRT, cifrato e tollerante ai buchi del 4G, lo passa nel processore audio e lo manda ad AzuraCast come DJ. Se la regia cade, AzuraCast torna alla sua AutoDJ.
+- Allarmi via Telegram e/o email: regia scollegata o muta, silenzio, collegamento instabile, errori verso AzuraCast.
+- Regia: scheda Collegamento con stato, riconnessione automatica, titoli in onda ad AzuraCast, backup giornaliero del database sul ponte e ripristino.
+- Guida di installazione: [ponte/README.md](ponte/README.md).
+
 ## Installazione su Windows
 
 Ogni push compila l'installer in GitHub Actions: apri la scheda **Actions** del repository, l'ultima esecuzione di "Test e build Windows", e scarica l'artefatto **RadioRegia-Setup-Windows**.
