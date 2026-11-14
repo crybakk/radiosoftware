@@ -132,7 +132,12 @@ Il 4G della regia carica il flusso **una sola volta**: tutte le uscite partono d
 - **Modalità "diretta autonoma" (bypass della regia)**, richiesta il 14/11/2026: dal remoto si manda in onda anche la musica senza passare dal PC di regia, per esempio quando il 4G della regia è giù o il PC è spento. Il ponte esclude il flusso della regia e manda ad AzuraCast la voce e la musica che arrivano dal remoto. Al rientro la regia riprende con un tasto, senza sovrapposizioni. Anche questi brani finiscono nel registro SIAE. La musica arriva da **entrambe le fonti** (scelto il 14/11/2026):
   - **libreria sul server:** copia della libreria (intera o una selezione) sincronizzata dalla regia, con gli stessi dati di MusicBrainz e SIAE, riprodotta dal ponte e comandata dal pannello remoto;
   - **file dal dispositivo remoto:** brani o jingle caricati al volo dal pannello e inviati insieme alla voce.
-  - La sincronizzazione dalla regia gira in background e riprende da sola dopo le cadute del 4G. Quanto spazio serve sul server dipende da quanta libreria copiare (da decidere).
+  - La sincronizzazione dalla regia gira in background e riprende da sola dopo le cadute del 4G.
+  - Sul server va una **selezione** della libreria. L'analisi della libreria (fase 7) propone cosa escludere, poi si conferma a mano:
+    - **versioni live:** release di tipo "Live" su MusicBrainz, titoli con "live", "unplugged" e simili, applausi rilevati dall'analisi audio;
+    - **bassa qualità:** bitrate sotto una soglia configurabile (proposta 128 kbps), frequenza di campionamento bassa, file troncati o con clipping;
+    - **interviste e parlato:** tipo "Interview" o "Spoken word" su MusicBrainz e prevalenza di voce parlata rilevata dall'analisi audio.
+  - Lo stesso filtro si può usare anche per escludere questi brani dalle rotazioni automatiche.
 
 ## 5. Latenze attese (stime da verificare in test)
 
