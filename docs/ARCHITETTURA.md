@@ -95,6 +95,19 @@ Regola chiave: **tutte le connessioni partono dal PC di regia verso il server**.
 - Come in MB Music Report (MB Studio), il report sarà **configurabile**: scelta, ordine e nome delle colonne, campi di testo fissi, filtri (per esempio solo brani con ISRC), modalità "una riga per passaggio" o "una riga per opera con conteggio". Il tracciato SIAE sarà un modello già pronto; se SIAE cambia il fac simile si aggiorna senza toccare il codice.
 - Opzione per proteggere da Excel gli zeri iniziali dei codici (per esempio CODICE OPERA).
 
+### 4.1.3 Rotazioni generate con l'AI (richiesta del 14/11/2026)
+
+Descrivi il palinsesto a parole, l'AI propone le rotazioni usando solo i brani che hai nel database. Per esempio: "dal lunedì al venerdì, 7-10 pop italiano energico anni 2000-oggi, un jingle ogni 3 brani, news alle e 30; la sera musica più tranquilla, niente stesso artista entro 90 minuti".
+
+Come funziona:
+1. **Profilo dei brani:** oltre ai dati MusicBrainz (genere, anno, lingua), l'analisi audio locale calcola BPM, energia, tonalità e tipo di inizio e fine. Così l'AI ha qualcosa di concreto su cui scegliere.
+2. **L'AI traduce la descrizione in regole:** orologi orari (sequenza di categorie, jingle, spot), filtri (genere, anno, energia, lingua), separazioni (artista, titolo, album) e regole di flusso, come l'energia che sale o scende e niente salti bruschi di BPM.
+3. **Un motore deterministico genera la rotazione** applicando le regole al database. L'AI non sceglie i brani uno per uno: così il risultato rispetta sempre le separazioni, è ripetibile e si rigenera anche senza internet.
+4. **Anteprima e modifica:** vedi la giornata o la settimana generata, puoi correggerla a parole ("meno brani lenti il venerdì sera") o a mano, e la approvi prima che vada in onda.
+5. **Segnalazioni:** se il database non basta a coprire una fascia, per esempio troppi pochi brani di quel genere e troppe ripetizioni, il sistema te lo dice invece di riempire a caso.
+
+Dove gira l'AI: in attesa di decisione.
+
 ### 4.2 Ponte (sul server di AzuraCast)
 
 Servizi aggiuntivi in Docker, accanto ad AzuraCast, senza modificarlo:
@@ -141,6 +154,7 @@ Chi parla da remoto si ascolta in locale senza ritardo. Il ritardo del ritorno p
 5. **Ospiti:** link ospite, sala d'attesa, mix-minus.
 6. **Uscite terze:** Icecast esterni, Fluidstream, YouTube, Facebook.
 7. **Analisi libreria e report SIAE:** impronte audio, MusicBrainz, correzione dei tag, esportazione SIAE. Si può anticipare se serve prima.
+8. **Rotazioni con l'AI:** profilo audio dei brani, palinsesto descritto a parole, motore di rotazione, anteprima. Richiede l'analisi della libreria della fase 7.
 
 Ogni fase si chiude con una versione usabile e testata prima di passare alla successiva.
 
