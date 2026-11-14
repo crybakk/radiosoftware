@@ -116,6 +116,7 @@ Il 4G della regia carica il flusso **una sola volta**: tutte le uscite partono d
 - Ritorno audio del programma in cuffia.
 - Gestione ospiti: invio link, ospite in attesa, in onda, fuori onda. Gli ospiti ricevono il ritorno senza la propria voce (mix-minus).
 - Indicatori semplici: stato della connessione della regia e del remoto, livelli audio.
+- **Modalità "diretta autonoma" (bypass della regia)**, richiesta il 14/11/2026: dal remoto si manda in onda anche la musica senza passare dal PC di regia, per esempio quando il 4G della regia è giù o il PC è spento. Il ponte esclude il flusso della regia e manda ad AzuraCast la voce e la musica che arrivano dal remoto. Al rientro la regia riprende con un tasto, senza sovrapposizioni. Anche questi brani finiscono nel registro SIAE. Da dove arrivi la musica (file sul dispositivo remoto oppure libreria sul server) è in attesa di decisione.
 
 ## 5. Latenze attese (stime da verificare in test)
 
@@ -133,7 +134,7 @@ Chi parla da remoto si ascolta in locale senza ritardo. Il ritardo del ritorno p
 1. **Regia base:** libreria, analisi brani, playout con dissolvenze e jingle, uscita audio verso il RodeCaster, registro di trasmissione.
 2. **Ponte e uplink:** Docker sul server, SRT dalla regia, invio ad AzuraCast con AutoDJ di riserva, riconnessione automatica.
 3. **Controllo remoto:** pannello web per comandare la regia attraverso il ponte.
-4. **Microfono remoto:** WebRTC e mix sul ponte.
+4. **Microfono remoto:** WebRTC e mix sul ponte, più la diretta autonoma con musica dal remoto (bypass della regia).
 5. **Ospiti:** link ospite, sala d'attesa, mix-minus.
 6. **Uscite terze:** Icecast esterni, Fluidstream, YouTube, Facebook.
 7. **Analisi libreria e report SIAE:** impronte audio, MusicBrainz, correzione dei tag, esportazione SIAE. Si può anticipare se serve prima.
