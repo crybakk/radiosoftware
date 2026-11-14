@@ -2,6 +2,8 @@
 
 Software di regia radiofonica per webradio: playout automatico, diretta remota con microfono e ospiti, controllo del player da remoto anche con il PC di regia dietro NAT 4G, streaming verso AzuraCast e servizi terzi.
 
+**Guida d'uso:** [docs/GUIDA.md](docs/GUIDA.md) (aggiornata a ogni nuova funzione).
+
 L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 
 ## Stato
