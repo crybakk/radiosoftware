@@ -12,7 +12,7 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 - Analisi automatica in background con ffmpeg: volume EBU R128 per livellare i brani, inizio e fine dell'audio utile, punto di mix per la dissolvenza.
 - Messa in onda: modalità automatica e manuale, coda modificabile, dissolvenze, PLAY / AVANTI / STOP, 12 jingle istantanei, VU meter.
 - Rotazione automatica con separazione artista e brano e un jingle ogni N brani.
-- Eventi a orario fisso (anche "ogni ora"), all'orario esatto o dopo il brano in onda.
+- Eventi programmati come sequenza di azioni: brano, brano casuale (per tipo, genere o cartella), playlist M3U/PLS o cartella, flusso esterno per N minuti, automatico/manuale, svuota coda, ferma tutto, profilo di rotazione (generi, anni, separazioni), comando esterno. Una volta al giorno, ogni ora o ogni N minuti, con giorni, date di validità e partenza dopo il brano, con tolleranza o subito.
 - Preascolto in cuffia su una scheda audio separata; scelta dell'uscita in onda (per esempio il RodeCaster Duo).
 - Registro di trasmissione con esportazione CSV (il report SIAE nel formato del fac simile arriva con la fase 7).
 

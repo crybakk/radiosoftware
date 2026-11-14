@@ -8,7 +8,7 @@ const api = window.radio
 
 /** Crea una sola volta motore, uscita audio e preascolto, e li tiene allineati alle impostazioni. */
 export function useRadio() {
-  const backend = useMemo(() => new WebAudioBackend((id) => api.mediaUrl(id)), [])
+  const backend = useMemo(() => new WebAudioBackend((t) => api.mediaUrl(t)), [])
   const preview = useMemo(() => new PreviewPlayer(), [])
   const engineRef = useRef<PlayoutEngine | null>(null)
   if (!engineRef.current) {
@@ -18,9 +18,14 @@ export function useRadio() {
           upcoming.map((u) => ({ trackId: u.track.id, at: u.at.toISOString() })),
           count
         ),
-      logStart: (track, at) => api.logStart(track.id, at.toISOString()),
+      logStart: (track, at) => api.logStart(track, at.toISOString()),
       logEnd: (id, at, seconds) => api.logEnd(id, at.toISOString(), seconds),
-      resolveTrack: (id) => api.getTrack(id)
+      expandEvent: async (event) => {
+        const steps = await api.expandEvent(event)
+        // un evento può aver cambiato il profilo di rotazione
+        if (event.actions.some((a) => a.type === 'rotation')) setSettings(await api.getSettings())
+        return steps
+      }
     }
     engineRef.current = new PlayoutEngine(backend, host, {
       crossfadeSeconds: DEFAULT_SETTINGS.crossfadeSeconds,

@@ -66,6 +66,8 @@ export interface Settings {
   previewDeviceId: string
   /** Tracce assegnate ai 12 tasti della cartwall (null = vuoto). */
   cartwall: (number | null)[]
+  /** Profilo di rotazione attivo, impostato dagli eventi (null = rotazione normale). */
+  rotationProfile: RotationProfile | null
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -77,24 +79,70 @@ export const DEFAULT_SETTINGS: Settings = {
   autoQueueLength: 5,
   outputDeviceId: '',
   previewDeviceId: '',
-  cartwall: Array(12).fill(null)
+  cartwall: Array(12).fill(null),
+  rotationProfile: null
+}
+
+/** Profilo di rotazione attivato da un evento (per esempio "dalle 22 musica tranquilla"). */
+export interface RotationProfile {
+  name: string
+  /** Generi ammessi (basta che il genere del brano ne contenga uno). Vuoto = tutti. */
+  genres: string[]
+  yearFrom: number | null
+  yearTo: number | null
+  /** Se impostati, sostituiscono quelli delle impostazioni generali. */
+  artistSeparationMinutes: number | null
+  jingleEvery: number | null
+}
+
+/** Una singola azione di un evento. Le azioni vengono eseguite in ordine. */
+export type EventAction =
+  | { type: 'play'; trackId: number }
+  | { type: 'random'; kind: TrackKind | ''; folder: string; genre: string }
+  | { type: 'playlist'; path: string; placement: 'front' | 'append' | 'replace' }
+  | { type: 'stream'; url: string; minutes: number; title: string }
+  | { type: 'mode'; mode: 'auto' | 'manual' }
+  | { type: 'clear' }
+  | { type: 'stop' }
+  | { type: 'rotation'; profile: RotationProfile | null }
+  | { type: 'command'; command: string }
+
+export const ACTION_LABELS: Record<EventAction['type'], string> = {
+  play: 'Brano',
+  random: 'Brano casuale',
+  playlist: 'Playlist',
+  stream: 'Flusso esterno',
+  mode: 'Automatico / manuale',
+  clear: 'Svuota coda',
+  stop: 'Ferma tutto',
+  rotation: 'Regole di rotazione',
+  command: 'Comando esterno'
 }
 
 /** Evento a orario fisso. */
 export interface ScheduledEvent {
   id: number
-  /** Orario "HH:MM", oppure "*:MM" per ogni ora al minuto MM. */
+  label: string
+  /** Orario "HH:MM" di partenza, oppure "*:MM" per ogni ora al minuto MM. */
   time: string
   /** Giorni attivi, 0 = domenica ... 6 = sabato. */
   days: number[]
-  trackId: number
+  /** Se > 0, l'evento si ripete ogni N minuti a partire da `time` fino a `untilTime`. */
+  repeatMinutes: number
+  /** "HH:MM" di fine delle ripetizioni (null = fino a mezzanotte). */
+  untilTime: string | null
+  /** Date di validità "YYYY-MM-DD" (null = sempre). */
+  validFrom: string | null
+  validTo: string | null
   /**
-   * 'soft': parte appena finisce il brano in onda (al massimo con tolleranza).
-   * 'hard': parte all'orario esatto sfumando il brano in onda.
+   * Come parte rispetto al brano in onda:
+   * 'soft' = dopo il brano (se toleranceSeconds > 0, aspetta al massimo quei secondi e poi sfuma);
+   * 'hard' = subito, sfumando il brano in onda.
    */
   mode: 'soft' | 'hard'
+  toleranceSeconds: number
+  actions: EventAction[]
   enabled: boolean
-  label: string
 }
 
 export interface LogEntry {
@@ -120,6 +168,8 @@ export interface QueueItem {
   track: Track
   /** Da dove arriva: scelto a mano, rotazione automatica, evento. */
   origin: 'manual' | 'auto' | 'event'
+  /** Nome dell'evento che l'ha inserito. */
+  eventLabel?: string
 }
 
 export function gainForTrack(track: Pick<Track, 'loudness'>, targetLoudness: number): number {

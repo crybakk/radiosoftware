@@ -24,9 +24,20 @@ export interface PlayoutHost {
   fillQueue(upcoming: { track: Track; at: Date }[], count: number): Promise<Track[]>
   logStart(track: Track, at: Date): Promise<number>
   logEnd(logId: number, at: Date, playedSeconds: number): Promise<void>
-  /** Brano associato a un evento. */
-  resolveTrack(id: number): Promise<Track | null>
+  /**
+   * Trasforma le azioni di un evento in passi per il motore. Le azioni che non
+   * riguardano la coda (regole di rotazione, comandi esterni) le esegue l'host.
+   */
+  expandEvent(event: ScheduledEvent): Promise<EngineStep[]>
 }
+
+/** Passo eseguito dal motore per conto di un evento. */
+export type EngineStep =
+  | { kind: 'tracks'; tracks: Track[]; placement: 'front' | 'append' | 'replace' }
+  | { kind: 'mode'; mode: PlayoutMode }
+  | { kind: 'clear' }
+  | { kind: 'stop' }
+  | { kind: 'error'; message: string }
 
 export type PlayoutMode = 'auto' | 'manual'
 
@@ -87,6 +98,7 @@ export class PlayoutEngine {
   private starting = false
   private filling = false
   private lastError: string | null = null
+  private eventDeadline: Date | null = null
   private listeners = new Set<(s: PlayoutSnapshot) => void>()
 
   constructor(
@@ -191,19 +203,13 @@ export class PlayoutEngine {
     // 1. eventi a orario
     const due = dueEvents(this.events, this.lastEventCheck, now)
     this.lastEventCheck = now
-    let hardEvent = false
-    let insertAt = 0
-    while (insertAt < this.queue.length && this.queue[insertAt].origin === 'event') insertAt++
-    for (const { event } of due) {
-      const track = await this.host.resolveTrack(event.trackId)
-      if (!track) {
-        this.lastError = `Evento "${event.label || event.time}": brano non trovato`
-        continue
-      }
-      this.queue.splice(insertAt++, 0, { uid: newUid(), track, origin: 'event' })
-      if (event.mode === 'hard') hardEvent = true
+    for (const { event } of due) await this.runEvent(event, now)
+
+    // 1b. tolleranza scaduta: l'evento in testa alla coda non aspetta oltre
+    if (this.eventDeadline && now >= this.eventDeadline) {
+      this.eventDeadline = null
+      if (this.queue[0]?.origin === 'event' && this.current()) await this.next()
     }
-    if (hardEvent) await this.next()
 
     // 2. passaggio al brano successivo al punto di mix
     const cur = this.current()
@@ -265,6 +271,69 @@ export class PlayoutEngine {
         }),
       lastError: this.lastError
     }
+  }
+
+  /** Esegue subito un evento (usato dagli orari e dal tasto "Prova" nell'interfaccia). */
+  async runEvent(event: ScheduledEvent, now: Date = this.now()): Promise<void> {
+    let steps: EngineStep[]
+    try {
+      steps = await this.host.expandEvent(event)
+    } catch (err) {
+      this.lastError = `Evento "${event.label || event.time}": ${err instanceof Error ? err.message : String(err)}`
+      return
+    }
+    let insertAt = 0
+    while (insertAt < this.queue.length && this.queue[insertAt].origin === 'event') insertAt++
+    let queuedFront = false
+    let stopped = false
+    for (const step of steps) {
+      switch (step.kind) {
+        case 'error':
+          this.lastError = `Evento "${event.label || event.time}": ${step.message}`
+          break
+        case 'mode':
+          this.mode = step.mode
+          break
+        case 'clear':
+          this.queue = []
+          insertAt = 0
+          break
+        case 'stop':
+          this.stop()
+          stopped = true
+          break
+        case 'tracks': {
+          const items = step.tracks.map(
+            (track): QueueItem => ({ uid: newUid(), track, origin: 'event', eventLabel: event.label || undefined })
+          )
+          if (!items.length) break
+          if (step.placement === 'append') {
+            for (const it of items) this.queue.push({ ...it, origin: 'manual' })
+          } else {
+            if (step.placement === 'replace') {
+              this.queue = []
+              insertAt = 0
+            }
+            this.queue.splice(insertAt, 0, ...items)
+            insertAt += items.length
+            queuedFront = true
+          }
+          break
+        }
+      }
+    }
+    if (queuedFront && !stopped) {
+      const cur = this.current()
+      if (!cur) {
+        // gli eventi partono anche se la regia è ferma
+        await this.startNext()
+      } else if (event.mode === 'hard') {
+        await this.next()
+      } else if (event.toleranceSeconds > 0) {
+        this.eventDeadline = new Date(now.getTime() + event.toleranceSeconds * 1000)
+      }
+    }
+    this.emit()
   }
 
   // ---------- interni ----------

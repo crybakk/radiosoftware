@@ -11,7 +11,7 @@ export class WebAudioBackend implements AudioBackend {
   readonly master: GainNode
   readonly analyser: AnalyserNode
 
-  constructor(private mediaUrl: (id: number) => string) {
+  constructor(private mediaUrl: (t: Track) => string) {
     this.ctx = new AudioContext({ latencyHint: 'playback' }) as SinkContext
     this.master = this.ctx.createGain()
     this.analyser = this.ctx.createAnalyser()
@@ -26,7 +26,7 @@ export class WebAudioBackend implements AudioBackend {
   }
 
   createPlayer(track: Track, gainDb: number): Player {
-    return new WebPlayer(this.ctx, this.master, this.mediaUrl(track.id), track, dbToGain(gainDb))
+    return new WebPlayer(this.ctx, this.master, this.mediaUrl(track), track, dbToGain(gainDb))
   }
 
   /** Livello di picco attuale (0..1) per il VU meter. */

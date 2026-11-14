@@ -124,9 +124,15 @@ describe('database', () => {
     })
     db.updateTrack(id, { siaeCode: '00123', enabled: true })
     expect(db.getTrack(id)!.siaeCode).toBe('00123')
-    expect(() => db.saveEvent({ time: '25:00', days: [1], trackId: id, mode: 'soft', enabled: true, label: '' })).toThrow()
-    db.saveEvent({ time: '08:00', days: [1, 2], trackId: id, mode: 'hard', enabled: true, label: 'Sigla' })
-    expect(db.listEvents()[0]).toMatchObject({ time: '08:00', days: [1, 2], mode: 'hard' })
+    const base = {
+      label: 'Sigla', time: '08:00', days: [1, 2], repeatMinutes: 0, untilTime: null, validFrom: null, validTo: null,
+      mode: 'hard' as const, toleranceSeconds: 0, actions: [{ type: 'play' as const, trackId: id }], enabled: true
+    }
+    expect(() => db.saveEvent({ ...base, time: '25:00' })).toThrow()
+    expect(() => db.saveEvent({ ...base, actions: [] })).toThrow()
+    expect(() => db.saveEvent({ ...base, actions: [{ type: 'stream', url: 'ftp://x', minutes: 5, title: '' }] })).toThrow()
+    db.saveEvent(base)
+    expect(db.listEvents()[0]).toMatchObject({ time: '08:00', days: [1, 2], mode: 'hard', actions: [{ type: 'play', trackId: id }] })
 
     const logId = db.logStart(db.getTrack(id)!, new Date('2026-11-16T10:00:00Z'))
     db.logEnd(logId, new Date('2026-11-16T10:01:40Z'), 100)

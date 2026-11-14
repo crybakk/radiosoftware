@@ -1,6 +1,25 @@
 import type { RadioDb } from './db'
 import { pickJingle, pickMusic, type RotationRules } from './rotation'
-import type { Track } from './types'
+import type { RotationProfile, Track } from './types'
+
+/**
+ * Filtra i brani secondo il profilo attivo. Se il filtro lascia meno di 10 brani
+ * usa tutta la musica, così una regola troppo stretta non blocca la radio.
+ */
+export function applyProfile(tracks: Track[], profile: RotationProfile | null): Track[] {
+  if (!profile) return tracks
+  const genres = profile.genres.map((g) => g.trim().toLowerCase()).filter(Boolean)
+  const filtered = tracks.filter((t) => {
+    if (genres.length) {
+      const g = t.genre.toLowerCase()
+      if (!genres.some((x) => g.includes(x))) return false
+    }
+    if (profile.yearFrom != null && (t.year == null || t.year < profile.yearFrom)) return false
+    if (profile.yearTo != null && (t.year == null || t.year > profile.yearTo)) return false
+    return true
+  })
+  return filtered.length >= 10 ? filtered : tracks
+}
 
 /** Riempie la coda automatica: musica con separazioni + un jingle ogni N brani. */
 export class RotationService {
@@ -14,12 +33,13 @@ export class RotationService {
 
   fill(upcoming: { track: Track; at: Date }[], count: number): Track[] {
     const s = this.db.getSettings()
+    const profile = s.rotationProfile
     const rules: RotationRules = {
-      artistSeparationMinutes: s.artistSeparationMinutes,
+      artistSeparationMinutes: profile?.artistSeparationMinutes ?? s.artistSeparationMinutes,
       titleSeparationMinutes: s.titleSeparationMinutes,
-      jingleEvery: s.jingleEvery
+      jingleEvery: profile?.jingleEvery ?? s.jingleEvery
     }
-    const music = this.db.rotationCandidates('music')
+    const music = applyProfile(this.db.rotationCandidates('music'), profile)
     const jingles = rules.jingleEvery > 0 ? this.db.rotationCandidates('jingle') : []
     const lookback = Math.max(rules.artistSeparationMinutes, rules.titleSeparationMinutes)
     const recent = this.db.recentPlays(new Date(this.now().getTime() - lookback * 60_000))
