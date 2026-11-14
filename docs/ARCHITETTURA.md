@@ -26,6 +26,7 @@ Stato: **bozza da approvare** (14/11/2026). Nulla qui è definitivo finché non 
 | Uscite terze | Icecast esterni, Fluidstream, YouTube, Facebook |
 | Stack | Libero |
 | Dove si mixa la diretta remota | **Sul server ponte (mix in cloud)**, scelto il 14/11/2026 |
+| Funzioni aggiunte | Analisi della libreria stile MusicBrainz e report SIAE dei brani trasmessi (14/11/2026) |
 
 ## 3. Schema generale
 
@@ -63,6 +64,22 @@ Regola chiave: **tutte le connessioni partono dal PC di regia verso il server**.
 - **Metadati:** titolo e artista del brano in onda inviati al ponte, che li inoltra ad AzuraCast e alle altre uscite.
 - **Se cade il 4G:** la regia continua a suonare in locale, l'uplink si riconnette da solo, e nel frattempo AzuraCast passa alla sua AutoDJ di riserva. Quando la linea torna, si riprende automaticamente.
 
+### 4.1.1 Analisi della libreria (stile MusicBrainz)
+
+- Per ogni brano si calcola l'**impronta audio** (Chromaprint) e la si confronta con **AcoustID**, che restituisce l'identificativo MusicBrainz anche se il file ha tag sbagliati o mancanti.
+- Da **MusicBrainz** si recuperano titolo e artista corretti, album, anno, **ISRC**, durata e, dove presenti, **autori e compositori**, che servono anche per i report SIAE.
+- Si ricava anche il genere e lo si usa per categorie e rotazioni.
+- Proposte di correzione con anteprima: nulla viene sovrascritto senza conferma. I tag si possono anche scrivere nei file, a scelta.
+- Segnalazione di duplicati, brani senza corrispondenza e brani con volume o qualità anomali.
+- Limiti: MusicBrainz accetta circa 1 richiesta al secondo e AcoustID richiede una chiave gratuita. Per 20.000 brani la prima analisi richiede quindi diverse ore e gira in background una volta sola. Dopo si analizzano solo i brani nuovi.
+
+### 4.1.2 Registro di trasmissione e report SIAE
+
+- Ogni brano effettivamente andato in onda viene registrato con data, ora, durata reale trasmessa, titolo, artista, autori/compositori, ISRC ed etichetta. Vengono registrati anche i brani mandati dal remoto e quelli dell'AutoDJ di riserva, letti da AzuraCast.
+- Esportazione del report per periodo nel **formato richiesto da SIAE**, più CSV/Excel generico.
+- Schermata "brani incompleti" per completare a mano i dati mancanti prima dell'invio.
+- Il tracciato esatto del report va definito sul modello che usi oggi con SIAE: non lo invento.
+
 ### 4.2 Ponte (sul server di AzuraCast)
 
 Servizi aggiuntivi in Docker, accanto ad AzuraCast, senza modificarlo:
@@ -98,15 +115,16 @@ Chi parla da remoto si ascolta in locale senza ritardo. Il ritardo del ritorno p
 
 ## 6. Fasi di sviluppo proposte
 
-1. **Regia base:** libreria, analisi brani, playout con dissolvenze e jingle, uscita audio verso il RodeCaster.
+1. **Regia base:** libreria, analisi brani, playout con dissolvenze e jingle, uscita audio verso il RodeCaster, registro di trasmissione.
 2. **Ponte e uplink:** Docker sul server, SRT dalla regia, invio ad AzuraCast con AutoDJ di riserva, riconnessione automatica.
 3. **Controllo remoto:** pannello web per comandare la regia attraverso il ponte.
 4. **Microfono remoto:** WebRTC e mix sul ponte.
 5. **Ospiti:** link ospite, sala d'attesa, mix-minus.
 6. **Uscite terze:** Icecast esterni, Fluidstream, YouTube, Facebook.
+7. **Analisi libreria e report SIAE:** impronte audio, MusicBrainz, correzione dei tag, esportazione SIAE. Si può anticipare se serve prima.
 
 Ogni fase si chiude con una versione usabile e testata prima di passare alla successiva.
 
 ## 7. Domande ancora aperte
 
-Vedi il thread di progetto: versione di AzuraCast, risorse del server, porte apribili, eventuale migrazione da RadioDJ, dettagli di Fluidstream e immagine per YouTube/Facebook.
+Vedi il thread di progetto: versione di AzuraCast, risorse del server, porte apribili, eventuale migrazione da RadioDJ, dettagli di Fluidstream, immagine per YouTube/Facebook, tracciato e licenza SIAE.
