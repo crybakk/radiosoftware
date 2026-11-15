@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "nodemailer": "^10.5.0",
+    "werift": "^0.27.0",
     "ws": "^8.23.0"
   },
   "devDependencies": {

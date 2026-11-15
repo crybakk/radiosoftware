@@ -115,6 +115,9 @@ function connect() {
     } else if (m.t === 'alarms') {
       $('alarms').hidden = !m.alarms.length
       $('alarms').textContent = m.alarms.map((a) => `⚠ ${a.message}`).join('  ·  ')
+    } else if (m.t === 'mic') {
+      mic = m.mic
+      renderMic()
     } else if (m.t === 'reply') {
       const w = waiting.get(m.id)
       if (w) {
@@ -124,6 +127,8 @@ function connect() {
     }
   }
   ws.onclose = (e) => {
+    // senza canale il ponte chiude il microfono: lo chiudiamo anche qui
+    if (pc) micShutdown('Connessione al ponte persa: microfono chiuso')
     for (const w of waiting.values()) w.reject(new Error('connessione persa'))
     waiting.clear()
     studio = false
@@ -136,14 +141,15 @@ function connect() {
   }
 }
 
-function send(cmd) {
+function request(msg) {
   return new Promise((resolve, reject) => {
     if (!ws || ws.readyState !== 1) return reject(new Error('non collegato al ponte'))
     const id = `p${++seq}`
     waiting.set(id, { resolve, reject })
-    ws.send(JSON.stringify({ t: 'cmd', id, cmd }))
+    ws.send(JSON.stringify({ ...msg, id }))
   })
 }
+const send = (cmd) => request({ t: 'cmd', cmd })
 const command = (cmd) => send(cmd).catch((e) => notice(e.message))
 
 function setState(s) {
@@ -169,6 +175,7 @@ function render() {
   renderNow()
   renderQueue(ctl)
   renderCarts(ctl)
+  renderMic()
   if (state?.lastError) notice(state.lastError)
 }
 
@@ -273,6 +280,141 @@ $('search-form').addEventListener('submit', async (e) => {
     ul.replaceChildren(el('li', 'error', err.message))
   }
 })
+
+// ---------- microfono remoto ----------
+
+let mic = { user: null, onAir: false }
+let pc = null
+let micStream = null
+let meterCtx = null
+let micBusy = false
+
+function renderMic() {
+  const card = $('mic-card')
+  card.hidden = !me || !canCommand()
+  if (card.hidden) return
+  const mine = !!pc
+  const who = $('mic-who')
+  who.textContent = mic.user ? `${mic.user}${mic.onAir ? ' · IN ONDA' : ' · fuori onda'}` : ''
+  who.className = `mic-who ${mic.onAir ? 'onair' : ''}`
+  const secure = window.isSecureContext && navigator.mediaDevices
+  const hint = $('mic-hint')
+  if (!secure) {
+    hint.textContent = 'Il microfono funziona solo con il pannello aperto in HTTPS (vedi la guida, "Pannello in HTTPS").'
+  } else if (mic.user && !mine) {
+    hint.textContent = `Il microfono remoto è già aperto da ${mic.user}.`
+  } else if (mine && !mic.onAir) {
+    hint.textContent = 'Microfono aperto, ma NON in onda: in cuffia senti il programma. Premi VAI IN ONDA per parlare.'
+  } else hint.textContent = ''
+  hint.hidden = !hint.textContent
+  $('mic-open').hidden = mine
+  $('mic-open').disabled = !secure || micBusy || (mic.user && !mine)
+  $('mic-air').hidden = !mine
+  $('mic-air').disabled = micBusy
+  $('mic-air').textContent = mic.onAir && mine ? '● IN ONDA · premi per uscire' : 'VAI IN ONDA'
+  $('mic-air').classList.toggle('live', mic.onAir && mine)
+  $('mic-close').hidden = !mine
+  $('mic-meter').hidden = !mine
+}
+
+function waitIce(conn) {
+  return new Promise((resolve) => {
+    if (conn.iceGatheringState === 'complete') return resolve()
+    const t = setTimeout(resolve, 2500)
+    conn.addEventListener('icegatheringstatechange', () => {
+      if (conn.iceGatheringState === 'complete') {
+        clearTimeout(t)
+        resolve()
+      }
+    })
+  })
+}
+
+async function micOpen() {
+  micBusy = true
+  renderMic()
+  try {
+    // con le cuffie niente elaborazioni del browser (voce più naturale); senza cuffie serve togliere l'eco
+    const hp = $('mic-headphones').checked
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: !hp, noiseSuppression: !hp, autoGainControl: !hp, channelCount: 1 }
+    })
+    pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+    const conn = pc
+    for (const t of micStream.getAudioTracks()) conn.addTrack(t, micStream)
+    conn.ontrack = (e) => {
+      const a = $('mic-ret')
+      a.srcObject = e.streams[0] || new MediaStream([e.track])
+      a.volume = Number($('mic-return').value)
+      a.play().catch(() => {})
+    }
+    conn.onconnectionstatechange = () => {
+      if (pc === conn && conn.connectionState === 'failed') micShutdown('Collegamento audio con il ponte caduto: microfono chiuso')
+    }
+    await conn.setLocalDescription(await conn.createOffer())
+    await waitIce(conn)
+    const ans = await request({ t: 'rtc-offer', sdp: conn.localDescription.sdp })
+    if (pc !== conn) return
+    await conn.setRemoteDescription({ type: 'answer', sdp: ans.sdp })
+    startMeter()
+  } catch (e) {
+    micShutdown(e.name === 'NotAllowedError' ? 'Permesso del microfono negato dal browser' : e.message)
+  } finally {
+    micBusy = false
+    renderMic()
+  }
+}
+
+function micShutdown(message) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'rtc-close' }))
+  if (pc) pc.close()
+  pc = null
+  if (micStream) for (const t of micStream.getTracks()) t.stop()
+  micStream = null
+  if (meterCtx) meterCtx.close().catch(() => {})
+  meterCtx = null
+  $('mic-ret').srcObject = null
+  if (message) notice(message)
+  renderMic()
+}
+
+function startMeter() {
+  meterCtx = new AudioContext()
+  const an = meterCtx.createAnalyser()
+  an.fftSize = 1024
+  meterCtx.createMediaStreamSource(micStream).connect(an)
+  const buf = new Float32Array(an.fftSize)
+  const ctx = meterCtx
+  const draw = () => {
+    if (meterCtx !== ctx) return
+    an.getFloatTimeDomainData(buf)
+    let peak = 0
+    for (const v of buf) peak = Math.max(peak, Math.abs(v))
+    const db = peak > 0 ? 20 * Math.log10(peak) : -60
+    const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100))
+    const bar = $('mic-level')
+    bar.style.width = `${pct}%`
+    bar.className = `meter-fill ${db > -3 ? 'clip' : db > -12 ? 'hot' : ''}`
+    requestAnimationFrame(draw)
+  }
+  draw()
+}
+
+$('mic-open').addEventListener('click', () => void micOpen())
+$('mic-close').addEventListener('click', () => micShutdown())
+$('mic-air').addEventListener('click', async () => {
+  micBusy = true
+  renderMic()
+  try {
+    await request({ t: 'mic', on: !mic.onAir })
+  } catch (e) {
+    notice(e.message)
+  } finally {
+    micBusy = false
+    renderMic()
+  }
+})
+$('mic-return').addEventListener('input', () => ($('mic-ret').volume = Number($('mic-return').value)))
 
 // ---------- utenti ----------
 

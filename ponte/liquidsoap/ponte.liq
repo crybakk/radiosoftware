@@ -33,6 +33,10 @@ esterna_mount = env("ESTERNA_MOUNT", "/")
 esterna_user = env("ESTERNA_UTENTE", "esterna")
 esterna_password = env("ESTERNA_PASSWORD", "")
 
+microfono_attivo = env("MICROFONO_REMOTO", "si") != "no"
+ducking_db = float_of_string(default=-12., env("ABBASSAMENTO_MUSICA_DB", "-12"))
+ritorno_url = env("RITORNO_VOCE", "rtp://controllo:41040?pkt_size=1200")
+
 # --- notifiche al servizio di controllo (non bloccanti) ---
 def notify(kind, detail) =
   thread.run(
@@ -117,6 +121,69 @@ programma =
     [esterna, programma]
   )
 
+# --- microfono remoto (voce del conduttore dal pannello, via il controllo) ---
+# La voce arriva in RTP (Opus) dal servizio di controllo. Quando è "in onda" la
+# musica si abbassa di ABBASSAMENTO_MUSICA_DB e la voce sale, con transizioni morbide.
+voce_in_onda = ref(false)
+g_voce = ref(0.)
+g_musica = ref(1.)
+abbassata = lin_of_dB(ducking_db)
+thread.run(
+  every=0.02,
+  fun () ->
+    begin
+      obiettivo_voce = if voce_in_onda() then 1. else 0. end
+      obiettivo_musica = if voce_in_onda() then abbassata else 1. end
+      g_voce := g_voce() + (obiettivo_voce - g_voce()) * 0.15
+      g_musica := g_musica() + (obiettivo_musica - g_musica()) * 0.15
+    end
+)
+
+def con_voce(programma) =
+  voce =
+    input.ffmpeg(
+      id="voce",
+      self_sync=true,
+      max_buffer=0.5,
+      string_args=[("protocol_whitelist", "file,udp,rtp")],
+      format="sdp",
+      "/cfg/voce.sdp"
+    )
+  # orologio separato: se la voce non arriva il programma non si ferma
+  voce = buffer(id="buffer_voce", buffer=0.06, max=0.5, voce)
+  musica = amplify({g_musica()}, programma)
+
+  # ritorno in cuffia al conduttore: il programma (già abbassato) senza la sua voce
+  output.url(
+    id="ritorno_voce",
+    fallible=true,
+    url=ritorno_url,
+    %ffmpeg(
+      format = "rtp",
+      %audio(codec = "libopus", samplerate = 48000, channels = 2, b = "96k")
+    ),
+    mksafe(musica)
+  )
+
+  # la voce si aggiunge solo quando c'è un programma (regia o esterna): senza,
+  # l'uscita verso AzuraCast resta ferma e AzuraCast passa alla sua AutoDJ
+  switch(
+    id="mixer_voce",
+    track_sensitive=false,
+    [({source.is_ready(programma)}, add(normalize=false, [musica, amplify({g_voce()}, voce)]))]
+  )
+end
+
+programma =
+  if
+    microfono_attivo
+  then
+    con_voce(programma)
+  else
+    log.important("MICROFONO_REMOTO=no: microfono dal pannello disattivato")
+    programma
+  end
+
 # --- processore audio ---
 def processa(s) =
   if
@@ -159,10 +226,23 @@ def set_metadata(req) =
 end
 harbor.http.register.simple(port=8092, method="POST", "/metadata", set_metadata)
 
+def set_voce(req) =
+  try
+    let json.parse (m : {on: bool}) = req.body()
+    voce_in_onda := m.on
+    stato_voce = if m.on then "IN ONDA" else "fuori onda" end
+    log.important("Microfono remoto: #{stato_voce}")
+    http.response(content_type="application/json", data="{\"ok\":true}")
+  catch _ do
+    http.response(status_code=400, content_type="application/json", data="{\"ok\":false}")
+  end
+end
+harbor.http.register.simple(port=8092, method="POST", "/voce", set_voce)
+
 def stato(_) =
   http.response(
     content_type="application/json",
-    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready()})
+    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready(), voce=voce_in_onda()})
   )
 end
 harbor.http.register.simple(port=8092, method="GET", "/stato", stato)
