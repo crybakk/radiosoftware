@@ -1,4 +1,6 @@
 /** Tipo di elemento audio: decide come viene usato in rotazione e nella cartwall. */
+import type { NewsSource } from './news'
+
 export type TrackKind = 'music' | 'jingle' | 'spot' | 'news' | 'program'
 
 export const TRACK_KINDS: { value: TrackKind; label: string }[] = [
@@ -70,6 +72,8 @@ export interface Settings {
   rotationProfile: RotationProfile | null
   /** Collegamento con il server ponte (invio del programma, allarmi, backup). */
   ponte: PonteSettings
+  /** Fonti dei notiziari (feed dei podcast o link diretti). */
+  news: NewsSource[]
 }
 
 export interface PonteSettings {
@@ -143,7 +147,8 @@ export const DEFAULT_SETTINGS: Settings = {
   previewDeviceId: '',
   cartwall: Array(12).fill(null),
   rotationProfile: null,
-  ponte: DEFAULT_PONTE
+  ponte: DEFAULT_PONTE,
+  news: []
 }
 
 /** Profilo di rotazione attivato da un evento (per esempio "dalle 22 musica tranquilla"). */
@@ -171,6 +176,8 @@ export type EventAction =
   | { type: 'command'; command: string }
   /** Replica: l'ultima puntata pubblicata del programma (dal server). */
   | { type: 'replay'; programId: string; title: string }
+  /** Notiziario: l'ultima edizione di una fonte (impostazioni → Notiziari), scaricata al momento. */
+  | { type: 'news'; sourceId: string; title: string }
 
 export const ACTION_LABELS: Record<EventAction['type'], string> = {
   play: 'Brano',
@@ -182,7 +189,8 @@ export const ACTION_LABELS: Record<EventAction['type'], string> = {
   stop: 'Ferma tutto',
   rotation: 'Regole di rotazione',
   command: 'Comando esterno',
-  replay: 'Replica di un programma'
+  replay: 'Replica di un programma',
+  news: 'Notiziario'
 }
 
 /** Evento a orario fisso. */

@@ -9,6 +9,7 @@ import {
   type Track
 } from '../../core/types'
 import type { PonteProgram } from '../../core/ponteClient'
+import type { NewsSource } from '../../core/news'
 import { hhmm, KIND_LABEL } from './format'
 import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
@@ -60,6 +61,8 @@ function newAction(type: EventAction['type']): EventAction {
       return { type, command: '' }
     case 'replay':
       return { type, programId: '', title: '' }
+    case 'news':
+      return { type, sourceId: '', title: '' }
     default:
       return { type } as EventAction
   }
@@ -116,6 +119,8 @@ function actionSummary(a: EventAction, tracks: Map<number, Track>): string {
       return a.command
     case 'replay':
       return a.programId ? `ultima puntata di "${a.title || a.programId}"` : 'nessun programma scelto'
+    case 'news':
+      return a.sourceId ? `ultima edizione di "${a.title || a.sourceId}"` : 'nessuna fonte scelta'
   }
 }
 
@@ -292,6 +297,7 @@ export function EventsView({ radio }: { radio: Radio }) {
           setDraft={setDraft}
           tracks={tracks}
           onTrackChosen={(t) => setTracks((prev) => new Map(prev).set(t.id, t))}
+          news={radio.settings.news}
           error={error}
           onSave={() => void save()}
           onClose={() => setDraft(null)}
@@ -306,6 +312,7 @@ function EventEditor({
   setDraft,
   tracks,
   onTrackChosen,
+  news,
   error,
   onSave,
   onClose
@@ -314,6 +321,7 @@ function EventEditor({
   setDraft: (d: Draft) => void
   tracks: Map<number, Track>
   onTrackChosen: (t: Track) => void
+  news: NewsSource[]
   error: string | null
   onSave: () => void
   onClose: () => void
@@ -541,6 +549,7 @@ function EventEditor({
                 onChange={(na) => setAction(i, na)}
                 tracks={tracks}
                 genres={genres}
+                news={news}
                 onPick={() => setPicking(i)}
               />
             </li>
@@ -611,12 +620,14 @@ function ActionForm({
   onChange,
   tracks,
   genres,
+  news,
   onPick
 }: {
   action: EventAction
   onChange: (a: EventAction) => void
   tracks: Map<number, Track>
   genres: string[]
+  news: NewsSource[]
   onPick: () => void
 }) {
   switch (a.type) {
@@ -752,6 +763,33 @@ function ActionForm({
       return <div className="hint">Sfuma tutto quello che è in onda e passa in manuale.</div>
     case 'replay':
       return <ReplayForm action={a} onChange={onChange} />
+    case 'news': {
+      const known = news.some((n) => n.id === a.sourceId)
+      return (
+        <div className="form-grid">
+          <label>
+            <span>Fonte</span>
+            <select
+              value={a.sourceId}
+              onChange={(e) => onChange({ ...a, sourceId: e.target.value, title: news.find((n) => n.id === e.target.value)?.name ?? '' })}
+            >
+              <option value="">Scegli…</option>
+              {a.sourceId && !known && <option value={a.sourceId}>{a.title || a.sourceId} (fonte tolta)</option>}
+              {news.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="hint">
+            {news.length
+              ? "All'ora dell'evento scarica l'ultima edizione e la manda in onda. Le fonti si impostano in Impostazioni → Notiziari."
+              : 'Nessuna fonte: aggiungila prima in Impostazioni → Notiziari.'}
+          </div>
+        </div>
+      )
+    }
     case 'command':
       return (
         <label className="block">

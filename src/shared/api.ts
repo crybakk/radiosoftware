@@ -1,3 +1,4 @@
+import type { NewsSource } from '../core/news'
 import type { TrackEdit, TrackSearch } from '../core/db'
 import type { EngineStep } from '../core/playout'
 import type { ScanProgress } from '../core/scanner'
@@ -51,7 +52,9 @@ export interface RadioApi {
   /** Esegue le azioni di un evento e restituisce i passi per il motore. */
   expandEvent(event: ScheduledEvent): Promise<EngineStep[]>
   /** Sceglie un file di playlist o una cartella. */
-  choosePath(kind: 'playlist' | 'folder'): Promise<string | null>
+  choosePath(kind: 'playlist' | 'folder' | 'audio'): Promise<string | null>
+  /** Prova una fonte di notiziari: scarica come all'ora dell'evento e restituisce il brano da ascoltare. */
+  newsTest(source: NewsSource): Promise<{ track: Track | null; note: string }>
   logEnd(logId: number, at: string, playedSeconds: number): Promise<void>
   listLog(from: string, to: string): Promise<LogEntry[]>
   exportLogCsv(from: string, to: string): Promise<string | null>
