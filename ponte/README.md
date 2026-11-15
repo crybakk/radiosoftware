@@ -117,6 +117,31 @@ Con **Invia notifica di prova** controlli che Telegram o l'email arrivino.
 
 Titolo e artista arrivano dalla regia (o dal file, per la diretta autonoma e la musica di riserva).
 
+Pagine per gli ascoltatori (servite dal controllo, dietro Caddy):
+
+- `https://<dominio>/ascolta.html`: la diretta con il titolo in onda;
+- `https://<dominio>/podcast.html`: programmi e puntate on demand (solo ascolto in streaming).
+
+## Programmi e puntate on demand
+
+I programmi si creano dal pannello (menu **Programmi**, amministratori). Durante le fasce dei programmi con la
+registrazione attiva, il controllo registra il programma in onda dal flusso interno di Liquidsoap
+(`PUNTATE_BITRATE`, di base 128 kbit/s, circa 58 MB all'ora) nella cartella dati `programmi/registrazioni/`.
+A fine fascia la registrazione diventa una bozza: dal pannello si scelgono inizio e fine, titolo e descrizione,
+e si pubblica (taglio senza ricodifica in `programmi/puntate/`). `REGISTRAZIONE_PUNTATE=no` spegne le registrazioni.
+
+API pubbliche, con gli stessi indirizzi e lo stesso formato delle API pubbliche dei podcast di AzuraCast
+(per l'app della radio), senza accesso e con CORS aperto:
+
+- `GET /api/station/<nome breve>/public/podcasts`
+- `GET /api/station/<nome breve>/public/podcast/<programma>` e `.../art`
+- `GET /api/station/<nome breve>/public/podcast/<programma>/episodes`
+- `GET /api/station/<nome breve>/public/podcast/<programma>/episode/<puntata>` e `.../download.mp3` (audio in
+  streaming, con Range)
+
+Il nome breve si imposta dal pannello (Programmi → Impostazioni); al posto del nome breve va bene anche `1`.
+Non c'è il feed RSS (niente Spotify o Apple Podcasts).
+
 ## Icecast secondario
 
 Se hai un Icecast su un altro server (un servizio di streaming o un VPS), scrivi i suoi dati in

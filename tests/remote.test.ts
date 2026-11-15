@@ -58,7 +58,7 @@ describe('stato e comandi della regia', () => {
     const engine = new PlayoutEngine(new FakeBackend(clock), host(), { crossfadeSeconds: 2, targetLoudness: -16, autoQueueLength: 3 }, () => clock.now())
     const a = makeTrack({ id: 1, title: 'A' })
     const b = makeTrack({ id: 2, title: 'B' })
-    const deps = { getTrack: async (id: number) => (id === 1 ? a : id === 2 ? b : null), search: async () => [a], carts: () => [] }
+    const deps = { getTrack: async (id: number) => (id === 1 ? a : id === 2 ? b : null), search: async () => [a], carts: () => [], replay: async () => null }
     await executeRemote(engine, { type: 'enqueue', trackId: 1, where: 'end' }, deps)
     await executeRemote(engine, { type: 'enqueue', trackId: 2, where: 'next' }, deps)
     expect(engine.snapshot().queue.map((q) => q.track.title)).toEqual(['B', 'A'])
@@ -69,6 +69,25 @@ describe('stato e comandi della regia', () => {
     const found = (await executeRemote(engine, { type: 'search', q: 'a' }, deps)) as { title: string; path?: string }[]
     expect(found[0].title).toBe('A')
     expect(found[0].path).toBeUndefined()
+  })
+
+  it('replica dal pannello: in coda dopo il brano in onda', async () => {
+    const clock = new FakeClock()
+    const engine = new PlayoutEngine(new FakeBackend(clock), host(), { crossfadeSeconds: 2, targetLoudness: -16, autoQueueLength: 3 }, () => clock.now())
+    const a = makeTrack({ id: 1, title: 'A' })
+    const r = makeTrack({ id: -5, title: 'Replica: Puntata 1', kind: 'program' })
+    const asked: unknown[] = []
+    const deps = {
+      getTrack: async () => a,
+      search: async () => [],
+      carts: () => [],
+      replay: async (p: string, e?: string) => (asked.push([p, e]), p === 'sera' ? r : null)
+    }
+    await executeRemote(engine, { type: 'enqueue', trackId: 1, where: 'end' }, deps)
+    await executeRemote(engine, { type: 'replay', programId: 'sera', episodeId: 'e1', where: 'next' }, deps)
+    expect(engine.snapshot().queue.map((q) => q.track.title)).toEqual(['Replica: Puntata 1', 'A'])
+    expect(asked).toEqual([['sera', 'e1']])
+    await expect(executeRemote(engine, { type: 'replay', programId: 'x', where: 'next' }, deps)).rejects.toThrow('puntata non trovata')
   })
 
   it('indirizzo del canale', () => {

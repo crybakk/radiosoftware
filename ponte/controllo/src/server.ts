@@ -25,6 +25,9 @@
  *   GET/PUT /api/video/logo   immagine delle dirette video su YouTube e Facebook (conduttori)
  *   GET/POST /api/sconosciuti, GET /api/sconosciuti/clip?id=   brani non riconosciuti nelle esterne (etichette)
  *
+ * Programmi e puntate on demand: vedi programmiApi.ts (API pubbliche come quelle dei podcast di AzuraCast,
+ *   pagine ascolta.html e podcast.html, gestione dal pannello, ultime puntate per le repliche della regia).
+ *
  * Libreria del server copiata dalla regia (token): GET /api/libreria, PUT /api/libreria?id=regia/...,
  *   DELETE /api/libreria?id=regia/..., POST /api/libreria/dati (titoli e volumi corretti)
  *
@@ -54,6 +57,9 @@ import { VideoLive } from './video.ts'
 import { PlayLog, type PlaySource } from './registro.ts'
 import { FpStore, parseFpFile, UnknownStore } from './riconoscimento.ts'
 import { EsterneRecognition } from './esterne.ts'
+import { Programs } from './programmi.ts'
+import { Recorder } from './puntate.ts'
+import { handleProgramApi } from './programmiApi.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -71,6 +77,7 @@ const BACKUP_KEEP = num('BACKUP_DA_TENERE', 14)
 const MAX_BACKUP_BYTES = 1024 * 1024 * 1024
 const CERT_FILE = env('CERTIFICATO_TLS')
 const KEY_FILE = env('CHIAVE_TLS')
+const LISTEN_URL = env('ASCOLTO_URL') || (env('DOMINIO') ? `https://${env('DOMINIO')}${env('ICECAST_MOUNT', '/radio.mp3')}` : '')
 const PANEL_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'pannello')
 
 if (TOKEN.length < 16) {
@@ -156,7 +163,7 @@ if (env('MICROFONO_REMOTO', 'si') !== 'no') {
     file: join(DATA_DIR, 'inviti-ospiti.json'),
     slots: slots.slice(1),
     station: env('NOME_RADIO', 'Radio'),
-    listenUrl: env('ASCOLTO_URL') || (env('DOMINIO') ? `https://${env('DOMINIO')}${env('ICECAST_MOUNT', '/radio.mp3')}` : '')
+    listenUrl: LISTEN_URL
   })
   guests.onChange = (list) => {
     console.log(`[ospiti] ${list.map((g) => `${g.name} (${g.state}${g.onAir ? ', IN ONDA' : ''})`).join(', ') || 'nessuno'}`)
@@ -261,6 +268,23 @@ const rescan = (): void =>
     .catch((e: unknown) => console.error(`[autonoma] scansione: ${e instanceof Error ? e.message : String(e)}`))
 rescan()
 setInterval(rescan, 30 * 60_000)
+
+// ---------- programmi e puntate on demand ----------
+
+const programs = new Programs(join(DATA_DIR, 'programmi'))
+let recorder: Recorder | null = null
+if (env('REGISTRAZIONE_PUNTATE', 'si') !== 'no') {
+  recorder = new Recorder({
+    programs,
+    url: env('PUNTATE_AUDIO_URL', 'http://liquidsoap:8093/programma'),
+    bitrate: env('PUNTATE_BITRATE', '128k'),
+    onDraft: (e) => {
+      const p = programs.get(e.programId)
+      void notifier.send(`🎙️ Nuova puntata registrata di "${p?.title ?? e.programId}": da rivedere e pubblicare dal pannello (Programmi e puntate).`)
+    }
+  })
+  recorder.start()
+}
 
 // ---------- dirette video (YouTube, Facebook) ----------
 
@@ -516,6 +540,26 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       return json(res, 404, { error: 'non trovato' })
     }
     if (!url.pathname.startsWith('/api/')) return json(res, 404, { error: 'non trovato' })
+
+    // --- programmi e puntate (pubbliche, pannello, regia) ---
+    if (
+      await handleProgramApi(req, res, url, {
+        programs,
+        recorder,
+        stationName: env('NOME_RADIO', 'Radio'),
+        listenUrl: LISTEN_URL,
+        nowPlaying: () => {
+          const a = auto.state()
+          if (a.active && a.onAir) return { artist: a.onAir.artist, title: a.onAir.title }
+          return lastMetadata ? { artist: lastMetadata.artist, title: lastMetadata.title } : null
+        },
+        user: sessionUser,
+        sameOrigin,
+        authorized,
+        base: (r) => `${tls || viaHttps(r) ? 'https' : 'http'}://${r.headers.host ?? 'localhost'}`
+      })
+    )
+      return
 
     // --- pannello remoto (sessione) ---
     if (req.method === 'POST' && url.pathname === '/api/login') {
@@ -886,11 +930,12 @@ const internalServer = createServer(async (req, res) => {
 publicServer.listen(PUBLIC_PORT, () => console.log(`Controllo in ascolto sulla porta ${PUBLIC_PORT}${tls ? ' (HTTPS)' : ''}`))
 internalServer.listen(INTERNAL_PORT, () => console.log(`Eventi interni sulla porta ${INTERNAL_PORT}`))
 
-const shutdown = (): void => {
+const shutdown = async (): Promise<void> => {
   video?.stop()
+  await recorder?.stop().catch(() => {})
   publicServer.close()
   internalServer.close()
   process.exit(0)
 }
-process.on('SIGTERM', shutdown)
-process.on('SIGINT', shutdown)
+process.on('SIGTERM', () => void shutdown())
+process.on('SIGINT', () => void shutdown())

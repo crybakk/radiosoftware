@@ -8,13 +8,13 @@
 * { box-sizing: border-box; }
 body { margin: 0; padding-bottom: env(safe-area-inset-bottom); }
 [hidden] { display: none !important; }
-button, input, select { font: inherit; color: var(--text); border-radius: 10px; }
+button, input, select, textarea { font: inherit; color: var(--text); border-radius: 10px; }
 button { background: var(--panel2); border: 1px solid var(--line); padding: 10px 14px; cursor: pointer; touch-action: manipulation; }
 button:disabled { opacity: 0.4; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: white; }
 button.ghost { background: transparent; }
 button.small { padding: 4px 10px; font-size: 13px; }
-input, select { background: var(--bg); border: 1px solid var(--line); padding: 10px 12px; width: 100%; }
+input, select, textarea { background: var(--bg); border: 1px solid var(--line); padding: 10px 12px; width: 100%; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
 .error { color: #fca5a5; }
 .hint { color: var(--muted); font-size: 13px; }
@@ -135,3 +135,29 @@ main { display: grid; gap: 12px; padding: 12px; max-width: 1100px; margin: 0 aut
 .unk-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .unk-form .row { grid-column: 1 / -1; display: flex; gap: 8px; }
 @media (max-width: 600px) { .unk-form { grid-template-columns: 1fr; } }
+
+/* programmi e puntate */
+.progs { display: grid; gap: 12px; }
+.prog-list li { flex-wrap: wrap; }
+.prog-item { flex-direction: column; align-items: stretch !important; gap: 6px !important; }
+.prog-item audio { width: 100%; }
+.prog-head { display: flex; gap: 10px; align-items: center; }
+.prog-head img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; background: var(--panel2); }
+.prog-head .t-main { flex: 1; }
+.prog-form { display: flex; flex-direction: column; gap: 8px; }
+.prog-form label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 14px; }
+.prog-form label.check { flex-direction: row; align-items: center; color: var(--text); }
+.prog-form label.check input { width: auto; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.slot { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.slot .days { display: flex; gap: 2px; }
+.slot .days label { display: inline-flex; flex-direction: column; align-items: center; font-size: 12px; gap: 0; }
+.slot .days input { width: auto; }
+.slot input[type=time] { width: auto; min-width: 120px; }
+.cut { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.cut .row { grid-column: 1 / -1; }
+.cut input.time { font-variant-numeric: tabular-nums; }
+.ep-list { margin-left: 66px !important; }
+.ep-list li { font-size: 14px; }
+.rec { color: var(--red); font-weight: 700; }
+@media (max-width: 600px) { .cut { grid-template-columns: 1fr; } .ep-list { margin-left: 0 !important; } }

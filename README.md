@@ -53,6 +53,13 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 - Brani sconosciuti: 20 secondi di audio da etichettare dal pannello, poi riconosciuti da soli.
 - I brani caricati dal pannello scendono in regia e vengono catalogati come Artista\Titolo.
 
+**Fase 8 – programmi e puntate on demand** (in prova):
+
+- Programmi creati dal pannello (fasce orarie, conduttori, copertina); il server registra da solo ogni fascia.
+- Le registrazioni si rivedono dal pannello (inizio, fine, titolo, descrizione) e si pubblicano; solo streaming, niente download.
+- Pagine `podcast.html` e `ascolta.html`; API dei podcast uguali a quelle di AzuraCast per l'app della radio.
+- Repliche: pulsante nel pannello e azione degli eventi "Replica di un programma" (ultima puntata pubblicata).
+
 ## Installazione su Windows
 
 Ogni push compila l'installer in GitHub Actions: apri la scheda **Actions** del repository, l'ultima esecuzione di "Test e build Windows", e scarica l'artefatto **RadioRegia-Setup-Windows**.

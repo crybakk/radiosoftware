@@ -216,6 +216,7 @@ app.whenReady().then(() => {
   handle('expandEvent', (event: ScheduledEvent) =>
     expandEvent(db, event, {
       now: () => new Date(),
+      replay: (programId) => ponte.replayTrack(programId),
       runCommand: (command) => {
         const child = spawn(command, { shell: true, detached: true, windowsHide: true, stdio: 'ignore' })
         child.on('error', () => {})
@@ -276,6 +277,8 @@ app.whenReady().then(() => {
   handle('ponteBackupNow', () => ponte.backupNow())
   handle('ponteListBackups', () => ponte.listBackups())
   handle('ponteState', () => ponte.remoteState())
+  handle('ponteListPrograms', () => ponte.listPrograms())
+  handle('ponteReplay', (programId: string, episodeId?: string) => ponte.replayTrack(programId, episodeId))
   handle('ponteTestNotification', () => ponte.testNotification())
   handle('ponteRestore', async (name: string) => {
     await ponte.prepareRestore(name)

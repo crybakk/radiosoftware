@@ -169,6 +169,8 @@ export type EventAction =
   | { type: 'stop' }
   | { type: 'rotation'; profile: RotationProfile | null }
   | { type: 'command'; command: string }
+  /** Replica: l'ultima puntata pubblicata del programma (dal server). */
+  | { type: 'replay'; programId: string; title: string }
 
 export const ACTION_LABELS: Record<EventAction['type'], string> = {
   play: 'Brano',
@@ -179,7 +181,8 @@ export const ACTION_LABELS: Record<EventAction['type'], string> = {
   clear: 'Svuota coda',
   stop: 'Ferma tutto',
   rotation: 'Regole di rotazione',
-  command: 'Comando esterno'
+  command: 'Comando esterno',
+  replay: 'Replica di un programma'
 }
 
 /** Evento a orario fisso. */
