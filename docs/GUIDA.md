@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, statistiche degli ascoltatori (pannello e regia), dopo la fase 8 (programmi, puntate on demand, repliche, titolo in onda per l'app).
+**Ultimo aggiornamento:** 15/11/2026, bot Telegram della radio (brani sconosciuti da etichettare e menu con stato, ascoltatori e puntate).
 
 ## Indice
 
@@ -31,6 +31,7 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
     - [Repliche](#repliche)
     - [Statistiche degli ascoltatori](#statistiche-degli-ascoltatori)
 13. [Allarmi e notifiche](#13-allarmi-e-notifiche)
+    - [Bot Telegram della radio](#bot-telegram-della-radio)
 14. [Backup e ripristino](#14-backup-e-ripristino)
 15. [Problemi comuni](#15-problemi-comuni)
 16. [In arrivo](#16-in-arrivo)
@@ -330,7 +331,8 @@ conosce già.
 - Un brano è riconosciuto dopo circa 20 secondi, anche se qualcuno ci parla sopra un po'. Riconosce anche i brani
   esclusi dalla selezione del server (live, sotto 192 kbps), perché le impronte sono di tutta la musica.
 - **Brani sconosciuti:** se per almeno un minuto non riconosce nulla, il server salva **20 secondi di audio** e
-  te lo segnala (notifica Telegram/email, al massimo una ogni mezz'ora). Nel **pannello**, sezione
+  te lo segnala: con il [bot Telegram della radio](#bot-telegram-della-radio) arriva subito l'audio da
+  etichettare nella chat; senza il bot arriva una notifica Telegram/email (al massimo una ogni mezz'ora). Nel **pannello**, sezione
   **Brani sconosciuti delle esterne**, lo ascolti e scrivi titolo, interprete, autori ed editore: da quel momento
   viene riconosciuto da solo e i passaggi già sentiti vanno nel registro. Se era parlato o rumore, premi
   **Non è musica**. Etichettare serve almeno il ruolo conduttore.
@@ -595,6 +597,38 @@ Il ponte avvisa via Telegram e/o email (da configurare nel `.env` del server; la
 
 Quando il problema si risolve arriva un secondo messaggio. Gli allarmi attivi si vedono anche nella scheda Collegamento.
 
+### Bot Telegram della radio
+
+Un secondo bot, diverso da quello degli allarmi, per etichettare i brani sconosciuti delle esterne dal telefono
+e vedere a colpo d'occhio come va la radio. È **solo lettura**: non comanda la regia, le dirette o le puntate.
+Chiunque sia nella chat può usarlo, anche per etichettare.
+
+**Come attivarlo (una volta):**
+
+1. Su Telegram scrivi a **@BotFather** → `/newbot`, scegli nome e username: ti dà il **token**.
+2. Crea un gruppo (o usa quello degli allarmi), aggiungi il bot e scrivi un messaggio qualsiasi nel gruppo.
+3. Apri `https://api.telegram.org/bot<TOKEN>/getUpdates` nel browser: l'id della chat è il numero dopo
+   `"chat":{"id":` (per i gruppi comincia con `-`).
+4. Nel `.env` del server metti `TELEGRAM_ETICHETTE_TOKEN` e `TELEGRAM_ETICHETTE_CHAT_ID`, poi `riavvia.sh`.
+
+Il bot legge solo i comandi e le risposte ai suoi messaggi, non il resto della chat.
+
+**Brani sconosciuti:** per ogni brano sconosciuto il bot manda i 20 secondi di audio. **Rispondi al messaggio**
+(tieni premuto → Rispondi) con `Artista - Titolo`; se li sai, sulla riga sotto gli autori separati da virgola.
+Il bot conferma con ✅ e da quel momento il brano viene riconosciuto. Se era parlato premi **🚫 Non è musica**.
+Editore e altri dati si possono aggiungere dopo dal pannello.
+
+**Menu:** scrivi `/menu` (o `/start`) e scegli una sezione. Se nel gruppo c'è anche il bot degli allarmi, scrivi
+`/menu@nomedelbot` (Telegram lo propone da solo quando scrivi `/`). Sotto ogni sezione ci sono **🔄 Aggiorna** e **⬅ Menu**.
+
+| Sezione | Cosa mostra |
+|---|---|
+| 🎵 Da etichettare | ti rimanda l'audio dei brani ancora da etichettare (al massimo 20 per volta; anche con `/sconosciuti`) |
+| ✅ Già etichettati | gli ultimi 15 brani etichettati, con gli autori |
+| 📻 In onda | chi trasmette (regia, diretta autonoma, esterna o musica di riserva), voci dal pannello, brano in onda, regia collegata, allarmi attivi |
+| 🎧 Ascoltatori | adesso (principale e secondario), picco, media e ore di ascolto di oggi e della settimana |
+| 🎙 Puntate | programmi in registrazione e puntate in bozza da pubblicare dal pannello |
+
 ## 14. Backup e ripristino
 
 Ogni giorno, all'ora scelta, la regia salva sul ponte una copia di libreria, eventi, registro e impostazioni.
@@ -632,6 +666,8 @@ Il ponte tiene gli ultimi 14.
 | "manca la chiave di YouTube/Facebook" | un amministratore deve inserirla nelle impostazioni delle dirette video |
 | "Ricerca fermata: MusicBrainz non raggiungibile" | la regia non ha internet o MusicBrainz è in manutenzione: riprova più tardi, riparte da dove era rimasta |
 | Nelle esterne non riconosce nessun brano | la regia non ha ancora mandato le impronte: controlla "Impronte audio" in Libreria e "impronte sul server" nella sezione Libreria sul server |
+| Il bot Telegram della radio non risponde alle etichette | bisogna **rispondere** al messaggio con l'audio (non scrivere un messaggio nuovo); id della chat sbagliato in `TELEGRAM_ETICHETTE_CHAT_ID`; con due bot nel gruppo usa `/menu@nomedelbot` |
+| Nel log "lettura messaggi: Conflict" | lo stesso token è usato da un altro programma o è il bot degli allarmi: usa un bot diverso |
 | Troppi brani sconosciuti che erano parlato | premi **Non è musica**: vengono tolti dall'archivio |
 | Le statistiche non contano il secondario | pagina `status-json.xsl` del secondario chiusa: imposta `ICECAST_ESTERNO_ADMIN_UTENTE` e `ICECAST_ESTERNO_ADMIN_PASSWORD` |
 | Un programma non si registra | controlla che "Registra da solo" sia acceso e le fasce (giorni e orari); l'ora è quella italiana del server |
@@ -644,7 +680,6 @@ Il ponte tiene gli ultimi 14.
 Prossime fasi (l'ordine può cambiare):
 
 - FluidStream, se un giorno servirà;
-- bot Telegram per etichettare più in fretta i brani sconosciuti delle esterne;
 - download automatico di notiziari, voce sintetica;
 - rotazioni generate dall'AI a partire da una descrizione del palinsesto.
 
@@ -664,3 +699,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Titolo in onda, ultimi brani e ascoltatori agli indirizzi `/api/nowplaying` di AzuraCast, per l'app |
 | 15/11/2026 | Statistiche degli ascoltatori nel pannello e nella regia (scheda Ascoltatori): adesso, picco, media, ore di ascolto, grafici del giorno e della settimana, per ora e per programma; storico di un anno |
 | 15/11/2026 | Installazione su Proxmox passo passo: chiave SSH dal PC, copia del programma con lo ZIP, VM in DHCP; prove del server nuovo con AzuraCast ancora acceso (altro nome e porta 9443) |
+| 15/11/2026 | Bot Telegram della radio: audio dei brani sconosciuti da etichettare rispondendo nella chat, "Non è musica", menu in sola lettura con stato, ascoltatori, puntate e brani etichettati |

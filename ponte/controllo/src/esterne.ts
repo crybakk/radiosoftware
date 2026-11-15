@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SAMPLE_RATE } from './impronta.ts'
-import { CLIP_RATE, Recognizer, type FpStore, type Recognized, type UnknownStore } from './riconoscimento.ts'
+import { CLIP_RATE, Recognizer, type FpStore, type Recognized, type Unknown, type UnknownStore } from './riconoscimento.ts'
 import type { PlayLog } from './registro.ts'
 
 interface Proc {
@@ -54,7 +54,7 @@ export interface EsterneDeps {
   spawn?: Spawn
   log?: (s: string) => void
   /** Avviso quando arriva un brano sconosciuto da etichettare. */
-  onUnknown?: (count: number) => void
+  onUnknown?: (count: number, u: Unknown) => void
 }
 
 export class EsterneRecognition {
@@ -148,7 +148,7 @@ export class EsterneRecognition {
     const u = this.d.unknowns.add(at, seconds, fp, out)
     rmSync(dir, { recursive: true, force: true })
     this.log(`nuovo brano sconosciuto ${u.id} (${Math.round(seconds)} s): da etichettare dal pannello`)
-    this.d.onUnknown?.(this.d.unknowns.list().filter((x) => !x.label).length)
+    this.d.onUnknown?.(this.d.unknowns.list().filter((x) => !x.label).length, u)
   }
 
   private encode(clip: { pcm: Float32Array; rate: number }, out: string): Promise<void> {
