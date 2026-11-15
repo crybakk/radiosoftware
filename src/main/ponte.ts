@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { RadioDb } from '../core/db'
-import { backupDue, PonteClient, type PonteAlarm, type PonteBackup, type PonteState } from '../core/ponteClient'
+import { backupDue, PonteClient, type PonteAlarm, type PonteBackup, type PonteProgram, type PonteState } from '../core/ponteClient'
+import { pickReplay } from '../core/eventActions'
 import type { PonteSettings, Track } from '../core/types'
 import { Uplink, type UplinkStatus } from '../core/uplink'
 import { RemoteLink, remoteTrack, remoteUrl, type RemoteCommand, type RemoteLinkStatus, type RemoteState } from '../core/remote'
@@ -245,6 +246,18 @@ export class PonteService {
     const c = this.client()
     if (!c) throw new Error('Ponte non configurato: servono indirizzo e token')
     return c.state()
+  }
+
+  /** Programmi del server con le puntate pubblicate (repliche). */
+  async listPrograms(): Promise<PonteProgram[]> {
+    const c = this.client()
+    if (!c) throw new Error('Ponte non configurato: servono indirizzo e token')
+    return c.listPrograms()
+  }
+
+  /** Brano per la replica di una puntata (la più recente del programma se manca episodeId). */
+  async replayTrack(programId: string, episodeId?: string): Promise<Track | null> {
+    return pickReplay(await this.listPrograms(), programId, episodeId)
   }
 
   async testNotification(): Promise<{ ok: boolean; results: { channel: string; ok: boolean; error?: string }[] }> {

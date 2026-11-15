@@ -35,6 +35,8 @@ export type RemoteCommand =
   | { type: 'remove'; uid: string }
   | { type: 'move'; uid: string; delta: -1 | 1 }
   | { type: 'search'; q: string }
+  /** Replica: una puntata pubblicata del programma (la più recente se manca episodeId). */
+  | { type: 'replay'; programId: string; episodeId?: string; where: 'next' | 'end' }
 
 /** Diretta autonoma dal server (senza regia). */
 export interface AutoTrack {

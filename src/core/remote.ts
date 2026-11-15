@@ -30,6 +30,8 @@ export interface RemoteDeps {
   getTrack(id: number): Promise<Track | null>
   search(q: string): Promise<Track[]>
   carts(): (Track | null)[]
+  /** Puntata da mandare in replica (dal server). */
+  replay(programId: string, episodeId?: string): Promise<Track | null>
 }
 
 /** Esegue un comando arrivato dal pannello. Restituisce i dati della risposta o lancia un errore leggibile. */
@@ -61,6 +63,12 @@ export async function executeRemote(engine: PlayoutEngine, cmd: RemoteCommand, d
       return engine.remove(cmd.uid)
     case 'move':
       return engine.move(cmd.uid, cmd.delta < 0 ? -1 : 1)
+    case 'replay': {
+      const t = await deps.replay(String(cmd.programId ?? ''), cmd.episodeId ? String(cmd.episodeId) : undefined)
+      if (!t) throw new Error('puntata non trovata sul server')
+      engine.enqueue(t, cmd.where === 'end' ? undefined : 0)
+      return null
+    }
     case 'search':
       return (await deps.search(String(cmd.q ?? '').slice(0, 200))).map(remoteTrack)
     default:

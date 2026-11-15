@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Puntate</title>
+    <link rel="stylesheet" href="pubblico.css" />
+  </head>
+  <body>
+    <header>
+      <h1 id="name">Radio</h1>
+      <nav><a href="ascolta.html">In diretta</a><a href="podcast.html" class="on">Puntate</a></nav>
+    </header>
+    <main>
+      <section id="list">
+        <div class="grid" id="grid"></div>
+        <p class="muted" id="empty" hidden>Non ci sono ancora puntate da ascoltare.</p>
+      </section>
+      <section id="detail" hidden>
+        <p><a href="#">← Tutti i programmi</a></p>
+        <div class="detail">
+          <img class="cover" id="d-art" alt="" />
+          <div>
+            <h2 id="d-title"></h2>
+            <div class="muted" id="d-author"></div>
+            <p id="d-desc"></p>
+          </div>
+        </div>
+        <ul class="eps" id="eps"></ul>
+      </section>
+    </main>
+    <div class="player" id="player" hidden>
+      <div class="t" id="p-title"></div>
+      <audio id="audio" controls controlslist="nodownload noplaybackrate" preload="none"></audio>
+    </div>
+    <script src="podcast.js"></script>
+  </body>
+</html>

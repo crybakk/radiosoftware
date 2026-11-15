@@ -161,10 +161,24 @@ export class PonteClient {
     return (await (await this.request('GET', `/api/registro?${q}`, undefined, undefined, 60_000)).json()) as ServerPlay[]
   }
 
+  /** Programmi del server con le puntate pubblicate (dalla più recente), per le repliche. */
+  async listPrograms(): Promise<PonteProgram[]> {
+    const list = (await (await this.request('GET', '/api/programmi/regia')).json()) as PonteProgram[]
+    // l'audio si ascolta dall'indirizzo pubblico del ponte
+    return list.map((p) => ({ ...p, episodes: p.episodes.map((e) => ({ ...e, path: this.base + e.path })) }))
+  }
+
   async downloadBackup(name: string): Promise<Uint8Array> {
     const r = await this.request('GET', `/api/backup/${encodeURIComponent(name)}`, undefined, undefined, 5 * 60_000)
     return new Uint8Array(await r.arrayBuffer())
   }
+}
+
+export interface PonteProgram {
+  id: string
+  title: string
+  /** Puntate pubblicate; path è l'indirizzo completo dell'audio. */
+  episodes: { id: string; title: string; length: number; path: string }[]
 }
 
 export interface UploadedTrack {

@@ -28,6 +28,7 @@
       </header>
       <nav id="menu" class="menu" hidden>
         <span id="who"></span>
+        <button id="progs-btn" class="ghost">Programmi</button>
         <button id="users-btn" class="ghost" hidden>Utenti</button>
         <button id="logout" class="ghost">Esci</button>
       </nav>
@@ -174,6 +175,49 @@
         </section>
       </main>
 
+      <section id="progs" class="users progs" hidden>
+        <div class="card">
+          <div class="section-title">Programmi e puntate <button class="small ghost" id="progs-close">Chiudi</button></div>
+          <p class="hint" id="progs-status"></p>
+        </div>
+        <div class="card" id="drafts-card">
+          <div class="section-title">Puntate da rivedere <span id="drafts-badge" class="mic-who"></span></div>
+          <p class="hint">Ogni programma si registra da solo nella sua fascia. Ascolta la registrazione, segna dove inizia e dove
+            finisce la puntata, scrivi titolo e descrizione e pubblica: sarà ascoltabile nella pagina dei podcast e nell'app.</p>
+          <ul class="list prog-list" id="drafts"></ul>
+        </div>
+        <div class="card">
+          <div class="section-title">Programmi <button class="small" id="prog-new" hidden>Nuovo programma</button></div>
+          <ul class="list prog-list" id="progs-list"></ul>
+        </div>
+        <form class="card prog-form" id="prog-form" hidden>
+          <div class="section-title" id="prog-form-title">Nuovo programma</div>
+          <input type="hidden" name="pid" />
+          <label>Nome <input name="title" required maxlength="200" /></label>
+          <label>Conduttori <input name="author" maxlength="300" placeholder="Anna Rossi, Luca Bianchi" /></label>
+          <label>Descrizione <textarea name="description" rows="3" maxlength="4000"></textarea></label>
+          <div class="hint">Fasce orarie (per la registrazione automatica)</div>
+          <div id="prog-slots"></div>
+          <button type="button" class="small" id="prog-slot-add">Aggiungi fascia</button>
+          <label class="check"><input type="checkbox" name="record" checked /> Registra da solo le puntate nelle fasce</label>
+          <label class="check"><input type="checkbox" name="published" checked /> Visibile nella pagina dei podcast e nell'app</label>
+          <div class="row">
+            <button class="primary" type="submit">Salva</button>
+            <button type="button" class="ghost" id="prog-cancel">Annulla</button>
+          </div>
+        </form>
+        <details class="card" id="prog-settings" hidden>
+          <summary>Impostazioni</summary>
+          <form id="prog-settings-form" class="prog-form">
+            <label>Nome breve della stazione negli indirizzi per l'app (come su AzuraCast)
+              <input name="station" required pattern="[a-z0-9_\-]{1,40}" /></label>
+            <label>Minuti registrati prima e dopo ogni fascia <input name="marginMinutes" type="number" min="0" max="15" /></label>
+            <p class="hint" id="prog-api"></p>
+            <button class="primary" type="submit">Salva</button>
+          </form>
+        </details>
+      </section>
+
       <section id="users" class="card users" hidden>
         <div class="section-title">Utenti del pannello <button class="small ghost" id="users-close">Chiudi</button></div>
         <table class="table">
@@ -196,5 +240,6 @@
       </section>
     </section>
     <script src="pannello.js"></script>
+    <script src="programmi.js"></script>
   </body>
 </html>

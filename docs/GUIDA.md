@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, fase 7b (riconoscimento dei brani nelle dirette esterne, brani sconosciuti da etichettare, brani caricati dal pannello che scendono in regia).
+**Ultimo aggiornamento:** 15/11/2026, fase 8 (programmi, registrazione automatica delle puntate, puntate on demand con le API di AzuraCast, pagine pubbliche ascolta e podcast, repliche).
 
 ## Indice
 
@@ -27,6 +27,8 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
     - [Diretta autonoma dal server](#diretta-autonoma-dal-server)
     - [Libreria sul server](#libreria-sul-server)
     - [Dirette video su YouTube e Facebook](#dirette-video-su-youtube-e-facebook)
+    - [Programmi e puntate on demand](#programmi-e-puntate-on-demand)
+    - [Repliche](#repliche)
 13. [Allarmi e notifiche](#13-allarmi-e-notifiche)
 14. [Backup e ripristino](#14-backup-e-ripristino)
 15. [Problemi comuni](#15-problemi-comuni)
@@ -154,6 +156,7 @@ Scheda **Eventi** → **+ Nuovo evento**. Un evento esegue in ordine una serie d
 | Ferma tutto | ferma la messa in onda |
 | Regole di rotazione | da quel momento la rotazione usa solo certi generi o anni (es. "dalle 22 musica tranquilla"); "Torna alla rotazione normale" la riporta come prima |
 | Comando esterno | avvia un programma o uno script sul PC |
+| Replica di un programma | l'ultima puntata pubblicata del programma scelto, in streaming dal server (sezione 12, Repliche) |
 
 Con **▶ Prova** esegui subito un evento per vedere come va. **Duplica** crea una copia da modificare.
 In alto vedi i prossimi eventi in programma e, se attivo, il profilo di rotazione in uso.
@@ -464,6 +467,57 @@ il **ritardo** nelle impostazioni (in millisecondi: positivo ritarda l'audio, ne
 Se la diretta cade, il ponte riprova da solo e ti manda una notifica; se non riesce a ripartire si ferma.
 Su YouTube e Facebook la diretta va comunque creata o programmata come sempre: il ponte manda solo il segnale.
 
+### Programmi e puntate on demand
+
+Dal pannello: menu **☰ → Programmi**.
+
+**Programmi (solo amministratori).** **Nuovo programma**: nome, conduttori, descrizione e una o più **fasce
+orarie** (giorni e orari; una fascia può passare la mezzanotte, es. 23:00 → 01:00). Con **Copertina** carichi
+un'immagine quadrata PNG o JPG. Due interruttori:
+
+- **Registra da solo le puntate nelle fasce**: il server registra quello che va in onda (regia, esterne, diretta
+  autonoma, riserva) durante la fascia, con qualche minuto in più prima e dopo (di base 2, in **Impostazioni**);
+- **Visibile nella pagina dei podcast e nell'app**: se spento, il programma e le sue puntate non si vedono.
+
+**Revisione (conduttori e amministratori).** A fine fascia la registrazione compare in **Puntate da rivedere** (e
+arriva una notifica). Ascoltala, porta il lettore dove inizia davvero la puntata e premi **Inizio qui**, poi dove
+finisce e premi **Fine qui** (o scrivi gli orari come `0:02:30`). **Ascolta l'inizio** e **Ascolta la fine** fanno
+sentire i punti di taglio. Scrivi titolo e descrizione e premi **Pubblica**: la puntata viene tagliata e diventa
+ascoltabile. Se non serve, **Elimina**.
+
+Sotto ogni programma ci sono le puntate pubblicate: **▶** per ascoltarle, **Modifica** (titolo e descrizione),
+**Ritira** (sparisce dalla pagina e dall'app, ma il file resta; **Ripubblica** la rimette), **Elimina**. Le puntate
+non scadono.
+
+**Per gli ascoltatori:**
+
+- `https://DOMINIO/podcast.html`: programmi e puntate da ascoltare;
+- `https://DOMINIO/ascolta.html`: la diretta, con il titolo in onda.
+
+Le puntate si possono **solo ascoltare in streaming**: nelle pagine non c'è il pulsante per scaricarle (la licenza
+SIAE permette lo streaming, non il download). Non c'è un feed per Spotify o Apple Podcasts.
+
+**App della radio.** Il server risponde agli stessi indirizzi delle API pubbliche dei podcast di AzuraCast
+(`/api/station/<nome breve>/public/podcasts`, `.../podcast/<programma>/episodes`, ecc.), così l'app che oggi legge i
+contenuti on demand da AzuraCast funziona cambiando solo l'indirizzo del server. Il **nome breve della stazione**
+negli indirizzi si imposta in **Impostazioni** (in fondo alla pagina Programmi): metti lo stesso che usavi su
+AzuraCast.
+
+**Spazio su disco:** a 128 kbps un'ora di registrazione occupa circa 58 MB (`PUNTATE_BITRATE` nel `.env`). Le bozze
+non pubblicate restano finché non le elimini.
+
+### Repliche
+
+Una puntata pubblicata si può rimandare in onda dalla regia:
+
+- **dal pannello**: nella pagina Programmi, pulsante **Replica** accanto alla puntata: va in coda nella regia dopo
+  il brano in onda (serve la regia collegata);
+- **con un evento**: azione **Replica di un programma**, scegli il programma; all'ora dell'evento va in onda la sua
+  **ultima** puntata pubblicata.
+
+L'audio arriva in streaming dal server, quindi la regia deve essere collegata a internet (circa 58 MB all'ora sul
+4G). Nel registro la replica compare come flusso esterno: la musica dentro le repliche non entra nel report SIAE.
+
 ## 13. Allarmi e notifiche
 
 Il ponte avvisa via Telegram e/o email (da configurare nel `.env` del server; la scheda **Collegamento** ha
@@ -516,6 +570,9 @@ Il ponte tiene gli ultimi 14.
 | "Ricerca fermata: MusicBrainz non raggiungibile" | la regia non ha internet o MusicBrainz è in manutenzione: riprova più tardi, riparte da dove era rimasta |
 | Nelle esterne non riconosce nessun brano | la regia non ha ancora mandato le impronte: controlla "Impronte audio" in Libreria e "impronte sul server" nella sezione Libreria sul server |
 | Troppi brani sconosciuti che erano parlato | premi **Non è musica**: vengono tolti dall'archivio |
+| Un programma non si registra | controlla che "Registra da solo" sia acceso e le fasce (giorni e orari); l'ora è quella italiana del server |
+| L'app non trova le puntate | il nome breve della stazione in Programmi → Impostazioni è diverso da quello che usa l'app; oppure il programma è nascosto |
+| "replica … non disponibile" nella regia | il programma non ha puntate pubblicate, è nascosto, oppure la regia non raggiunge il ponte |
 | Nel report mancano i brani della notte | il ponte non era raggiungibile quando hai aperto il report: premi **Aggiorna** con il ponte collegato |
 
 ## 16. In arrivo
@@ -525,7 +582,6 @@ Prossime fasi (l'ordine può cambiare):
 - statistiche degli ascoltatori lette dagli Icecast (principale e secondario);
 - FluidStream, se un giorno servirà;
 - bot Telegram per etichettare più in fretta i brani sconosciuti delle esterne;
-- registrazione della messa in onda, puntate dei programmi da ascoltare on demand e repliche da mandare in onda quando serve;
 - download automatico di notiziari, voce sintetica;
 - rotazioni generate dall'AI a partire da una descrizione del palinsesto.
 
@@ -541,3 +597,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Server senza AzuraCast: Icecast principale e HTTPS automatico (Caddy) nella stessa VM; regia sulla porta 443; Icecast secondario con lo stesso segnale; musica di riserva quando nessuno è in diretta; dirette video su YouTube e Facebook (logo o OBS, massimo 720p) |
 | 15/11/2026 | Report SIAE trimestrale in CSV per il portale; brani della diretta autonoma e della riserva nel registro; autori, editore, ISWC e ISRC da MusicBrainz; elenco della musica con dati mancanti |
 | 15/11/2026 | Riconoscimento dei brani nelle dirette esterne con le impronte della libreria; brani sconosciuti da ascoltare ed etichettare nel pannello; i brani caricati dal pannello scendono in regia e vengono catalogati come Artista\Titolo |
+| 15/11/2026 | Programmi dal pannello con fasce e copertina; registrazione automatica delle puntate, revisione e pubblicazione; pagine `podcast.html` e `ascolta.html`; API dei podcast come AzuraCast per l'app; repliche dal pannello e con gli eventi |
