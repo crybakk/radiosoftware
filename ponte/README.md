@@ -31,7 +31,8 @@ Le sezioni seguenti spiegano gli stessi passaggi a mano, per esempio su un serve
 - Porte da aprire nel firewall del server (e da inoltrare sul router, se il server è in casa):
   - **UDP 9000** (`SRT_PORT`) per l'audio dalla regia;
   - **TCP 9080** (`CONTROLLO_PORTA`) per allarmi, titoli, backup e pannello remoto;
-  - **TCP 9010** (`ESTERNA_PORTA`) per le dirette esterne.
+  - **TCP 9010** (`ESTERNA_PORTA`) per le dirette esterne;
+  - **UDP 40000-40049** (`WEBRTC_PORTE`) per il microfono dal pannello remoto.
 
   Non usare porte tra 8000 e 8496: AzuraCast le riserva alle sue stazioni.
 
@@ -77,12 +78,13 @@ docker compose logs -f      # per controllare (Ctrl+C per uscire)
 
 I servizi ripartono da soli dopo un riavvio del server.
 
-Apri nel firewall le due porte (esempio con `ufw`):
+Apri nel firewall le porte (esempio con `ufw`):
 
 ```bash
 sudo ufw allow 9000/udp
 sudo ufw allow 9080/tcp
 sudo ufw allow 9010/tcp
+sudo ufw allow 40000:40049/udp
 ```
 
 Se il server è presso un provider con firewall esterno (pannello web), apri le stesse porte anche lì.
@@ -115,8 +117,24 @@ Ruoli (menu ☰ → Utenti, solo per gli amministratori):
 | Ruolo | Cosa può fare |
 |---|---|
 | Amministratore | tutto, compresa la gestione degli utenti |
-| Conduttore | comandare la regia |
-| Ospite | vedere soltanto (il collegamento audio degli ospiti arriva con la fase 5) |
+| Conduttore | comandare la regia e usare il microfono dal pannello |
+| Ospite | vedere soltanto, senza microfono (il collegamento audio degli ospiti arriva con la fase 5) |
+
+### Microfono dal pannello
+
+Conduttori e amministratori possono aprire il microfono dal pannello (WebRTC, Opus). La voce arriva al
+servizio di controllo, che la passa a Liquidsoap sulla rete interna (RTP, UDP 41030); quando il conduttore
+preme VAI IN ONDA la musica si abbassa di `ABBASSAMENTO_MUSICA_DB` e la voce entra nel mixer prima del
+processore audio. Liquidsoap rimanda al conduttore il programma senza la sua voce (UDP 41040, interno).
+
+- Serve il pannello in **HTTPS** (i browser danno il microfono solo alle pagine protette).
+- Inoltra sul router le porte **UDP `WEBRTC_PORTE`** (predefinite 40000-40049) verso il server.
+- Il ponte annuncia al browser l'indirizzo del nome con cui è stato aperto il pannello, più quelli in
+  `WEBRTC_INDIRIZZI` (l'installazione ci mette l'IP del server nella rete di casa).
+- Un microfono alla volta; se il conduttore si scollega la voce esce dall'onda da sola.
+- La voce va in onda solo quando c'è un programma (regia o esterna): senza, l'uscita verso AzuraCast resta
+  ferma e AzuraCast usa la sua AutoDJ.
+- `MICROFONO_REMOTO=no` lo disattiva.
 
 ### HTTPS
 
@@ -177,4 +195,5 @@ sudo ./riavvia.sh
 - **"token del ponte errato"**: `CONTROLLO_TOKEN` diverso.
 - **Allarme AzuraCast**: controlla utente, password, porta e mount del DJ, e che RadioDJ non sia ancora collegato.
 - **L'app delle esterne non si collega**: porta 9010 non inoltrata sul router, o mount/utente/password diversi da `.env`.
+- **Il microfono del pannello si apre ma non si sente / si chiude dopo 20 secondi**: porte UDP `WEBRTC_PORTE` non inoltrate; controlla anche `docker compose logs controllo` (righe `[microfono]`).
   Alcune app vogliono il mount con la barra iniziale (`/`), altre senza: prova entrambi.

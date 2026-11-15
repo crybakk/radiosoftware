@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, fase 3 (pannello remoto e utenti).
+**Ultimo aggiornamento:** 15/11/2026, fase 4 (microfono dal pannello remoto).
 
 ## Indice
 
@@ -18,6 +18,7 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
 10. [Collegare la regia al ponte](#10-collegare-la-regia-al-ponte)
 11. [Dirette esterne](#11-dirette-esterne)
 12. [Pannello remoto e utenti](#12-pannello-remoto-e-utenti)
+    - [Microfono dal pannello](#microfono-dal-pannello)
 13. [Allarmi e notifiche](#13-allarmi-e-notifiche)
 14. [Backup e ripristino](#14-backup-e-ripristino)
 15. [Problemi comuni](#15-problemi-comuni)
@@ -165,6 +166,7 @@ Serve una volta sola. La guida tecnica completa è in [ponte/README.md](../ponte
    - UDP 9000 (audio dalla regia)
    - TCP 9080 (allarmi, titoli, backup, pannello remoto)
    - TCP 9010 (dirette esterne)
+   - UDP 40000-40049 (microfono dal pannello remoto)
 5. Se l'IP pubblico di casa cambia, usa un nome DNS dinamico (DuckDNS o quello del router) e mettilo nella
    regia al posto dell'IP. Con un nome di dominio AzuraCast può attivare l'HTTPS.
 
@@ -238,6 +240,32 @@ Se il pannello usa HTTPS, spunta anche "Il servizio di controllo usa HTTPS".
 
 Dopo 5 password sbagliate di fila dallo stesso indirizzo, il pannello blocca i tentativi per un minuto.
 
+### Microfono dal pannello
+
+Conduttori e amministratori possono parlare in diretta dal pannello, da casa o da fuori, senza passare dal
+PC della regia. La voce va nel mixer del ponte insieme al programma della regia (o della diretta esterna).
+
+1. Collega le **cuffie** e premi **🎙 Apri microfono**. Il browser chiede il permesso di usare il microfono:
+   rispondi sì. Da questo momento in cuffia senti il programma, quasi senza ritardo, ma la tua voce
+   **non è ancora in onda**. La barra mostra il livello del microfono: verde va bene, gialla è forte, rossa
+   è troppo forte.
+2. Premi **VAI IN ONDA**: la musica si abbassa (di 12 dB, regolabile) e la tua voce va in onda. Il tasto
+   diventa rosso con la scritta **IN ONDA**. In cuffia continui a sentire il programma, senza la tua voce
+   (così non senti l'eco).
+3. Premi di nuovo il tasto rosso per uscire dall'onda: la musica torna su. **Chiudi microfono** spegne tutto.
+
+Cose utili da sapere:
+
+- funziona **solo con il pannello in HTTPS** (`https://<nome di dominio>:9080`, vedi la sezione 9): i browser
+  non danno il microfono alle pagine non protette;
+- un solo microfono remoto alla volta: chi lo apre per secondo vede chi lo sta usando;
+- se la connessione cade o chiudi la pagina, il microfono esce dall'onda da solo;
+- la voce va in onda solo se c'è un programma (regia o diretta esterna). Con la regia spenta, AzuraCast
+  passa alla sua AutoDJ come sempre; la **diretta autonoma** dal server arriverà con il prossimo aggiornamento;
+- **Uso le cuffie**: lascialo spuntato. Senza cuffie toglilo prima di aprire il microfono: il browser
+  attiva la riduzione dell'eco e del rumore, ma la voce suona meno naturale;
+- **Ritorno**: volume del programma in cuffia.
+
 ## 13. Allarmi e notifiche
 
 Il ponte avvisa via Telegram e/o email (da configurare nel `.env` del server; la scheda **Collegamento** ha
@@ -273,12 +301,15 @@ Il ponte tiene gli ultimi 14.
 | L'app delle esterne non si collega | porta 9010 non inoltrata, oppure mount/utente/password diversi |
 | Il pannello dice REGIA SCOLLEGATA | regia spenta o senza internet, oppure "Permetti di comandare la regia dal pannello remoto" disattivato |
 | Il pannello non si apre | porta 9080 non inoltrata, oppure stai usando http:// invece di https:// (o il contrario) |
+| "Il microfono funziona solo con il pannello aperto in HTTPS" | apri il pannello con `https://` e il nome di dominio (sezione 9) |
+| Il microfono si apre ma non si sente nulla, oppure si chiude dopo 20 secondi | porte UDP 40000-40049 non inoltrate sul router verso la VM |
+| "Permesso del microfono negato dal browser" | nelle impostazioni del sito nel browser consenti il microfono, poi ricarica la pagina |
 
 ## 16. In arrivo
 
 Prossime fasi (l'ordine può cambiare):
 
-- microfono dal pannello remoto e diretta autonoma (con musica dalla libreria del server o dal dispositivo);
+- diretta autonoma dal server, senza la regia (musica dalla libreria del server o dal dispositivo, più la voce);
 - ospiti collegati con un link, con sala d'attesa;
 - uscite verso Icecast esterni, Fluidstream, YouTube e Facebook;
 - analisi della libreria stile MusicBrainz e report SIAE nel formato del fac simile;
@@ -291,3 +322,4 @@ Prossime fasi (l'ordine può cambiare):
 |---|---|
 | 14/11/2026 | Prima versione: regia (fase 1), eventi avanzati, ponte, collegamento, backup, dirette esterne, VM Proxmox |
 | 15/11/2026 | Pannello remoto dal browser, utenti con ruoli, HTTPS con il certificato di AzuraCast, `riavvia.sh` |
+| 15/11/2026 | Microfono dal pannello remoto: voce in onda con la musica che si abbassa, ritorno in cuffia; nuova porta UDP 40000-40049 |

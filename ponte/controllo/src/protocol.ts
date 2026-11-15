@@ -46,7 +46,20 @@ export type FromStudio =
 export type ToStudio = { t: 'auth-ok' } | { t: 'cmd'; id: string; cmd: RemoteCommand; by: string }
 
 /** Pannello → ponte */
-export type FromPanel = { t: 'cmd'; id: string; cmd: RemoteCommand }
+export type FromPanel =
+  | { t: 'cmd'; id: string; cmd: RemoteCommand }
+  /** Microfono: offerta WebRTC del browser. */
+  | { t: 'rtc-offer'; id: string; sdp: string }
+  /** Microfono in onda o fuori onda. */
+  | { t: 'mic'; id: string; on: boolean }
+  /** Chiude il microfono. */
+  | { t: 'rtc-close' }
+
+export interface MicStatus {
+  /** Chi ha il microfono aperto (null = nessuno). */
+  user: string | null
+  onAir: boolean
+}
 
 /** Ponte → pannello */
 export type ToPanel =
@@ -55,3 +68,4 @@ export type ToPanel =
   | { t: 'studio'; connected: boolean }
   | { t: 'reply'; id: string; ok: boolean; data?: unknown; error?: string }
   | { t: 'alarms'; alarms: { key: string; since: string; message: string }[] }
+  | { t: 'mic'; mic: MicStatus }
