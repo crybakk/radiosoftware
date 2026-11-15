@@ -9,17 +9,30 @@
  *   GET  /api/stato       stato del ponte e allarmi attivi
  *   POST /api/test-notifica  invia una notifica di prova
  *   GET  /health          senza token, per i controlli automatici
+ *   WS   /ws/regia        canale in tempo reale con la regia (autenticazione col token nel primo messaggio)
  *
+ * Pannello remoto (accesso con nome e password, sessione in un cookie):
+ *   GET  /                pagine del pannello
+ *   POST /api/login, POST /api/logout, GET /api/io
+ *   GET/POST /api/utenti, DELETE /api/utenti/<nome>   (solo amministratori)
+ *   WS   /ws/pannello     stato della regia e comandi
+ *
+ * Con CERTIFICATO_TLS e CHIAVE_TLS (per esempio quelli di AzuraCast) la porta pubblica usa HTTPS.
  * Porta interna 8091 (solo rete Docker): POST /internal/event da Liquidsoap.
  */
-import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
+import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs'
+import { mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { join } from 'node:path'
+import { createServer as createHttpsServer } from 'node:https'
+import { dirname, extname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { WebSocketServer, type WebSocket } from 'ws'
 import { pipeline } from 'node:stream/promises'
 import { timingSafeEqual } from 'node:crypto'
 import { Alarms, DEFAULT_ALARM_CONFIG, type AlarmKey } from './alarms.ts'
 import { Notifier } from './notifier.ts'
+import { Relay } from './relay.ts'
+import { can, ROLES, Users, type PublicUser, type Role } from './users.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -35,6 +48,9 @@ const DATA_DIR = env('CARTELLA_DATI', '/data')
 const BACKUP_DIR = join(DATA_DIR, 'backup')
 const BACKUP_KEEP = num('BACKUP_DA_TENERE', 14)
 const MAX_BACKUP_BYTES = 1024 * 1024 * 1024
+const CERT_FILE = env('CERTIFICATO_TLS')
+const KEY_FILE = env('CHIAVE_TLS')
+const PANEL_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'pannello')
 
 if (TOKEN.length < 16) {
   console.error('CONTROLLO_TOKEN mancante o troppo corto (almeno 16 caratteri): il servizio non parte.')
@@ -63,9 +79,26 @@ const alarms = new Alarms(
   (text: string, key: AlarmKey | 'esterna', open: boolean) => {
     console.log(`[allarme] ${open ? 'APERTO' : 'chiuso'} ${key}: ${text}`)
     void notifier.send(text)
+    // il pannello vede gli allarmi aggiornati (dopo che la classe ha aggiornato il suo stato)
+    queueMicrotask(() => relay.setAlarms(alarms.status().alarms))
   }
 )
 setInterval(() => alarms.tick(), 2000)
+
+const relay = new Relay(TOKEN)
+relay.onStudioChange = (c) => console.log(`[regia] canale di controllo ${c ? 'collegato' : 'scollegato'}`)
+
+await mkdir(DATA_DIR, { recursive: true })
+const users = new Users(join(DATA_DIR, 'utenti.json'), join(DATA_DIR, 'sessioni.json'))
+if (users.count() === 0) {
+  const pw = env('PANNELLO_ADMIN_PASSWORD')
+  if (pw.length >= 8) {
+    users.save('admin', 'amministratore', pw)
+    console.log('Creato l\'utente "admin" del pannello remoto')
+  } else {
+    console.log('Nessun utente del pannello: imposta PANNELLO_ADMIN_PASSWORD (almeno 8 caratteri) per creare "admin"')
+  }
+}
 
 let lastStudio: Record<string, unknown> | null = null
 let lastMetadata: { artist: string; title: string; at: string } | null = null
@@ -97,6 +130,63 @@ function authorized(req: IncomingMessage): boolean {
   const a = Buffer.from(m[1])
   const b = Buffer.from(TOKEN)
   return a.length === b.length && timingSafeEqual(a, b)
+}
+
+function cookie(req: IncomingMessage, name: string): string | undefined {
+  for (const part of (req.headers.cookie ?? '').split(';')) {
+    const [k, ...v] = part.trim().split('=')
+    if (k === name) return decodeURIComponent(v.join('='))
+  }
+  return undefined
+}
+
+function sessionUser(req: IncomingMessage): PublicUser | null {
+  return users.session(cookie(req, 'sessione'))
+}
+
+/** Le connessioni dal browser devono arrivare dalla pagina del pannello stesso. */
+function sameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin
+  if (!origin) return true
+  try {
+    return new URL(origin).host === req.headers.host
+  } catch {
+    return false
+  }
+}
+
+// troppi tentativi di accesso sbagliati dallo stesso indirizzo: pausa di un minuto
+const failedLogins = new Map<string, number[]>()
+function tooManyAttempts(ip: string): boolean {
+  const now = Date.now()
+  const list = (failedLogins.get(ip) ?? []).filter((t) => now - t < 60_000)
+  failedLogins.set(ip, list)
+  return list.length >= 5
+}
+
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.webmanifest': 'application/manifest+json'
+}
+
+async function serveStatic(res: ServerResponse, path: string): Promise<boolean> {
+  const name = path === '/' ? 'index.html' : path.slice(1)
+  if (!/^[\w.-]+$/.test(name)) return false
+  const file = join(PANEL_DIR, name)
+  const data = await readFile(file).catch(() => null)
+  if (!data) return false
+  res.writeHead(200, {
+    'Content-Type': MIME[extname(name)] ?? 'application/octet-stream',
+    'Cache-Control': 'no-cache',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; frame-ancestors 'none'"
+  })
+  res.end(data)
+  return true
 }
 
 // ---------- backup ----------
@@ -140,16 +230,84 @@ async function saveBackup(req: IncomingMessage): Promise<string> {
 
 // ---------- server pubblico ----------
 
-const publicServer = createServer(async (req, res) => {
+function loadCert(): { cert: Buffer; key: Buffer } | null {
+  if (!CERT_FILE || !KEY_FILE || !existsSync(CERT_FILE) || !existsSync(KEY_FILE)) return null
+  try {
+    return { cert: readFileSync(CERT_FILE), key: readFileSync(KEY_FILE) }
+  } catch (e) {
+    // per esempio permessi del file: meglio partire in HTTP che non partire
+    console.error(`Certificato non leggibile, uso HTTP: ${e instanceof Error ? e.message : String(e)}`)
+    return null
+  }
+}
+const certs = loadCert()
+const tls = certs !== null
+
+async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://x')
   try {
     if (url.pathname === '/health') return json(res, 200, { ok: true })
+    if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
+      if (await serveStatic(res, url.pathname)) return
+      return json(res, 404, { error: 'non trovato' })
+    }
     if (!url.pathname.startsWith('/api/')) return json(res, 404, { error: 'non trovato' })
+
+    // --- pannello remoto (sessione) ---
+    if (req.method === 'POST' && url.pathname === '/api/login') {
+      if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+      const ip = req.socket.remoteAddress ?? ''
+      if (tooManyAttempts(ip)) return json(res, 429, { error: 'Troppi tentativi: riprova tra un minuto' })
+      const body = await readJson(req, 4096)
+      const s = users.login(String(body.name ?? '').trim(), String(body.password ?? ''))
+      if (!s) {
+        failedLogins.get(ip)?.push(Date.now())
+        return json(res, 401, { error: 'Nome o password errati' })
+      }
+      res.setHeader(
+        'Set-Cookie',
+        `sessione=${s.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${30 * 86400}${tls ? '; Secure' : ''}`
+      )
+      return json(res, 200, { user: s.user })
+    }
+    if (req.method === 'POST' && url.pathname === '/api/logout') {
+      const t = cookie(req, 'sessione')
+      if (t) users.logout(t)
+      res.setHeader('Set-Cookie', 'sessione=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0')
+      return json(res, 200, { ok: true })
+    }
+    if (url.pathname === '/api/io' || url.pathname.startsWith('/api/utenti')) {
+      const me = sessionUser(req)
+      if (!me) return json(res, 401, { error: 'accesso richiesto' })
+      if (url.pathname === '/api/io') return json(res, 200, { user: me })
+      if (!can(me.role, 'utenti')) return json(res, 403, { error: 'solo gli amministratori gestiscono gli utenti' })
+      if (req.method !== 'GET' && !sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+      if (req.method === 'GET' && url.pathname === '/api/utenti') return json(res, 200, { users: users.list(), roles: ROLES })
+      if (req.method === 'POST' && url.pathname === '/api/utenti') {
+        const body = await readJson(req, 4096)
+        const name = String(body.name ?? '').trim()
+        const password = body.password ? String(body.password) : undefined
+        const u = users.save(name, String(body.role ?? '') as Role, password)
+        if (password) relay.kick(u.name)
+        return json(res, 200, { user: u, users: users.list() })
+      }
+      if (req.method === 'DELETE' && url.pathname.startsWith('/api/utenti/')) {
+        const name = decodeURIComponent(url.pathname.slice('/api/utenti/'.length))
+        if (name.toLowerCase() === me.name.toLowerCase()) return json(res, 400, { error: 'non puoi eliminare te stesso' })
+        users.remove(name)
+        relay.kick(name)
+        return json(res, 200, { users: users.list() })
+      }
+      return json(res, 404, { error: 'non trovato' })
+    }
+
+    // --- regia (token) ---
     if (!authorized(req)) return json(res, 401, { error: 'token non valido' })
 
     if (req.method === 'POST' && url.pathname === '/api/heartbeat') {
       lastStudio = { ...(await readJson(req)), receivedAt: new Date().toISOString() }
       alarms.onHeartbeat()
+      relay.setAlarms(alarms.status().alarms)
       return json(res, 200, { ok: true, alarms: alarms.status().alarms })
     }
     if (req.method === 'POST' && url.pathname === '/api/metadata') {
@@ -203,6 +361,53 @@ const publicServer = createServer(async (req, res) => {
   } catch (e) {
     return json(res, 400, { error: e instanceof Error ? e.message : String(e) })
   }
+}
+
+const publicServer = certs
+  ? createHttpsServer(certs, (req, res) => void handlePublic(req, res))
+  : createServer((req, res) => void handlePublic(req, res))
+
+if (tls) {
+  // il certificato di AzuraCast si rinnova da solo: lo ricarichiamo ogni 12 ore
+  setInterval(() => {
+    const c = loadCert()
+    if (c) (publicServer as ReturnType<typeof createHttpsServer>).setSecureContext(c)
+  }, 12 * 3600_000)
+}
+
+// ---------- WebSocket: regia e pannelli ----------
+
+const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 })
+
+function wire(ws: WebSocket, h: { message: (raw: string) => void; close: () => void }): void {
+  ws.on('message', (data) => h.message(String(data)))
+  ws.on('close', () => h.close())
+  ws.on('error', () => ws.terminate())
+  // segnale di vita: le connessioni morte (4G caduto) vengono chiuse
+  let alive = true
+  ws.on('pong', () => (alive = true))
+  const ping = setInterval(() => {
+    if (!alive) return ws.terminate()
+    alive = false
+    ws.ping()
+  }, 15_000)
+  ws.on('close', () => clearInterval(ping))
+}
+
+publicServer.on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url ?? '/', 'http://x')
+  if (url.pathname === '/ws/regia') {
+    return wss.handleUpgrade(req, socket, head, (ws) => wire(ws, relay.attachStudio(ws)))
+  }
+  if (url.pathname === '/ws/pannello') {
+    const me = sessionUser(req)
+    if (!me || !sameOrigin(req)) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+      return socket.destroy()
+    }
+    return wss.handleUpgrade(req, socket, head, (ws) => wire(ws, relay.attachPanel(ws, me)))
+  }
+  socket.destroy()
 })
 
 // ---------- server interno (Liquidsoap) ----------
@@ -222,7 +427,7 @@ const internalServer = createServer(async (req, res) => {
   }
 })
 
-publicServer.listen(PUBLIC_PORT, () => console.log(`Controllo in ascolto sulla porta ${PUBLIC_PORT}`))
+publicServer.listen(PUBLIC_PORT, () => console.log(`Controllo in ascolto sulla porta ${PUBLIC_PORT}${tls ? ' (HTTPS)' : ''}`))
 internalServer.listen(INTERNAL_PORT, () => console.log(`Eventi interni sulla porta ${INTERNAL_PORT}`))
 
 const shutdown = (): void => {

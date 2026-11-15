@@ -1,0 +1,339 @@
+// Pannello remoto di Radio Regia: niente librerie, funziona da telefono, tablet e computer.
+'use strict'
+
+const $ = (id) => document.getElementById(id)
+const KIND = { music: 'Musica', jingle: 'Jingle', news: 'Notiziario', program: 'Programma', spot: 'Spot' }
+
+let me = null
+let ws = null
+let state = null
+let stateAt = 0
+let studio = false
+let seq = 0
+const waiting = new Map()
+let retry = 1
+
+function mmss(s) {
+  if (!Number.isFinite(s) || s < 0) s = 0
+  s = Math.floor(s)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+function hhmm(iso) {
+  return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+}
+function el(tag, cls, text) {
+  const e = document.createElement(tag)
+  if (cls) e.className = cls
+  if (text != null) e.textContent = text
+  return e
+}
+function button(text, title, onClick, cls) {
+  const b = el('button', cls, text)
+  if (title) b.title = title
+  b.addEventListener('click', onClick)
+  return b
+}
+function notice(text) {
+  const n = $('notice')
+  n.textContent = text
+  n.hidden = !text
+  if (text) setTimeout(() => { if (n.textContent === text) n.hidden = true }, 5000)
+}
+const canCommand = () => me && (me.role === 'amministratore' || me.role === 'conduttore')
+
+// ---------- accesso ----------
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...opts })
+  const body = await r.json().catch(() => ({}))
+  if (!r.ok) throw Object.assign(new Error(body.error || `errore ${r.status}`), { status: r.status })
+  return body
+}
+
+async function start() {
+  try {
+    me = (await api('/api/io')).user
+    showApp()
+  } catch {
+    showLogin()
+  }
+}
+
+function showLogin() {
+  me = null
+  if (ws) ws.close()
+  $('app').hidden = true
+  $('login').hidden = false
+  $('login-name').focus()
+}
+
+$('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  $('login-error').hidden = true
+  try {
+    me = (await api('/api/login', { method: 'POST', body: JSON.stringify({ name: $('login-name').value, password: $('login-password').value }) })).user
+    $('login-password').value = ''
+    showApp()
+  } catch (err) {
+    $('login-error').textContent = err.message
+    $('login-error').hidden = false
+  }
+})
+
+$('logout').addEventListener('click', async () => {
+  await api('/api/logout', { method: 'POST' }).catch(() => {})
+  showLogin()
+})
+$('menu-btn').addEventListener('click', () => ($('menu').hidden = !$('menu').hidden))
+
+function showApp() {
+  $('login').hidden = true
+  $('app').hidden = false
+  $('who').textContent = `${me.name} · ${me.role}`
+  $('users-btn').hidden = me.role !== 'amministratore'
+  $('readonly').hidden = canCommand()
+  connect()
+}
+
+// ---------- canale in tempo reale ----------
+
+function connect() {
+  if (ws && ws.readyState <= 1) return
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/pannello`)
+  ws.onopen = () => (retry = 1)
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data)
+    if (m.t === 'hello') {
+      studio = m.studio
+      if (m.state) setState(m.state)
+      render()
+    } else if (m.t === 'state') {
+      setState(m.state)
+    } else if (m.t === 'studio') {
+      studio = m.connected
+      render()
+    } else if (m.t === 'alarms') {
+      $('alarms').hidden = !m.alarms.length
+      $('alarms').textContent = m.alarms.map((a) => `⚠ ${a.message}`).join('  ·  ')
+    } else if (m.t === 'reply') {
+      const w = waiting.get(m.id)
+      if (w) {
+        waiting.delete(m.id)
+        m.ok ? w.resolve(m.data) : w.reject(new Error(m.error || 'errore'))
+      }
+    }
+  }
+  ws.onclose = (e) => {
+    for (const w of waiting.values()) w.reject(new Error('connessione persa'))
+    waiting.clear()
+    studio = false
+    render()
+    if (!me) return
+    if (e.code === 4003 || e.code === 1008) return showLogin()
+    // senza sessione valida il server rifiuta subito: controlliamo prima di riprovare
+    setTimeout(() => api('/api/io').then(connect, (err) => (err.status === 401 ? showLogin() : connect())), retry * 1000)
+    retry = Math.min(retry * 2, 15)
+  }
+}
+
+function send(cmd) {
+  return new Promise((resolve, reject) => {
+    if (!ws || ws.readyState !== 1) return reject(new Error('non collegato al ponte'))
+    const id = `p${++seq}`
+    waiting.set(id, { resolve, reject })
+    ws.send(JSON.stringify({ t: 'cmd', id, cmd }))
+  })
+}
+const command = (cmd) => send(cmd).catch((e) => notice(e.message))
+
+function setState(s) {
+  state = s
+  stateAt = Date.now()
+  render()
+}
+
+// ---------- disegno ----------
+
+function render() {
+  const st = $('studio')
+  st.textContent = studio ? 'REGIA OK' : 'REGIA SCOLLEGATA'
+  st.className = `pill ${studio ? 'ok' : 'off'}`
+  const ctl = studio && canCommand()
+  for (const b of document.querySelectorAll('[data-cmd]')) b.disabled = !ctl
+  const mode = $('mode')
+  mode.disabled = !ctl || !state
+  if (state) {
+    mode.textContent = state.mode === 'auto' ? 'AUTOMATICO' : 'MANUALE'
+    mode.className = `mode ${state.mode === 'auto' ? 'auto' : 'manual'}`
+  }
+  renderNow()
+  renderQueue(ctl)
+  renderCarts(ctl)
+  if (state?.lastError) notice(state.lastError)
+}
+
+function renderNow() {
+  const cur = state?.onAir
+  $('lamp').textContent = cur ? 'IN ONDA' : 'FERMO'
+  $('lamp').className = `lamp ${cur ? 'lit' : ''}`
+  if (!cur || !studio) {
+    $('now-kind').textContent = ''
+    $('now-title').textContent = studio ? 'Nessun brano in onda' : 'Regia non collegata al ponte'
+    $('now-artist').textContent = ''
+    $('now-pos').textContent = ''
+    $('now-rem').textContent = ''
+    $('now-progress').style.width = '0'
+    $('now').classList.remove('ending')
+    return
+  }
+  const passed = (Date.now() - stateAt) / 1000
+  const pos = cur.position + passed
+  const rem = Math.max(0, cur.remaining - passed)
+  $('now-kind').textContent = (KIND[cur.kind] || '') + (cur.eventLabel ? ` · ${cur.eventLabel}` : '')
+  $('now-title').textContent = cur.title
+  $('now-artist').textContent = cur.artist
+  $('now-pos').textContent = mmss(pos)
+  $('now-rem').textContent = `-${mmss(rem)}`
+  $('now-progress').style.width = `${Math.min(100, (pos / Math.max(1, pos + rem)) * 100)}%`
+  $('now').classList.toggle('ending', rem <= 10)
+}
+
+function trackRow(t, left) {
+  const li = el('li', t.origin === 'event' ? 'event' : '')
+  if (left) li.append(el('span', 't-eta', left))
+  const main = el('div', 't-main')
+  const title = el('div', 't-title', t.title)
+  if (t.eventLabel) title.append(el('span', 'tag', t.eventLabel))
+  main.append(title, el('div', 't-artist', t.artist || KIND[t.kind] || ''))
+  li.append(main, el('span', 't-dur', mmss(t.duration)))
+  return li
+}
+
+function renderQueue(ctl) {
+  const ul = $('queue')
+  ul.replaceChildren()
+  const q = state?.queue ?? []
+  if (!q.length) ul.append(el('li', 'hint', state?.mode === 'auto' ? 'La coda si riempie da sola…' : 'Coda vuota'))
+  q.forEach((t, i) => {
+    const li = trackRow(t, hhmm(t.eta))
+    if (ctl) {
+      const a = el('div', 't-actions')
+      a.append(
+        button('▲', 'Su', () => command({ type: 'move', uid: t.uid, delta: -1 }), i === 0 ? 'small' : 'small'),
+        button('▼', 'Giù', () => command({ type: 'move', uid: t.uid, delta: 1 }), 'small'),
+        button('✕', 'Togli dalla coda', () => command({ type: 'remove', uid: t.uid }), 'small')
+      )
+      li.append(a)
+    }
+    ul.append(li)
+  })
+}
+
+function renderCarts(ctl) {
+  const box = $('carts')
+  box.replaceChildren()
+  for (const c of state?.carts ?? []) {
+    const b = el('button', `cart ${c.name ? '' : 'empty'} ${c.playing ? 'playing' : ''}`)
+    b.append(el('small', null, String(c.n)), document.createTextNode(c.name || 'vuoto'))
+    b.disabled = !ctl || !c.name
+    b.addEventListener('click', () => command({ type: 'cart', n: c.n }))
+    box.append(b)
+  }
+}
+
+// ---------- comandi ----------
+
+for (const b of document.querySelectorAll('[data-cmd]')) {
+  b.addEventListener('click', () => command({ type: b.dataset.cmd }))
+}
+$('mode').addEventListener('click', () => command({ type: 'mode', mode: state?.mode === 'auto' ? 'manual' : 'auto' }))
+
+$('search-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const q = $('search-q').value.trim()
+  const ul = $('results')
+  ul.replaceChildren(el('li', 'hint', 'Ricerca…'))
+  try {
+    const tracks = await send({ type: 'search', q })
+    ul.replaceChildren()
+    if (!tracks.length) ul.append(el('li', 'hint', 'Nessun brano trovato'))
+    for (const t of tracks) {
+      const li = trackRow(t)
+      if (canCommand()) {
+        const a = el('div', 't-actions')
+        a.append(
+          button('⤒', 'Metti come prossimo', () => command({ type: 'enqueue', trackId: t.id, where: 'next' }).then(() => notice(`"${t.title}" è il prossimo`)), 'small'),
+          button('+', 'Aggiungi in fondo alla coda', () => command({ type: 'enqueue', trackId: t.id, where: 'end' }).then(() => notice(`"${t.title}" aggiunto in coda`)), 'small')
+        )
+        li.append(a)
+      }
+      ul.append(li)
+    }
+  } catch (err) {
+    ul.replaceChildren(el('li', 'error', err.message))
+  }
+})
+
+// ---------- utenti ----------
+
+$('users-btn').addEventListener('click', () => {
+  $('menu').hidden = true
+  $('main').hidden = true
+  $('users').hidden = false
+  loadUsers()
+})
+$('users-close').addEventListener('click', () => {
+  $('users').hidden = true
+  $('main').hidden = false
+})
+
+function drawUsers(list) {
+  const tb = $('users-list')
+  tb.replaceChildren()
+  for (const u of list) {
+    const tr = el('tr')
+    tr.append(el('td', null, u.name), el('td', null, u.role))
+    const td = el('td')
+    if (u.name !== me.name) {
+      td.append(
+        button('Elimina', '', async () => {
+          if (!confirm(`Eliminare l'utente ${u.name}?`)) return
+          try {
+            drawUsers((await api(`/api/utenti/${encodeURIComponent(u.name)}`, { method: 'DELETE' })).users)
+          } catch (e) {
+            $('user-msg').textContent = e.message
+          }
+        }, 'small')
+      )
+    }
+    tr.append(td)
+    tb.append(tr)
+  }
+}
+
+async function loadUsers() {
+  try {
+    drawUsers((await api('/api/utenti')).users)
+  } catch (e) {
+    $('user-msg').textContent = e.message
+  }
+}
+
+$('user-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  try {
+    const r = await api('/api/utenti', {
+      method: 'POST',
+      body: JSON.stringify({ name: $('u-name').value.trim(), role: $('u-role').value, password: $('u-pass').value || undefined })
+    })
+    drawUsers(r.users)
+    $('user-msg').textContent = `Utente ${r.user.name} salvato`
+    $('u-name').value = ''
+    $('u-pass').value = ''
+  } catch (err) {
+    $('user-msg').textContent = err.message
+  }
+})
+
+setInterval(() => state && studio && renderNow(), 250)
+start()

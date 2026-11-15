@@ -21,6 +21,17 @@ jobs:
       - run: npm test
       # il servizio di controllo del ponte deve compilarsi come immagine Docker
       - run: docker build -t radio-ponte-controllo ponte/controllo
+      # prova rapida dell'immagine: parte, scrive nel volume dati e serve il pannello
+      - name: Prova del contenitore di controllo
+        run: |
+          docker run -d --name ctl -p 9080:9080 -e CONTROLLO_TOKEN=token-di-prova-abbastanza-lungo \
+            -e PANNELLO_ADMIN_PASSWORD=password-admin -v ctldati:/data radio-ponte-controllo
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:9080/health && break; sleep 1; done
+          head -c 4096 /dev/urandom > b.db
+          curl -fs -X PUT -H "Authorization: Bearer token-di-prova-abbastanza-lungo" --data-binary @b.db http://127.0.0.1:9080/api/backup
+          curl -fs http://127.0.0.1:9080/ | grep -q "Regia remota"
+          curl -fs -X POST -H 'Content-Type: application/json' -d '{"name":"admin","password":"password-admin"}' http://127.0.0.1:9080/api/login
+          docker logs ctl
 
   windows:
     needs: test

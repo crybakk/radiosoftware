@@ -52,13 +52,17 @@ if [[ ! -f .env ]]; then
   imposta SRT_PASSPHRASE "$(openssl rand -hex 16)"
   imposta CONTROLLO_TOKEN "$(openssl rand -hex 24)"
   imposta ESTERNA_PASSWORD "$(openssl rand -hex 8)"
+  imposta PANNELLO_ADMIN_PASSWORD "$(openssl rand -base64 12 | tr -d '/+=' | cut -c1-12)"
   echo "Creato .env con frase segreta, token e password delle esterne generati a caso."
 else
   echo ".env esistente: non lo modifico."
 fi
 
 passo "Ponte: avvio"
-docker compose up -d --build
+# riavvia.sh: riavvia il ponte e attiva l'HTTPS appena AzuraCast ha un certificato Let's Encrypt
+./riavvia.sh
+HTTPS_ATTIVO=0
+grep -q '^# https attivo' .stato-https 2>/dev/null && HTTPS_ATTIVO=1
 
 leggi() { grep -E "^$1=" .env | head -1 | cut -d= -f2-; }
 IP_LOCALE="$(hostname -I | awk '{print $1}')"
@@ -78,7 +82,7 @@ cat <<FINE
      AZURACAST_DJ_UTENTE=...
      AZURACAST_DJ_PASSWORD=...
    e riavvia il ponte:
-     cd $CARTELLA_PONTE && sudo docker compose up -d
+     sudo $CARTELLA_PONTE/riavvia.sh
 
 3) Nella regia, scheda Collegamento:
      Indirizzo del server:   il tuo indirizzo pubblico o nome di dominio
@@ -86,6 +90,10 @@ cat <<FINE
      Frase segreta:          $(leggi SRT_PASSPHRASE)
      Porta controllo:        $(leggi CONTROLLO_PORTA)
      Token:                  $(leggi CONTROLLO_TOKEN)
+     HTTPS:                  $([[ $HTTPS_ATTIVO -eq 1 ]] && echo "sì (serve il nome di dominio configurato in AzuraCast)" || echo "no")
+
+   Pannello remoto: $([[ $HTTPS_ATTIVO -eq 1 ]] && echo https || echo http)://<indirizzo>:$(leggi CONTROLLO_PORTA)
+     utente: admin   password: $(leggi PANNELLO_ADMIN_PASSWORD)
 
 4) Dirette esterne: nell'app che usavi come DJ su AzuraCast cambia solo
      porta $(leggi ESTERNA_PORTA), mount $(leggi ESTERNA_MOUNT), utente $(leggi ESTERNA_UTENTE), password $(leggi ESTERNA_PASSWORD)

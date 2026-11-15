@@ -25,6 +25,12 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 - Regia: scheda Collegamento con stato, riconnessione automatica, titoli in onda ad AzuraCast, backup giornaliero del database sul ponte e ripristino.
 - Guida di installazione: [ponte/README.md](ponte/README.md).
 
+**Fase 3 – controllo remoto** (in prova):
+
+- Pannello web servito dal ponte, per telefono, tablet e computer: in onda, PLAY/AVANTI/STOP, automatico/manuale, coda, ricerca, jingle.
+- La regia apre lei il canale verso il ponte (funziona dietro il NAT del 4G) e si ricollega da sola.
+- Utenti con ruoli (amministratore, conduttore, ospite), accesso con password, HTTPS con il certificato di AzuraCast.
+
 ## Installazione su Windows
 
 Ogni push compila l'installer in GitHub Actions: apri la scheda **Actions** del repository, l'ultima esecuzione di "Test e build Windows", e scarica l'artefatto **RadioRegia-Setup-Windows**.

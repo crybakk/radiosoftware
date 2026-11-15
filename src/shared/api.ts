@@ -2,6 +2,7 @@ import type { TrackEdit, TrackSearch } from '../core/db'
 import type { EngineStep } from '../core/playout'
 import type { ScanProgress } from '../core/scanner'
 import type { PonteBackup, PonteState } from '../core/ponteClient'
+import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { PonteStatus, StudioReport } from '../main/ponte'
 import type { LibraryFolder, LogEntry, ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
 
@@ -66,6 +67,10 @@ export interface RadioApi {
   /** Se all'avvio è stato ripristinato un backup: dove è stata messa la versione precedente. */
   restoredFrom(): Promise<string | null>
   onPonteStatus(cb: (s: PonteStatus) => void): () => void
+  /** Stato della regia per il pannello remoto. */
+  sendRemoteState(state: RemoteState): void
+  /** Comandi dal pannello remoto: la funzione restituisce la risposta. */
+  onRemoteCommand(cb: (cmd: RemoteCommand, by: string) => Promise<unknown>): () => void
 }
 
 declare global {

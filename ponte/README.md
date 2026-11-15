@@ -30,7 +30,7 @@ Le sezioni seguenti spiegano gli stessi passaggi a mano, per esempio su un serve
 - Il server dove gira AzuraCast, con Docker e Docker Compose (AzuraCast li usa già).
 - Porte da aprire nel firewall del server (e da inoltrare sul router, se il server è in casa):
   - **UDP 9000** (`SRT_PORT`) per l'audio dalla regia;
-  - **TCP 9080** (`CONTROLLO_PORTA`) per allarmi, titoli e backup;
+  - **TCP 9080** (`CONTROLLO_PORTA`) per allarmi, titoli, backup e pannello remoto;
   - **TCP 9010** (`ESTERNA_PORTA`) per le dirette esterne.
 
   Non usare porte tra 8000 e 8496: AzuraCast le riserva alle sue stazioni.
@@ -61,6 +61,7 @@ Valori da compilare (le spiegazioni sono nel file):
 | `NOME_RADIO` | Nome della radio (compare nelle notifiche) |
 | `SRT_PASSPHRASE` | Frase segreta da 10 a 79 caratteri, da inserire uguale nella regia |
 | `CONTROLLO_TOKEN` | Token lungo e casuale, da inserire uguale nella regia. Si può generare con `openssl rand -hex 24` |
+| `PANNELLO_ADMIN_PASSWORD` | Password dell'utente `admin` del pannello remoto (almeno 8 caratteri) |
 | `AZURACAST_HOST` | `host.docker.internal` se AzuraCast è sullo stesso server |
 | `AZURACAST_PORTA_DJ`, `AZURACAST_MOUNT_DJ` | Porta DJ e mount del punto 1 |
 | `AZURACAST_DJ_UTENTE`, `AZURACAST_DJ_PASSWORD` | Account streamer del punto 1 |
@@ -70,7 +71,7 @@ Valori da compilare (le spiegazioni sono nel file):
 ## 3. Avvio
 
 ```bash
-docker compose up -d --build
+sudo ./riavvia.sh           # avvia (e in seguito riavvia/aggiorna) il ponte
 docker compose logs -f      # per controllare (Ctrl+C per uscire)
 ```
 
@@ -98,6 +99,37 @@ Scheda **Collegamento**:
 - **Salva**, poi **Accendi invio**. La spia in alto a destra diventa verde ("PONTE: OK").
 
 Con **Invia notifica di prova** controlli che Telegram o l'email arrivino.
+
+## Pannello remoto
+
+Dal browser (telefono, tablet o computer) apri `http://<indirizzo del server>:9080`
+(`https://` se il pannello usa il certificato di AzuraCast, vedi sotto) ed entra con l'utente `admin`
+e la password `PANNELLO_ADMIN_PASSWORD` del file `.env`.
+
+Dal pannello vedi cosa va in onda e la coda, e puoi premere PLAY / AVANTI / STOP, passare tra automatico e
+manuale, cercare un brano e metterlo in coda, far partire i jingle. Funziona anche con la regia dietro il 4G:
+è la regia ad aprire il collegamento verso il ponte.
+
+Ruoli (menu ☰ → Utenti, solo per gli amministratori):
+
+| Ruolo | Cosa può fare |
+|---|---|
+| Amministratore | tutto, compresa la gestione degli utenti |
+| Conduttore | comandare la regia |
+| Ospite | vedere soltanto (il collegamento audio degli ospiti arriva con la fase 5) |
+
+### HTTPS
+
+Se AzuraCast è sullo stesso server e ha un certificato Let's Encrypt (nome di dominio impostato in
+AzuraCast → Amministrazione → Impostazioni di sistema), il ponte usa lo stesso certificato e il pannello
+diventa `https://`. Lo fa da solo `riavvia.sh`: lancialo dopo aver attivato il certificato in AzuraCast.
+
+```bash
+sudo /opt/radio-ponte/riavvia.sh
+```
+
+Nella regia, scheda Collegamento, spunta allora "Il servizio di controllo usa HTTPS" e usa il nome di
+dominio come indirizzo del server.
 
 ## Dirette esterne
 
@@ -135,7 +167,7 @@ La regia si riavvia e conserva il database precedente in un file a parte nella s
 ```bash
 cd /opt/radio-ponte
 # copia i file nuovi della cartella ponte, poi
-docker compose up -d --build
+sudo ./riavvia.sh
 ```
 
 ## Problemi comuni

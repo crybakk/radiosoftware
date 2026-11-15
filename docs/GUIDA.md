@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 14/11/2026, fase 2 (ponte, collegamento, dirette esterne).
+**Ultimo aggiornamento:** 15/11/2026, fase 3 (pannello remoto e utenti).
 
 ## Indice
 
@@ -17,11 +17,12 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
 9. [Il server: VM su Proxmox con AzuraCast e il ponte](#9-il-server-vm-su-proxmox-con-azuracast-e-il-ponte)
 10. [Collegare la regia al ponte](#10-collegare-la-regia-al-ponte)
 11. [Dirette esterne](#11-dirette-esterne)
-12. [Allarmi e notifiche](#12-allarmi-e-notifiche)
-13. [Backup e ripristino](#13-backup-e-ripristino)
-14. [Problemi comuni](#14-problemi-comuni)
-15. [In arrivo](#15-in-arrivo)
-16. [Modifiche alla guida](#16-modifiche-alla-guida)
+12. [Pannello remoto e utenti](#12-pannello-remoto-e-utenti)
+13. [Allarmi e notifiche](#13-allarmi-e-notifiche)
+14. [Backup e ripristino](#14-backup-e-ripristino)
+15. [Problemi comuni](#15-problemi-comuni)
+16. [In arrivo](#16-in-arrivo)
+17. [Modifiche alla guida](#17-modifiche-alla-guida)
 
 ---
 
@@ -155,12 +156,14 @@ Serve una volta sola. La guida tecnica completa è in [ponte/README.md](../ponte
 3. **AzuraCast**: apri `http://<indirizzo della VM>`, crea l'amministratore e la stazione. In
    **Profilo → Streamer/DJ** abilita i DJ e crea l'account per il ponte. Scrivi utente e password in
    `/opt/radio-ponte/.env` (`AZURACAST_DJ_UTENTE`, `AZURACAST_DJ_PASSWORD`), poi
-   `cd /opt/radio-ponte && sudo docker compose up -d`.
+   `sudo /opt/radio-ponte/riavvia.sh`.
+   Se in AzuraCast imposti un nome di dominio con certificato (Amministrazione → Impostazioni di sistema),
+   rilancia `sudo /opt/radio-ponte/riavvia.sh`: il pannello remoto passa a HTTPS con lo stesso certificato.
 4. **Router di casa**: inoltra verso la VM
    - TCP 80 e 443 (pagine di AzuraCast)
    - TCP 8000-8006 (ascolto della radio)
    - UDP 9000 (audio dalla regia)
-   - TCP 9080 (allarmi, titoli, backup)
+   - TCP 9080 (allarmi, titoli, backup, pannello remoto)
    - TCP 9010 (dirette esterne)
 5. Se l'IP pubblico di casa cambia, usa un nome DNS dinamico (DuckDNS o quello del router) e mettilo nella
    regia al posto dell'IP. Con un nome di dominio AzuraCast può attivare l'HTTPS.
@@ -200,7 +203,42 @@ Usa la stessa app di prima (BUTT, Larix, Luci Live…), in modalità Icecast. Ca
 Quando l'app si collega va in onda lei, con una breve dissolvenza. Quando si scollega torna da sola la regia.
 Ricevi una notifica all'inizio e alla fine.
 
-## 12. Allarmi e notifiche
+## 12. Pannello remoto e utenti
+
+Il pannello remoto comanda la regia dal browser, da qualsiasi posto: telefono, tablet o computer.
+
+**Aprirlo:** `http://<indirizzo di casa>:9080` (oppure `https://<nome di dominio>:9080` se AzuraCast ha il
+certificato, vedi la sezione 9). La prima volta entra con `admin` e la password stampata dall'installazione.
+
+**Cosa trovi:**
+
+- in alto la spia **IN ONDA / FERMO**, lo stato della regia (**REGIA OK** o **REGIA SCOLLEGATA**) e il tasto
+  **AUTOMATICO / MANUALE**;
+- il brano in onda con il tempo mancante (rosso negli ultimi 10 secondi);
+- **PLAY**, **AVANTI** e **STOP**, che fanno esattamente quello che fanno in regia;
+- la coda, con le frecce per spostare i brani e la ✕ per toglierli;
+- la ricerca: ⤒ mette il brano come prossimo, + lo aggiunge in fondo;
+- i jingle della cartwall e **Ferma jingle**.
+
+Se compare un allarme del ponte, lo vedi in una striscia rossa in alto.
+
+**Utenti** (menu ☰ → **Utenti**, solo per gli amministratori): scrivi nome, ruolo e password e premi **Salva**.
+Per cambiare il ruolo di un utente esistente scrivi il suo nome, scegli il ruolo e lascia vuota la password.
+Cambiando la password, l'utente viene scollegato da tutti i dispositivi.
+
+| Ruolo | Cosa può fare |
+|---|---|
+| Amministratore | tutto, compresa la gestione degli utenti |
+| Conduttore | comandare la regia |
+| Ospite | vedere cosa va in onda e cercare nella libreria, senza comandare |
+
+**Nella regia** (scheda **Collegamento**) l'opzione "Permetti di comandare la regia dal pannello remoto" è
+attiva di base. La riga "Pannello remoto" dice se il collegamento è attivo e mostra l'indirizzo del pannello.
+Se il pannello usa HTTPS, spunta anche "Il servizio di controllo usa HTTPS".
+
+Dopo 5 password sbagliate di fila dallo stesso indirizzo, il pannello blocca i tentativi per un minuto.
+
+## 13. Allarmi e notifiche
 
 Il ponte avvisa via Telegram e/o email (da configurare nel `.env` del server; la scheda **Collegamento** ha
 **Invia notifica di prova**):
@@ -214,7 +252,7 @@ Il ponte avvisa via Telegram e/o email (da configurare nel `.env` del server; la
 
 Quando il problema si risolve arriva un secondo messaggio. Gli allarmi attivi si vedono anche nella scheda Collegamento.
 
-## 13. Backup e ripristino
+## 14. Backup e ripristino
 
 Ogni giorno, all'ora scelta, la regia salva sul ponte una copia di libreria, eventi, registro e impostazioni.
 Il ponte tiene gli ultimi 14.
@@ -223,7 +261,7 @@ Il ponte tiene gli ultimi 14.
 - **Mostra i backup sul ponte** → **Ripristina** → **Sì, ripristina**: la regia si riavvia con il backup scelto.
   La messa in onda si ferma per qualche secondo. Il database di prima resta in una copia a parte.
 
-## 14. Problemi comuni
+## 15. Problemi comuni
 
 | Problema | Cosa controllare |
 |---|---|
@@ -233,20 +271,23 @@ Il ponte tiene gli ultimi 14.
 | Allarme AzuraCast | account DJ sbagliato nel `.env`, o RadioDJ ancora collegato |
 | La scheda audio scelta non è disponibile | il RodeCaster è scollegato o spento |
 | L'app delle esterne non si collega | porta 9010 non inoltrata, oppure mount/utente/password diversi |
+| Il pannello dice REGIA SCOLLEGATA | regia spenta o senza internet, oppure "Permetti di comandare la regia dal pannello remoto" disattivato |
+| Il pannello non si apre | porta 9080 non inoltrata, oppure stai usando http:// invece di https:// (o il contrario) |
 
-## 15. In arrivo
+## 16. In arrivo
 
 Prossime fasi (l'ordine può cambiare):
 
-- pannello remoto dal browser: diretta con microfono, controllo del player, ospiti, diretta autonoma;
+- microfono dal pannello remoto e diretta autonoma (con musica dalla libreria del server o dal dispositivo);
+- ospiti collegati con un link, con sala d'attesa;
 - uscite verso Icecast esterni, Fluidstream, YouTube e Facebook;
 - analisi della libreria stile MusicBrainz e report SIAE nel formato del fac simile;
 - registrazione della messa in onda e podcast, download automatico di notiziari, voce sintetica;
-- più utenti con ruoli;
 - rotazioni generate dall'AI a partire da una descrizione del palinsesto.
 
-## 16. Modifiche alla guida
+## 17. Modifiche alla guida
 
 | Data | Novità |
 |---|---|
 | 14/11/2026 | Prima versione: regia (fase 1), eventi avanzati, ponte, collegamento, backup, dirette esterne, VM Proxmox |
+| 15/11/2026 | Pannello remoto dal browser, utenti con ruoli, HTTPS con il certificato di AzuraCast, `riavvia.sh` |
