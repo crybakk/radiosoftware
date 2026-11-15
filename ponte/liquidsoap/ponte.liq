@@ -281,6 +281,8 @@ def prossimo_riserva() =
   end
 end
 riserva = amplify(1., override="liq_amplify", request.dynamic(id="riserva", retry_delay=10., prossimo_riserva))
+# per il registro dei brani suonati dal server (report SIAE)
+riserva.on_track(fun (m) -> if m["filename"] != "" then notify("riserva_brano", m["filename"]) end)
 segnale =
   fallback(
     id="segnale",

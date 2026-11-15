@@ -124,10 +124,26 @@ export class PonteClient {
     return ((await r.json()) as { updated: number }).updated
   }
 
+  /** Brani suonati dal server (diretta autonoma, musica di riserva) con inizio in [from, to). */
+  async listPlays(from: Date, to: Date): Promise<ServerPlay[]> {
+    const q = new URLSearchParams({ da: from.toISOString(), a: to.toISOString() })
+    return (await (await this.request('GET', `/api/registro?${q}`, undefined, undefined, 60_000)).json()) as ServerPlay[]
+  }
+
   async downloadBackup(name: string): Promise<Uint8Array> {
     const r = await this.request('GET', `/api/backup/${encodeURIComponent(name)}`, undefined, undefined, 5 * 60_000)
     return new Uint8Array(await r.arrayBuffer())
   }
+}
+
+/** Voce del registro del server (vedi ponte/controllo/src/registro.ts). */
+export interface ServerPlay {
+  at: string
+  source: 'autonoma' | 'riserva' | 'esterna'
+  id: string
+  title: string
+  artist: string
+  duration: number
 }
 
 export interface LibraryMeta {

@@ -16,7 +16,7 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 - Rotazione automatica con separazione artista e brano e un jingle ogni N brani.
 - Eventi programmati come sequenza di azioni: brano, brano casuale (per tipo, genere o cartella), playlist M3U/PLS o cartella, flusso esterno per N minuti, automatico/manuale, svuota coda, ferma tutto, profilo di rotazione (generi, anni, separazioni), comando esterno. Una volta al giorno, ogni ora o ogni N minuti, con giorni, date di validità e partenza dopo il brano, con tolleranza o subito.
 - Preascolto in cuffia su una scheda audio separata; scelta dell'uscita in onda (per esempio il RodeCaster Duo).
-- Registro di trasmissione con esportazione CSV (il report SIAE nel formato del fac simile arriva con la fase 7).
+- Registro di trasmissione con esportazione CSV.
 
 **Fase 2 – ponte e collegamento** (in prova):
 
@@ -40,6 +40,12 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 - Un solo server: ponte, Icecast principale e Caddy (HTTPS automatico). AzuraCast non serve più.
 - Icecast secondario esterno con lo stesso segnale; musica di riserva dalla libreria quando nessuno è in diretta.
 - Dirette video su YouTube e Facebook dal pannello: logo fisso o video da OBS (massimo 720p, senza ricodifica).
+
+**Fase 7a – report SIAE** (in prova):
+
+- Report SIAE trimestrale in CSV per il portale (colonne del fac simile senza il prezzo), una riga per opera con i passaggi.
+- Il registro comprende anche i brani suonati dal server (diretta autonoma e musica di riserva), scaricati dal ponte.
+- Autori, editore, ISWC e ISRC completati con MusicBrainz (solo i campi vuoti) ed elenco della musica con dati mancanti.
 
 ## Installazione su Windows
 

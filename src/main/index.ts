@@ -5,6 +5,9 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ffmpegStatic from 'ffmpeg-static'
 import { logToCsv } from '../core/csv'
+import { quarterRange, siaeCsv, siaeRows } from '../core/siae'
+import { syncServerPlays } from '../core/serverPlays'
+import { MusicBrainzService } from './musicbrainz'
 import { RadioDb, type TrackEdit, type TrackSearch } from '../core/db'
 import { RotationService } from '../core/rotationService'
 import type { ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
@@ -81,8 +84,41 @@ app.whenReady().then(() => {
   const serverSync = new ServerLibrarySync(db, app.getPath('userData'), () => ponte.client(), (st) =>
     win?.webContents.send('serverSyncStatus', st)
   )
-  // ogni 10 minuti: nelle ore scelte invia al server i brani nuovi della selezione
-  const syncTimer = setInterval(() => void serverSync.tick(), 10 * 60_000)
+  const mb = new MusicBrainzService(db, (st) => win?.webContents.send('mbStatus', st))
+
+  // brani suonati dal server (diretta autonoma, riserva) → registro di trasmissione
+  let serverPlaysError: string | null = null
+  const importServerPlays = async (): Promise<number> => {
+    const c = ponte.client()
+    if (!c) {
+      serverPlaysError = 'ponte non configurato'
+      return 0
+    }
+    try {
+      const n = await syncServerPlays(db, c)
+      serverPlaysError = null
+      return n
+    } catch (e) {
+      serverPlaysError = e instanceof Error ? e.message : String(e)
+      return 0
+    }
+  }
+  const siaeReport = async (year: number, q: number) => {
+    await importServerPlays()
+    const [from, to] = quarterRange(year, q)
+    const entries = db.listLog(from, to)
+    const ids = [...new Set(entries.map((e) => e.trackId).filter((id): id is number => id != null))]
+    const tracks = new Map(db.getTracks(ids).map((t) => [t.id, t]))
+    return { rows: siaeRows(entries, tracks), serverError: serverPlaysError }
+  }
+
+  // ogni 10 minuti: nelle ore scelte invia al server i brani nuovi della selezione,
+  // e scarica i brani suonati dal server
+  const syncTimer = setInterval(() => {
+    void serverSync.tick()
+    void importServerPlays()
+  }, 10 * 60_000)
+  void importServerPlays()
 
   protocol.handle('media', async (request) => {
     const url = new URL(request.url)
@@ -207,6 +243,27 @@ app.whenReady().then(() => {
     return res.filePath
   })
 
+  // report SIAE e completamento dati
+  handle('siaeReport', (year: number, q: number) => siaeReport(year, q))
+  handle('exportSiaeCsv', async (year: number, q: number) => {
+    const { rows } = await siaeReport(year, q)
+    const res = await dialog.showSaveDialog(win!, {
+      title: 'Salva il report SIAE',
+      defaultPath: `SIAE_${year}_T${q}.csv`,
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    })
+    if (res.canceled || !res.filePath) return null
+    writeFileSync(res.filePath, siaeCsv(rows), 'utf8')
+    return res.filePath
+  })
+  handle('incompleteMusic', () => db.incompleteMusic())
+  handle('mbStatus', () => mb.status())
+  handle('mbStart', () => {
+    void mb.start()
+  })
+  handle('mbStop', () => mb.stop())
+  handle('mbRetry', () => mb.retry())
+
   // ponte
   handle('ponteStatus', () => ponte.getStatus())
   handle('ponteCapture', (active: boolean, sampleRate: number) => ponte.setCapture(active, sampleRate))
@@ -278,6 +335,7 @@ app.whenReady().then(() => {
 
   app.on('before-quit', () => {
     clearInterval(syncTimer)
+    mb.stop()
     serverSync.stop()
     library.stop()
     ponte.stop()

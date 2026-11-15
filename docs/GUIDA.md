@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, fase 6 (server senza AzuraCast, musica di riserva, Icecast secondario, dirette video).
+**Ultimo aggiornamento:** 15/11/2026, fase 7a (report SIAE trimestrale, brani suonati dal server nel registro, dati da MusicBrainz).
 
 ## Indice
 
@@ -11,8 +11,10 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
 3. [Primo avvio: schede audio e libreria](#3-primo-avvio-schede-audio-e-libreria)
 4. [In onda: uso quotidiano](#4-in-onda-uso-quotidiano)
 5. [Libreria e scheda brano](#5-libreria-e-scheda-brano)
+    - [Dati per il report SIAE (MusicBrainz)](#dati-per-il-report-siae-musicbrainz)
 6. [Eventi a orario](#6-eventi-a-orario)
 7. [Registro di trasmissione](#7-registro-di-trasmissione)
+    - [Report SIAE trimestrale](#report-siae-trimestrale)
 8. [Impostazioni](#8-impostazioni)
 9. [Il server: VM su Proxmox](#9-il-server-vm-su-proxmox)
     - [Ascolto e Icecast secondario](#ascolto-e-icecast-secondario)
@@ -100,6 +102,29 @@ In **Libreria** trovi l'elenco dei brani. Con **Scheda** apri la scheda brano, d
 - spostare inizio audio, fine audio e punto di mix se l'analisi automatica non ti convince;
 - togliere il segno da **Attivo** per escludere un brano da rotazione e ricerca senza cancellarlo.
 
+### Dati per il report SIAE (MusicBrainz)
+
+Nel riquadro **Dati per il report SIAE** della Libreria, **Cerca su MusicBrainz** completa i dati che mancano
+ai brani di musica:
+
+- **autori** (compositori e parolieri dell'opera), separati da virgola;
+- **editore**, **ISWC** (codice dell'opera) e **ISRC** (codice della registrazione).
+
+Come funziona:
+
+- riempie solo i campi vuoti: quello che hai scritto a mano non viene mai toccato;
+- accetta un risultato solo se titolo e interprete corrispondono e la durata è simile (massimo 10 secondi di
+  differenza), così una versione live o una cover non finiscono sul brano sbagliato;
+- MusicBrainz concede una richiesta al secondo e ne servono circa due per brano: per 20.000 brani sono circa
+  **12 ore**. Si può fermare e riprendere quando vuoi, riparte da dove era rimasta;
+- usa internet, quindi conviene farla partire con la regia collegata a una rete senza limiti, o di notte.
+
+Il **codice opera SIAE** non è su MusicBrainz: va scritto nella scheda brano.
+**Riprova i brani non trovati** rimette in coda quelli già cercati che sono ancora incompleti, utile dopo qualche
+mese perché MusicBrainz si arricchisce.
+**Mostra la musica con dati mancanti** elenca i brani a cui mancano autori, editore o un codice (codice opera,
+ISWC o ISRC): con **Scheda** li completi a mano.
+
 ## 6. Eventi a orario
 
 Scheda **Eventi** → **+ Nuovo evento**. Un evento esegue in ordine una serie di azioni a un orario.
@@ -138,7 +163,28 @@ La scheda **Registro** elenca tutto quello che è andato in onda, con orario, du
 autori e codice SIAE. Scegli le date e premi **Esporta CSV** (si apre con Excel).
 Il registro indica quanti brani non hanno autori o codice SIAE: completali dalla scheda brano.
 
-Il report SIAE nel formato del fac simile arriverà con la fase 7.
+La colonna **Fonte** dice da dove arriva ogni passaggio: **Regia**, **Diretta autonoma** o **Riserva del server**.
+I brani suonati dal server quando la regia non è in onda vengono scaricati dal ponte ogni 10 minuti (e prima di
+ogni report) e aggiunti al registro, una volta sola.
+
+### Report SIAE trimestrale
+
+In cima alla scheda **Registro** scegli anno e trimestre (di solito è già scelto quello appena finito):
+
+- vedi una riga per opera e interprete con il numero di **passaggi** nel trimestre;
+- contano solo i brani di **musica** (niente jingle, spot, notiziari) di tutte le fonti: regia, diretta autonoma
+  e musica di riserva del server. I passaggi della regia sotto i 30 secondi (brano saltato) non contano;
+- per i brani della libreria si usano i dati attuali della scheda brano, così le correzioni fatte dopo valgono
+  anche per i passaggi già andati in onda;
+- **Solo le opere con dati mancanti** mostra quelle senza autori, senza editore o senza nessun codice:
+  completale con **Scheda**. "solo server" indica un brano caricato dal pannello che non è nella libreria della
+  regia;
+- **Salva CSV per il portale SIAE** crea il file da caricare: separato da punto e virgola, con le colonne del fac
+  simile senza il prezzo di vendita: TITOLO OPERA, AUTORE, EDITORE, INTERPRETE, UTILIZZAZIONI, CODICE OPERA,
+  CODICE ISWC, CODICE ISRC.
+
+Se compare l'avviso "Brani suonati dal server non aggiornati", il ponte non era raggiungibile: il report contiene
+solo i brani del server scaricati finora. Riprova quando il ponte è collegato.
 
 ## 8. Impostazioni
 
@@ -435,6 +481,8 @@ Il ponte tiene gli ultimi 14.
 | Diretta video "in attesa del video da OBS" | OBS non è in trasmissione, oppure non raggiunge la porta UDP 9020 (indirizzo o frase segreta) |
 | "OBS manda 1920x1080" | in OBS, Impostazioni → Video: risoluzione di uscita 1280×720 |
 | "manca la chiave di YouTube/Facebook" | un amministratore deve inserirla nelle impostazioni delle dirette video |
+| "Ricerca fermata: MusicBrainz non raggiungibile" | la regia non ha internet o MusicBrainz è in manutenzione: riprova più tardi, riparte da dove era rimasta |
+| Nel report mancano i brani della notte | il ponte non era raggiungibile quando hai aperto il report: premi **Aggiorna** con il ponte collegato |
 
 ## 16. In arrivo
 
@@ -442,7 +490,7 @@ Prossime fasi (l'ordine può cambiare):
 
 - statistiche degli ascoltatori lette dagli Icecast (principale e secondario);
 - FluidStream, se un giorno servirà;
-- analisi della libreria stile MusicBrainz, report SIAE nel formato del fac simile e riconoscimento dei brani in onda (anche nelle esterne);
+- riconoscimento dei brani durante le dirette esterne, con archivio dei brani sconosciuti da etichettare dal pannello (fase 7b), poi un bot Telegram per etichettarli più in fretta;
 - registrazione della messa in onda e podcast, download automatico di notiziari, voce sintetica;
 - rotazioni generate dall'AI a partire da una descrizione del palinsesto.
 
@@ -456,3 +504,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Diretta autonoma dal server (dal pannello), libreria sul server con selezione automatica, copia su disco USB e invio notturno; disco della VM a 300 GB |
 | 15/11/2026 | Ospiti in diretta con un link: sala d'attesa, fai entrare, in onda, fino a 3 insieme, ritorno in cuffia per tutti |
 | 15/11/2026 | Server senza AzuraCast: Icecast principale e HTTPS automatico (Caddy) nella stessa VM; regia sulla porta 443; Icecast secondario con lo stesso segnale; musica di riserva quando nessuno è in diretta; dirette video su YouTube e Facebook (logo o OBS, massimo 720p) |
+| 15/11/2026 | Report SIAE trimestrale in CSV per il portale; brani della diretta autonoma e della riserva nel registro; autori, editore, ISWC e ISRC da MusicBrainz; elenco della musica con dati mancanti |

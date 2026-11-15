@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { PonteStatus } from '../main/ponte'
 import type { ServerSyncStatus } from '../main/serverSync'
+import type { MbStatus } from '../main/musicbrainz'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { LibraryStatus, RadioApi } from '../shared/api'
 
@@ -31,6 +32,18 @@ const api: RadioApi = {
   logEnd: call('logEnd'),
   listLog: call('listLog'),
   exportLogCsv: call('exportLogCsv'),
+  siaeReport: call('siaeReport'),
+  exportSiaeCsv: call('exportSiaeCsv'),
+  incompleteMusic: call('incompleteMusic'),
+  mbStatus: call('mbStatus'),
+  mbStart: call('mbStart'),
+  mbStop: call('mbStop'),
+  mbRetry: call('mbRetry'),
+  onMbStatus: (cb: (s: MbStatus) => void) => {
+    const listener = (_e: unknown, s: MbStatus): void => cb(s)
+    ipcRenderer.on('mbStatus', listener)
+    return () => ipcRenderer.removeListener('mbStatus', listener)
+  },
   onLibraryStatus: (cb: (s: LibraryStatus) => void) => {
     const listener = (_e: unknown, s: LibraryStatus): void => cb(s)
     ipcRenderer.on('libraryStatus', listener)
