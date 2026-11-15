@@ -82,7 +82,8 @@ Valori da compilare (le spiegazioni sono nel file):
 | `ICECAST_PASSWORD_SORGENTE`, `ICECAST_PASSWORD_ADMIN` | Password dell'Icecast principale (`openssl rand -hex 12`) |
 | `ICECAST_ESTERNO_*` | Facoltativi: dati dell'Icecast secondario (host, porta, mount, utente, password) |
 | `ESTERNA_PASSWORD` | Password per l'app delle dirette esterne (vuota = ingresso spento) |
-| `TELEGRAM_*`, `SMTP_*`, `EMAIL_*` | Facoltativi: dove ricevere gli allarmi |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SMTP_*`, `EMAIL_*` | Facoltativi: dove ricevere gli allarmi |
+| `TELEGRAM_ETICHETTE_TOKEN`, `TELEGRAM_ETICHETTE_CHAT_ID` | Facoltativi: bot della radio (brani sconosciuti da etichettare e menu in sola lettura) |
 
 ## 2. Avvio
 

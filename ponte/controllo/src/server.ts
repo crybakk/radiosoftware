@@ -58,8 +58,9 @@ import { AUDIO_EXT, Library } from './libreria.ts'
 import { AutonomousPlayer } from './autonoma.ts'
 import { VideoLive } from './video.ts'
 import { PlayLog, type PlaySource } from './registro.ts'
-import { FpStore, parseFpFile, UnknownStore } from './riconoscimento.ts'
+import { FpStore, parseFpFile, UnknownStore, type UnknownLabel } from './riconoscimento.ts'
 import { EsterneRecognition } from './esterne.ts'
+import { LabelBot, type Section } from './telegram.ts'
 import { activeSlot, Programs } from './programmi.ts'
 import { apiNowPlaying, icecastListeners, NowPlaying } from './nowplaying.ts'
 import { ListenerLog, period, readSecondary, report, type SecondaryConfig } from './ascoltatori.ts'
@@ -243,13 +244,122 @@ auto.onPlay = (t) => playLog.add({ source: 'autonoma', id: t.id, title: t.title,
 const fpStore = new FpStore(join(DATA_DIR, 'impronte'))
 const unknowns = new UnknownStore(join(DATA_DIR, 'sconosciuti'), fpStore.index)
 let lastUnknownAlert = 0
+
+/** Etichetta un brano sconosciuto (dal pannello o dal bot Telegram). */
+function labelUnknown(id: string, label: UnknownLabel, by: string): void {
+  const had = unknowns.get(id)?.label
+  const u = unknowns.setLabel(id, label)
+  // la prima volta: nel registro vanno tutti i passaggi già sentiti
+  if (!had && u.label) {
+    for (const at of u.heard) {
+      playLog.add({ at, source: 'esterna', id: u.id, title: u.label.title, artist: u.label.artist, duration: u.seconds, composer: u.label.composer, publisher: u.label.publisher })
+    }
+  }
+  console.log(`[riconoscimento] ${by} ha etichettato ${id}: ${u.label?.artist} - ${u.label?.title}`)
+}
+function discardUnknown(id: string, by: string): void {
+  unknowns.discard(id)
+  console.log(`[riconoscimento] ${by} ha scartato ${id}`)
+}
+
+/** Sezioni del menu del bot Telegram (solo lettura). */
+function botSections(): Section[] {
+  const n = (x: number): string => (Math.round(x * 10) / 10).toLocaleString('it-IT')
+  const hm = (t: number | string): string => new Date(t).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+  return [
+    {
+      key: 'onda',
+      label: '📻 In onda',
+      render: async () => {
+        const ls = (await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
+          .then((r) => r.json())
+          .catch(() => null)) as { studio?: boolean; esterna?: boolean; autonoma?: boolean; voce?: [string, boolean][] } | null
+        const st = alarms.status()
+        const lines: string[] = []
+        if (!ls) lines.push('⚠️ Il mixer del ponte non risponde.')
+        else if (ls.esterna) lines.push('📡 In onda: diretta esterna')
+        else if (ls.autonoma) lines.push('🤖 In onda: diretta autonoma')
+        else if (ls.studio) lines.push('🎚 In onda: regia dello studio')
+        else lines.push('🆘 In onda: flusso di emergenza (musica casuale dalla libreria)')
+        const voices = (ls?.voce ?? []).filter(([, on]) => on).map(([name]) => name)
+        if (voices.length) lines.push(`🎙 Voci in onda dal pannello: ${voices.join(', ')}`)
+        const cur = nowPlaying.current()
+        if (cur) lines.push(`🎵 ${cur.artist ? `${cur.artist} - ` : ''}${cur.title} (dalle ${hm(cur.at)})`)
+        lines.push(`Regia ${st.studioConnected ? 'collegata' : 'non collegata'} al ponte.`)
+        if (st.alarms.length) lines.push('', '🚨 Allarmi attivi:', ...st.alarms.map((a) => `• ${a.message} (dalle ${hm(a.since)})`))
+        else lines.push('Nessun allarme attivo.')
+        return lines.join('\n')
+      }
+    },
+    {
+      key: 'ascoltatori',
+      label: '🎧 Ascoltatori',
+      render: () => {
+        const now = listenerLog.latest()
+        const lines: string[] = []
+        if (now && Date.now() - now.t < 5 * 60_000) {
+          lines.push(`🎧 Adesso: ${now.a + (now.b ?? 0)}${now.b === null ? '' : ` (${now.a} sul principale, ${now.b} sul secondario)`}`)
+        } else lines.push('🎧 Adesso: non disponibile')
+        for (const kind of ['giorno', 'settimana'] as const) {
+          const p = period(kind, '')
+          const r = report(listenerLog.read(p.from, p.to), p.from, p.to, p.step, programs.list())
+          const peakAt = r.peakAt ? ` alle ${kind === 'giorno' ? hm(r.peakAt) : new Date(r.peakAt).toLocaleString('it-IT', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''
+          lines.push('', kind === 'giorno' ? 'Oggi:' : 'Questa settimana:', `picco ${r.peak}${peakAt}, media ${n(r.avg)}, ${n(r.hours)} ore di ascolto`)
+        }
+        return lines.join('\n')
+      }
+    },
+    {
+      key: 'puntate',
+      label: '🎙 Puntate',
+      render: () => {
+        const titles = new Map(programs.list().map((p) => [p.id, p.title]))
+        const eps = programs.episodes()
+        const rec = eps.filter((e) => e.status === 'registrazione')
+        const drafts = eps.filter((e) => e.status === 'bozza')
+        const lines: string[] = []
+        if (rec.length) lines.push('🔴 In registrazione:', ...rec.map((e) => `• ${titles.get(e.programId) ?? e.programId} (dalle ${hm(e.recordedFrom)})`), '')
+        if (drafts.length) {
+          lines.push('📝 Bozze da pubblicare (dal pannello):')
+          for (const e of drafts.slice(-15)) lines.push(`• ${titles.get(e.programId) ?? e.programId}: ${e.title} (${Math.round(e.length / 60)} min)`)
+        } else lines.push('Nessuna puntata da pubblicare.')
+        return lines.join('\n')
+      }
+    }
+  ]
+}
+
+// bot Telegram per etichettare (diverso da quello degli allarmi)
+let labelBot: LabelBot | null = null
+if (env('TELEGRAM_ETICHETTE_TOKEN') && env('TELEGRAM_ETICHETTE_CHAT_ID')) {
+  labelBot = new LabelBot({
+    token: env('TELEGRAM_ETICHETTE_TOKEN'),
+    chatId: env('TELEGRAM_ETICHETTE_CHAT_ID'),
+    stateFile: join(DATA_DIR, 'telegram-etichette.json'),
+    stationName: env('NOME_RADIO', 'Radio'),
+    get: (id) => unknowns.get(id),
+    pending: () => unknowns.list().filter((u) => !u.label),
+    labelled: () => unknowns.list().filter((u) => u.label),
+    sections: botSections(),
+    clipFile: (id) => unknowns.clipFile(id),
+    label: labelUnknown,
+    discard: discardUnknown
+  })
+  labelBot.start()
+}
+
 const esterne = new EsterneRecognition({
   fp: fpStore,
   unknowns,
   playLog,
   url: env('RICONOSCIMENTO_AUDIO_URL', 'http://liquidsoap:8093/programma'),
-  onUnknown: (n) => {
-    // un avviso ogni tanto, non a ogni brano
+  onUnknown: (n, u) => {
+    // con il bot delle etichette arriva subito l'audio da etichettare
+    if (labelBot) {
+      labelBot.sendUnknown(u).catch((e: unknown) => console.error(`[telegram] invio non riuscito: ${e instanceof Error ? e.message : String(e)}`))
+      return
+    }
+    // altrimenti un avviso ogni tanto, non a ogni brano
     if (Date.now() - lastUnknownAlert < 30 * 60_000) return
     lastUnknownAlert = Date.now()
     void notifier.send(`🎵 Diretta esterna: ${n} ${n === 1 ? 'brano sconosciuto' : 'brani sconosciuti'} da etichettare nel pannello (Brani sconosciuti).`)
@@ -753,24 +863,14 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         const body = await readJson(req, 8192)
         const id = String(body.id ?? '')
         if (body.azione === 'scarta') {
-          unknowns.discard(id)
-          console.log(`[riconoscimento] ${me.name} ha scartato ${id}`)
+          discardUnknown(id, me.name)
           return json(res, 200, { items: unknowns.list() })
         }
-        const had = unknowns.get(id)?.label
-        const u = unknowns.setLabel(id, {
-          title: String(body.title ?? ''),
-          artist: String(body.artist ?? ''),
-          composer: String(body.composer ?? ''),
-          publisher: String(body.publisher ?? '')
-        })
-        // la prima volta: nel registro vanno tutti i passaggi già sentiti
-        if (!had && u.label) {
-          for (const at of u.heard) {
-            playLog.add({ at, source: 'esterna', id: u.id, title: u.label.title, artist: u.label.artist, duration: u.seconds, composer: u.label.composer, publisher: u.label.publisher })
-          }
-        }
-        console.log(`[riconoscimento] ${me.name} ha etichettato ${id}: ${u.label?.artist} - ${u.label?.title}`)
+        labelUnknown(
+          id,
+          { title: String(body.title ?? ''), artist: String(body.artist ?? ''), composer: String(body.composer ?? ''), publisher: String(body.publisher ?? '') },
+          me.name
+        )
         return json(res, 200, { items: unknowns.list() })
       }
       return json(res, 404, { error: 'non trovato' })
@@ -1053,6 +1153,7 @@ internalServer.listen(INTERNAL_PORT, () => console.log(`Eventi interni sulla por
 
 const shutdown = async (): Promise<void> => {
   video?.stop()
+  labelBot?.stop()
   await recorder?.stop().catch(() => {})
   publicServer.close()
   internalServer.close()
