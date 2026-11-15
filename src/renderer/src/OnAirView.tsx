@@ -36,7 +36,7 @@ function PreviewButton({ radio, track }: { radio: Radio; track: Track }) {
       title="Preascolto in cuffia"
       onClick={async () => {
         if (active) radio.preview.stop()
-        else await radio.preview.play(window.radio.mediaUrl(track.id), track.id, track.cueIn)
+        else await radio.preview.play(window.radio.mediaUrl(track), track.id, track.cueIn)
         force((n) => n + 1)
       }}
     >
@@ -120,12 +120,12 @@ export function OnAirView({ radio }: { radio: Radio }) {
                   <div className="t-artist">
                     {q.track.artist}
                     {q.track.kind !== 'music' && <span className="tag">{KIND_LABEL[q.track.kind]}</span>}
-                    {q.origin === 'event' && <span className="tag event">Evento</span>}
+                    {q.origin === 'event' && <span className="tag event">{q.eventLabel || 'Evento'}</span>}
                   </div>
                 </div>
                 <div className="t-dur">{mmss(q.track.duration)}</div>
                 <div className="t-actions">
-                  <PreviewButton radio={radio} track={q.track} />
+                  {q.track.id > 0 && <PreviewButton radio={radio} track={q.track} />}
                   <button className="small" disabled={i === 0} onClick={() => engine.move(q.uid, -1)} title="Su">
                     ▲
                   </button>

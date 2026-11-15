@@ -2,14 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PlayoutEngine, type PlayoutHost, type PlayoutSnapshot } from '../../core/playout'
 import type { ScheduledEvent, Settings, Track } from '../../core/types'
 import { DEFAULT_SETTINGS } from '../../core/types'
+import type { PonteStatus } from '../../main/ponte'
 import { PreviewPlayer, WebAudioBackend } from './audio'
+import { UplinkCapture } from './uplinkCapture'
 
 const api = window.radio
 
 /** Crea una sola volta motore, uscita audio e preascolto, e li tiene allineati alle impostazioni. */
 export function useRadio() {
-  const backend = useMemo(() => new WebAudioBackend((id) => api.mediaUrl(id)), [])
+  const backend = useMemo(() => new WebAudioBackend((t) => api.mediaUrl(t)), [])
   const preview = useMemo(() => new PreviewPlayer(), [])
+  const capture = useMemo(() => new UplinkCapture(backend.ctx, backend.master, (pcm) => api.sendPcm(pcm)), [backend])
   const engineRef = useRef<PlayoutEngine | null>(null)
   if (!engineRef.current) {
     const host: PlayoutHost = {
@@ -18,9 +21,14 @@ export function useRadio() {
           upcoming.map((u) => ({ trackId: u.track.id, at: u.at.toISOString() })),
           count
         ),
-      logStart: (track, at) => api.logStart(track.id, at.toISOString()),
+      logStart: (track, at) => api.logStart(track, at.toISOString()),
       logEnd: (id, at, seconds) => api.logEnd(id, at.toISOString(), seconds),
-      resolveTrack: (id) => api.getTrack(id)
+      expandEvent: async (event) => {
+        const steps = await api.expandEvent(event)
+        // un evento può aver cambiato il profilo di rotazione
+        if (event.actions.some((a) => a.type === 'rotation')) setSettings(await api.getSettings())
+        return steps
+      }
     }
     engineRef.current = new PlayoutEngine(backend, host, {
       crossfadeSeconds: DEFAULT_SETTINGS.crossfadeSeconds,
@@ -35,6 +43,51 @@ export function useRadio() {
   const [events, setEvents] = useState<ScheduledEvent[]>([])
   const [cartTracks, setCartTracks] = useState<(Track | null)[]>(Array(12).fill(null))
   const [audioError, setAudioError] = useState<string | null>(null)
+  const [ponte, setPonte] = useState<PonteStatus | null>(null)
+  const [captureError, setCaptureError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void api.ponteStatus().then(setPonte)
+    return api.onPonteStatus(setPonte)
+  }, [])
+
+  // stato della regia per il ponte (segnale di vita)
+  const main = snapshotMain(snapshot)
+  useEffect(() => {
+    void api.ponteReport(main)
+  }, [main.mode, main.onAir, main.artist, main.title]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // cattura dell'audio da inviare: segue le impostazioni del ponte
+  const captureKey = JSON.stringify([settings.ponte.enabled, settings.ponte.source, settings.ponte.inputDeviceId])
+  useEffect(() => {
+    let cancelled = false
+    const p = settings.ponte
+    if (!p.enabled) {
+      capture.stop()
+      void api.ponteCapture(false, 0)
+      setCaptureError(null)
+      return
+    }
+    capture
+      .start(p)
+      .then(() => {
+        if (cancelled) return
+        setCaptureError(null)
+        return api.ponteCapture(true, backend.ctx.sampleRate)
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return
+        void api.ponteCapture(false, 0)
+        setCaptureError(
+          p.source === 'ingresso'
+            ? `Ingresso audio per il ponte non disponibile (${e instanceof Error ? e.message : String(e)})`
+            : `Invio al ponte non avviato: ${e instanceof Error ? e.message : String(e)}`
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [captureKey, capture, backend]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ciclo del motore
   useEffect(() => {
@@ -93,7 +146,12 @@ export function useRadio() {
     [applySettings]
   )
 
-  return { engine, backend, preview, snapshot, settings, saveSettings, events, reloadEvents, cartTracks, audioError }
+  return { engine, backend, preview, snapshot, settings, saveSettings, events, reloadEvents, cartTracks, audioError, ponte, captureError }
 }
 
 export type Radio = ReturnType<typeof useRadio>
+
+function snapshotMain(s: PlayoutSnapshot): { mode: 'auto' | 'manual'; onAir: boolean; artist: string; title: string } {
+  const cur = s.onAir.at(-1)
+  return { mode: s.mode, onAir: !!cur, artist: cur?.track.artist ?? '', title: cur?.track.title ?? '' }
+}

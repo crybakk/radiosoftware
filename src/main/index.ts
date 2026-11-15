@@ -1,13 +1,16 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
+import { spawn } from 'node:child_process'
+import { expandEvent } from '../core/eventActions'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ffmpegStatic from 'ffmpeg-static'
 import { logToCsv } from '../core/csv'
 import { RadioDb, type TrackEdit, type TrackSearch } from '../core/db'
 import { RotationService } from '../core/rotationService'
-import type { ScheduledEvent, Settings, TrackKind } from '../core/types'
+import type { ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
 import { LibraryService } from './library'
 import { serveFile } from './media'
+import { applyPendingRestore, PonteService, type StudioReport } from './ponte'
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'media', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }
@@ -61,12 +64,39 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(() => {
+  let restoredFrom: string | null = null
+  try {
+    restoredFrom = applyPendingRestore(app.getPath('userData'))
+  } catch (e) {
+    dialog.showErrorBox('Ripristino non riuscito', e instanceof Error ? e.message : String(e))
+  }
   const db = new RadioDb(join(app.getPath('userData'), 'radio.db'))
   db.closeDanglingLog(new Date())
   const library = new LibraryService(db, ffmpegPath())
   const rotation = new RotationService(db)
+  const ponte = new PonteService(db, app.getPath('userData'), ffmpegPath())
+  ponte.applySettings(db.getSettings().ponte)
 
-  protocol.handle('media', (request) => {
+  protocol.handle('media', async (request) => {
+    const url = new URL(request.url)
+    if (url.host === 'stream') {
+      // flusso esterno: lo inoltriamo noi, così il browser non ha problemi di CORS
+      const target = decodeURIComponent(url.pathname.replace(/^\//, ''))
+      if (!/^https?:\/\//i.test(target)) return new Response('Indirizzo non valido', { status: 400 })
+      try {
+        const upstream = await net.fetch(target, { headers: { 'Icy-MetaData': '0' } })
+        return new Response(upstream.body, {
+          status: upstream.status,
+          headers: {
+            'Content-Type': upstream.headers.get('content-type') ?? 'audio/mpeg',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store'
+          }
+        })
+      } catch {
+        return new Response('Flusso non raggiungibile', { status: 502 })
+      }
+    }
     const id = Number(new URL(request.url).pathname.replace(/^\//, ''))
     const track = Number.isFinite(id) ? db.getTrack(id) : null
     if (!track) return new Response('Brano non trovato', { status: 404 })
@@ -104,7 +134,11 @@ app.whenReady().then(() => {
 
   // impostazioni
   handle('getSettings', () => db.getSettings())
-  handle('saveSettings', (patch: Partial<Settings>) => db.saveSettings(patch))
+  handle('saveSettings', (patch: Partial<Settings>) => {
+    const s = db.saveSettings(patch)
+    if (patch.ponte) ponte.applySettings(s.ponte)
+    return s
+  })
 
   // eventi
   handle('listEvents', () => db.listEvents())
@@ -125,9 +159,30 @@ app.whenReady().then(() => {
       .map((u) => ({ track: tracks.get(u.trackId)!, at: new Date(u.at) }))
     return rotation.fill(planned, count)
   })
-  handle('logStart', (trackId: number, at: string) => {
-    const t = db.getTrack(trackId)
-    return t ? db.logStart(t, new Date(at)) : -1
+  handle('logStart', (track: Track, at: string) => {
+    // per i brani della libreria usiamo i dati aggiornati del database (autori, codici SIAE)
+    const t = track.id > 0 ? (db.getTrack(track.id) ?? track) : track
+    ponte.onTrackStart(t)
+    return db.logStart(t, new Date(at), track.id > 0 ? 'regia' : 'flusso esterno')
+  })
+  handle('expandEvent', (event: ScheduledEvent) =>
+    expandEvent(db, event, {
+      now: () => new Date(),
+      runCommand: (command) => {
+        const child = spawn(command, { shell: true, detached: true, windowsHide: true, stdio: 'ignore' })
+        child.on('error', () => {})
+        child.unref()
+      }
+    })
+  )
+  handle('listGenres', () => db.listGenres())
+  handle('choosePath', async (kind: 'playlist' | 'folder') => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: kind === 'folder' ? 'Scegli una cartella' : 'Scegli una playlist',
+      properties: kind === 'folder' ? ['openDirectory'] : ['openFile'],
+      filters: kind === 'folder' ? undefined : [{ name: 'Playlist', extensions: ['m3u', 'm3u8', 'pls'] }]
+    })
+    return res.canceled ? null : (res.filePaths[0] ?? null)
   })
   handle('logEnd', (logId: number, at: string, seconds: number) => {
     if (logId > 0) db.logEnd(logId, new Date(at), seconds)
@@ -145,6 +200,23 @@ app.whenReady().then(() => {
     return res.filePath
   })
 
+  // ponte
+  handle('ponteStatus', () => ponte.getStatus())
+  handle('ponteCapture', (active: boolean, sampleRate: number) => ponte.setCapture(active, sampleRate))
+  handle('ponteReport', (r: StudioReport) => ponte.setReport(r))
+  handle('ponteBackupNow', () => ponte.backupNow())
+  handle('ponteListBackups', () => ponte.listBackups())
+  handle('ponteState', () => ponte.remoteState())
+  handle('ponteTestNotification', () => ponte.testNotification())
+  handle('ponteRestore', async (name: string) => {
+    await ponte.prepareRestore(name)
+    app.relaunch()
+    app.quit()
+  })
+  handle('restoredFrom', () => restoredFrom)
+  ipcMain.on('uplink:pcm', (_e, pcm: Uint8Array) => ponte.writePcm(pcm))
+  ponte.onStatus((s) => win?.webContents.send('ponteStatus', s))
+
   library.onStatus((s) => win?.webContents.send('libraryStatus', s))
 
   createWindow()
@@ -153,6 +225,7 @@ app.whenReady().then(() => {
 
   app.on('before-quit', () => {
     library.stop()
+    ponte.stop()
     db.closeDanglingLog(new Date())
   })
 })

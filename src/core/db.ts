@@ -1,6 +1,8 @@
 import { DatabaseSync } from 'node:sqlite'
 import {
+  DEFAULT_PONTE,
   DEFAULT_SETTINGS,
+  type EventAction,
   type LibraryFolder,
   type LogEntry,
   type ScheduledEvent,
@@ -57,6 +59,21 @@ CREATE TABLE IF NOT EXISTS events (
   mode TEXT NOT NULL DEFAULT 'soft',
   enabled INTEGER NOT NULL DEFAULT 1,
   label TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS schedule (
+  id INTEGER PRIMARY KEY,
+  label TEXT NOT NULL DEFAULT '',
+  time TEXT NOT NULL,
+  days TEXT NOT NULL DEFAULT '0,1,2,3,4,5,6',
+  repeat_minutes INTEGER NOT NULL DEFAULT 0,
+  until_time TEXT,
+  valid_from TEXT,
+  valid_to TEXT,
+  mode TEXT NOT NULL DEFAULT 'soft',
+  tolerance_seconds INTEGER NOT NULL DEFAULT 0,
+  actions TEXT NOT NULL DEFAULT '[]',
+  enabled INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS play_log (
@@ -211,6 +228,29 @@ export class RadioDb {
   constructor(file: string) {
     this.db = new DatabaseSync(file)
     this.db.exec(SCHEMA)
+    this.migrate()
+  }
+
+  /** Porta i dati delle versioni precedenti al formato attuale. */
+  private migrate(): void {
+    // v0.1: eventi con un solo brano (tabella "events") → eventi con azioni (tabella "schedule")
+    const old = this.db.prepare('SELECT * FROM events').all() as Row[]
+    if (old.length) {
+      const ins = this.db.prepare(
+        'INSERT INTO schedule(label, time, days, mode, actions, enabled) VALUES (?,?,?,?,?,?)'
+      )
+      for (const r of old) {
+        ins.run(
+          String(r.label),
+          String(r.time),
+          String(r.days),
+          String(r.mode),
+          JSON.stringify([{ type: 'play', trackId: Number(r.track_id) }]),
+          Number(r.enabled)
+        )
+      }
+      this.db.exec('DELETE FROM events')
+    }
   }
 
   close(): void {
@@ -236,7 +276,14 @@ export class RadioDb {
       if (Array.isArray(out.cartwall)) out.cartwall.slice(0, 12).forEach((v, i) => (cw[i] = v))
       out.cartwall = cw
     }
+    // campi aggiunti nelle versioni successive: completati con i predefiniti
+    out.ponte = { ...DEFAULT_PONTE, ...(out.ponte && typeof out.ponte === 'object' ? out.ponte : {}) }
     return out
+  }
+
+  /** Copia coerente del database in un file nuovo (anche mentre la regia è in onda). */
+  backupTo(path: string): void {
+    this.db.prepare('VACUUM INTO ?').run(path)
   }
 
   saveSettings(patch: Partial<Settings>): Settings {
@@ -447,37 +494,123 @@ export class RadioDb {
   // ---------- eventi ----------
 
   listEvents(): ScheduledEvent[] {
-    return (this.db.prepare("SELECT * FROM events ORDER BY CASE WHEN time LIKE '*%' THEN 0 ELSE 1 END, time").all() as Row[]).map((r) => ({
-      id: Number(r.id),
-      time: String(r.time),
-      days: String(r.days)
-        .split(',')
-        .filter((d) => d !== '')
-        .map(Number),
-      trackId: Number(r.track_id),
-      mode: r.mode === 'hard' ? 'hard' : 'soft',
-      enabled: Number(r.enabled) === 1,
-      label: String(r.label)
-    }))
+    const rows = this.db
+      .prepare("SELECT * FROM schedule ORDER BY CASE WHEN time LIKE '*%' THEN 0 ELSE 1 END, time")
+      .all() as Row[]
+    return rows.map((r) => {
+      let actions: EventAction[] = []
+      try {
+        actions = JSON.parse(String(r.actions))
+      } catch {
+        actions = []
+      }
+      return {
+        id: Number(r.id),
+        label: String(r.label),
+        time: String(r.time),
+        days: String(r.days)
+          .split(',')
+          .filter((d) => d !== '')
+          .map(Number),
+        repeatMinutes: Number(r.repeat_minutes),
+        untilTime: r.until_time == null ? null : String(r.until_time),
+        validFrom: r.valid_from == null ? null : String(r.valid_from),
+        validTo: r.valid_to == null ? null : String(r.valid_to),
+        mode: r.mode === 'hard' ? 'hard' : 'soft',
+        toleranceSeconds: Number(r.tolerance_seconds),
+        actions,
+        enabled: Number(r.enabled) === 1
+      }
+    })
   }
 
   saveEvent(e: Omit<ScheduledEvent, 'id'> & { id?: number }): number {
-    if (!/^([01]\d|2[0-3]|\*):[0-5]\d$/.test(e.time)) throw new Error('Orario non valido, usa HH:MM')
+    validateEvent(e)
     const days = e.days.filter((d) => d >= 0 && d <= 6).join(',')
+    const values = [
+      e.label,
+      e.time,
+      days,
+      Math.max(0, Math.round(e.repeatMinutes || 0)),
+      e.untilTime || null,
+      e.validFrom || null,
+      e.validTo || null,
+      e.mode,
+      Math.max(0, Math.round(e.toleranceSeconds || 0)),
+      JSON.stringify(e.actions),
+      e.enabled ? 1 : 0
+    ]
     if (e.id) {
       this.db
-        .prepare('UPDATE events SET time=?, days=?, track_id=?, mode=?, enabled=?, label=? WHERE id=?')
-        .run(e.time, days, e.trackId, e.mode, e.enabled ? 1 : 0, e.label, e.id)
+        .prepare(
+          `UPDATE schedule SET label=?, time=?, days=?, repeat_minutes=?, until_time=?, valid_from=?, valid_to=?,
+             mode=?, tolerance_seconds=?, actions=?, enabled=? WHERE id=?`
+        )
+        .run(...values, e.id)
       return e.id
     }
     const res = this.db
-      .prepare('INSERT INTO events(time, days, track_id, mode, enabled, label) VALUES (?,?,?,?,?,?)')
-      .run(e.time, days, e.trackId, e.mode, e.enabled ? 1 : 0, e.label)
+      .prepare(
+        `INSERT INTO schedule(label, time, days, repeat_minutes, until_time, valid_from, valid_to, mode,
+           tolerance_seconds, actions, enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+      )
+      .run(...values)
     return Number(res.lastInsertRowid)
   }
 
   deleteEvent(id: number): void {
-    this.db.prepare('DELETE FROM events WHERE id = ?').run(id)
+    this.db.prepare('DELETE FROM schedule WHERE id = ?').run(id)
+  }
+
+  /** Brano casuale che rispetta i filtri, evitando quelli andati in onda di recente se possibile. */
+  randomTrack(f: { kind?: TrackKind | ''; folder?: string; genre?: string }, avoidSince?: Date): Track | null {
+    const where = ['enabled = 1']
+    const params: (string | number)[] = []
+    if (f.kind) {
+      where.push('kind = ?')
+      params.push(f.kind)
+    }
+    if (f.folder) {
+      where.push("path LIKE ? ESCAPE '\\'")
+      const prefix = f.folder.replace(/[\\/]+$/, '')
+      params.push(`${prefix.replace(/[\\%_]/g, (c) => '\\' + c)}%`)
+    }
+    if (f.genre) {
+      where.push("genre LIKE ? ESCAPE '\\'")
+      params.push(`%${f.genre.replace(/[\\%_]/g, (c) => '\\' + c)}%`)
+    }
+    const clause = where.join(' AND ')
+    if (avoidSince) {
+      const r = this.db
+        .prepare(
+          `SELECT * FROM tracks WHERE ${clause} AND id NOT IN
+             (SELECT track_id FROM play_log WHERE track_id IS NOT NULL AND started_at >= ?)
+           ORDER BY random() LIMIT 1`
+        )
+        .get(...params, avoidSince.toISOString()) as Row | undefined
+      if (r) return rowToTrack(r)
+    }
+    const r = this.db.prepare(`SELECT * FROM tracks WHERE ${clause} ORDER BY random() LIMIT 1`).get(...params) as
+      | Row
+      | undefined
+    return r ? rowToTrack(r) : null
+  }
+
+  findByPath(path: string, caseInsensitive = false): Track | null {
+    const r = this.db
+      .prepare(`SELECT * FROM tracks WHERE path = ? ${caseInsensitive ? 'COLLATE NOCASE' : ''} LIMIT 1`)
+      .get(path) as Row | undefined
+    return r ? rowToTrack(r) : null
+  }
+
+  /** Generi presenti nella libreria (per i menu delle regole di rotazione). */
+  listGenres(): string[] {
+    const rows = this.db
+      .prepare("SELECT DISTINCT genre FROM tracks WHERE enabled = 1 AND genre != '' ORDER BY genre COLLATE NOCASE")
+      .all() as Row[]
+    const set = new Set<string>()
+    for (const r of rows) for (const g of String(r.genre).split(/[,;/]/)) if (g.trim()) set.add(g.trim())
+    return [...set].sort((a, b) => a.localeCompare(b, 'it'))
   }
 
   // ---------- registro di trasmissione ----------
@@ -489,7 +622,7 @@ export class RadioDb {
          VALUES (?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
-        track.id,
+        track.id > 0 ? track.id : null,
         startedAt.toISOString(),
         source,
         track.title,
@@ -539,5 +672,25 @@ export class RadioDb {
         `UPDATE play_log SET ended_at = ? WHERE ended_at IS NULL`
       )
       .run(now.toISOString())
+  }
+}
+
+const HM = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/** Controlla un evento prima di salvarlo; gli errori sono in italiano per l'interfaccia. */
+export function validateEvent(e: Omit<ScheduledEvent, 'id'>): void {
+  if (!/^([01]\d|2[0-3]|\*):[0-5]\d$/.test(e.time)) throw new Error('Orario non valido, usa HH:MM')
+  if (e.untilTime && !HM.test(e.untilTime)) throw new Error('Orario di fine ripetizioni non valido')
+  if (e.validFrom && e.validTo && e.validFrom > e.validTo) throw new Error('La data di inizio è dopo quella di fine')
+  if (!e.days.length) throw new Error('Scegli almeno un giorno')
+  if (!e.actions.length) throw new Error("Aggiungi almeno un'azione")
+  for (const a of e.actions) {
+    if (a.type === 'play' && !a.trackId) throw new Error('Scegli il brano da suonare')
+    if (a.type === 'playlist' && !a.path.trim()) throw new Error('Indica il file della playlist')
+    if (a.type === 'stream') {
+      if (!/^https?:\/\//i.test(a.url.trim())) throw new Error("L'indirizzo del flusso deve iniziare con http:// o https://")
+      if (!(a.minutes > 0)) throw new Error('Indica per quanti minuti trasmettere il flusso')
+    }
+    if (a.type === 'command' && !a.command.trim()) throw new Error('Scrivi il comando da eseguire')
   }
 }

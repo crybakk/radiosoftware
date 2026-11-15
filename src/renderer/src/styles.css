@@ -166,3 +166,35 @@ label.inline { display: flex; align-items: center; gap: 6px; }
 .table tr.disabled td { opacity: 0.5; }
 .table td.missing { color: var(--amber); }
 .log-view .panel.grow { overflow-y: auto; }
+
+/* Eventi */
+.modal-body.wide { width: min(1100px, 95vw); }
+.subsection { margin: 14px 0 6px; font-weight: 700; color: var(--text); border-top: 1px solid var(--line); padding-top: 10px; }
+.form-grid.three { grid-template-columns: repeat(3, 1fr); }
+.row.tight { margin: 0; flex-wrap: nowrap; }
+.row.tight input { flex: 1; min-width: 0; }
+.action-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.action-list > li { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.action-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.action-summary { margin: 0; padding-left: 18px; font-size: 13px; }
+.upcoming { margin-bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.inline-banner { border-radius: 8px; margin-bottom: 10px; display: flex; gap: 10px; align-items: center; }
+.inline-banner button { margin-left: auto; }
+label.block { display: flex; flex-direction: column; gap: 4px; }
+.queue-list .tag.event { white-space: nowrap; }
+.form-grid > * { min-width: 0; }
+
+/* Collegamento */
+.link-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0; }
+.dot { width: 14px; height: 14px; border-radius: 50%; background: #444b57; flex: none; }
+.dot.ok { background: var(--green); box-shadow: 0 0 8px rgba(34, 197, 94, 0.6); }
+.dot.warn { background: var(--amber); }
+.dot.bad { background: var(--red); }
+.link-pill { font-weight: 700; font-size: 13px; letter-spacing: 0.5px; }
+.link-pill.ok { border-color: var(--green); color: #86efac; }
+.link-pill.warn { border-color: var(--amber); color: #fde68a; }
+.link-pill.bad { background: var(--red); border-color: var(--red); color: white; }
+.alarm-list { list-style: none; padding: 0; margin: 6px 0; color: #fecaca; }
+.alarm-list li { padding: 4px 0; }
+.banner.ok { background: #12351f; color: #bbf7d0; }
+.banner.inline-banner { padding: 8px 12px; }
