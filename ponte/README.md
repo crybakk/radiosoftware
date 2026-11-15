@@ -139,6 +139,12 @@ API pubbliche, con gli stessi indirizzi e lo stesso formato delle API pubbliche 
 - `GET /api/station/<nome breve>/public/podcast/<programma>/episode/<puntata>` e `.../download.mp3` (audio in
   streaming, con Range)
 
+Titolo in onda, sempre come AzuraCast: `GET /api/nowplaying`, `/api/nowplaying/<nome breve>` e
+`/api/nowplaying_static/<nome breve>.json` (brano in onda con durata, ultimi 5 brani, ascoltatori letti
+dall'Icecast principale, diretta esterna come "live"), più `/api/station/<nome breve>/playlist.m3u|pls`.
+L'immagine dei brani è la copertina del programma in onda, altrimenti il logo caricato per le dirette video
+(`/api/logo`).
+
 Il nome breve si imposta dal pannello (Programmi → Impostazioni); al posto del nome breve va bene anche `1`.
 Non c'è il feed RSS (niente Spotify o Apple Podcasts).
 

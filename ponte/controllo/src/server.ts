@@ -25,6 +25,8 @@
  *   GET/PUT /api/video/logo   immagine delle dirette video su YouTube e Facebook (conduttori)
  *   GET/POST /api/sconosciuti, GET /api/sconosciuti/clip?id=   brani non riconosciuti nelle esterne (etichette)
  *
+ * Titolo in onda come AzuraCast (senza accesso): GET /api/nowplaying, /api/nowplaying/<stazione>,
+ *   /api/nowplaying_static/<stazione>.json, /api/station/<stazione>/playlist.m3u|pls, GET /api/logo
  * Programmi e puntate on demand: vedi programmiApi.ts (API pubbliche come quelle dei podcast di AzuraCast,
  *   pagine ascolta.html e podcast.html, gestione dal pannello, ultime puntate per le repliche della regia).
  *
@@ -57,7 +59,8 @@ import { VideoLive } from './video.ts'
 import { PlayLog, type PlaySource } from './registro.ts'
 import { FpStore, parseFpFile, UnknownStore } from './riconoscimento.ts'
 import { EsterneRecognition } from './esterne.ts'
-import { Programs } from './programmi.ts'
+import { activeSlot, Programs } from './programmi.ts'
+import { apiNowPlaying, icecastListeners, NowPlaying } from './nowplaying.ts'
 import { Recorder } from './puntate.ts'
 import { handleProgramApi } from './programmiApi.ts'
 
@@ -228,6 +231,10 @@ const logPlay = (source: PlaySource, file: string): void => {
   if (!t) return console.log(`[registro] ${source}: brano non in libreria ${file}`)
   playLog.add({ source, id: t.id, title: t.title, artist: t.artist, duration: t.duration })
 }
+// titolo in onda per le app (formato AzuraCast): ogni brano del registro, più i metadati della regia
+const nowPlaying = new NowPlaying()
+playLog.onAdd = (e) => nowPlaying.set({ artist: e.artist, title: e.title, duration: e.duration, at: Date.parse(e.at), source: e.source })
+let esternaSince: number | null = null
 auto.onPlay = (t) => playLog.add({ source: 'autonoma', id: t.id, title: t.title, artist: t.artist, duration: t.duration })
 // ---------- riconoscimento dei brani nelle dirette esterne ----------
 
@@ -284,6 +291,68 @@ if (env('REGISTRAZIONE_PUNTATE', 'si') !== 'no') {
     }
   })
   recorder.start()
+}
+
+// ---------- titolo in onda come AzuraCast ----------
+
+const ICECAST_INTERNO = env('ICECAST_INTERNO', 'http://icecast:8000')
+const MOUNT = env('ICECAST_MOUNT', '/radio.mp3')
+let icecastCache = { at: 0, listeners: 0, online: true }
+async function icecastStatus(): Promise<{ listeners: number; online: boolean }> {
+  if (Date.now() - icecastCache.at < 15_000) return icecastCache
+  const st = await fetch(`${ICECAST_INTERNO}/status-json.xsl`, { signal: AbortSignal.timeout(3000) })
+    .then((r) => r.json())
+    .catch(() => null)
+  // Icecast non raggiungibile: si dice "in onda" (il ponte manda sempre qualcosa) e 0 ascoltatori
+  icecastCache = { at: Date.now(), ...(st ? icecastListeners(st, MOUNT) : { listeners: 0, online: true }) }
+  return icecastCache
+}
+
+async function handleNowPlaying(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+  const p = url.pathname
+  const st = programs.settings().station
+  const isStation = (s: string): boolean => s === st || s === '1'
+  const m = /^\/api\/(?:nowplaying(?:\/([^/]+))?|nowplaying_static\/([^/]+)\.json|station\/([^/]+)\/playlist\.(m3u|pls)|logo)$/.exec(p)
+  if (!m || (req.method !== 'GET' && req.method !== 'HEAD')) return false
+  const cors = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-cache' }
+  if (p === '/api/logo') {
+    const f = logoFile()
+    if (!f) return json(res, 404, { error: 'nessun logo' }), true
+    res.writeHead(200, { ...cors, 'Content-Type': f.endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'public, max-age=600' })
+    createReadStream(f).pipe(res)
+    return true
+  }
+  if (m[3]) {
+    if (!isStation(m[3])) return json(res, 404, { error: 'stazione non trovata' }), true
+    const name = env('NOME_RADIO', 'Radio')
+    const body = m[4] === 'm3u' ? `#EXTM3U\n#EXTINF:-1,${name}\n${LISTEN_URL}\n` : `[playlist]\nFile1=${LISTEN_URL}\nTitle1=${name}\nLength1=-1\nNumberOfEntries=1\nVersion=2\n`
+    res.writeHead(200, { ...cors, 'Content-Type': m[4] === 'm3u' ? 'audio/x-mpegurl' : 'audio/x-scpls', 'Content-Disposition': `attachment; filename="${st}.${m[4]}"` })
+    res.end(body)
+    return true
+  }
+  const which = m[1] ?? m[2]
+  if (which !== undefined && !isStation(which)) return json(res, 404, { error: 'stazione non trovata' }, cors), true
+  const base = `${tls || viaHttps(req) ? 'https' : 'http'}://${req.headers.host ?? 'localhost'}`
+  const ice = await icecastStatus()
+  const now = Date.now()
+  const prog = programs.list().find((x) => activeSlot(x.slots, new Date(now)))
+  const progArt = prog?.art ? `${base}/api/station/${st}/public/podcast/${prog.id}/art-${prog.artUpdatedAt}.jpg` : ''
+  const data = apiNowPlaying(nowPlaying, {
+    base,
+    station: st,
+    name: env('NOME_RADIO', 'Radio'),
+    description: env('DESCRIZIONE_RADIO'),
+    listenUrl: LISTEN_URL,
+    mount: MOUNT,
+    bitrate: num('ICECAST_BITRATE', 128),
+    listeners: ice.listeners,
+    online: ice.online,
+    live: { isLive: esternaSince !== null, streamer: esternaSince !== null ? (prog?.title ?? 'Diretta esterna') : '', since: esternaSince },
+    art: progArt || (logoFile() ? `${base}/api/logo` : ''),
+    now
+  })
+  json(res, 200, p === '/api/nowplaying' ? [data] : data, cors)
+  return true
 }
 
 // ---------- dirette video (YouTube, Facebook) ----------
@@ -388,9 +457,9 @@ function viaHttps(req: IncomingMessage): boolean {
   return TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https'
 }
 
-function json(res: ServerResponse, status: number, body: unknown): void {
+function json(res: ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}): void {
   const data = JSON.stringify(body)
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(data) })
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(data), ...extra })
   res.end(data)
 }
 
@@ -540,6 +609,9 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       return json(res, 404, { error: 'non trovato' })
     }
     if (!url.pathname.startsWith('/api/')) return json(res, 404, { error: 'non trovato' })
+
+    // --- titolo in onda e ascolto (pubblici, come AzuraCast) ---
+    if (await handleNowPlaying(req, res, url)) return
 
     // --- programmi e puntate (pubbliche, pannello, regia) ---
     if (
@@ -696,6 +768,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       const artist = String(body.artist ?? '').slice(0, 300)
       const title = String(body.title ?? '').slice(0, 300)
       lastMetadata = { artist, title, at: new Date().toISOString() }
+      nowPlaying.set({ artist, title, duration: Number(body.duration) || 0, at: Date.now(), source: 'regia' })
       const r = await fetch(`${LIQUIDSOAP}/metadata`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -917,6 +990,8 @@ const internalServer = createServer(async (req, res) => {
       else {
         if (riconoscimentoAttivo && kind === 'esterna_collegata') esterne.setActive(true)
         if (kind === 'esterna_scollegata') esterne.setActive(false)
+        if (kind === 'esterna_collegata') esternaSince = Date.now()
+        if (kind === 'esterna_scollegata') esternaSince = null
         alarms.onEvent(kind, String(body.detail ?? ''))
       }
       return json(res, 200, { ok: true })

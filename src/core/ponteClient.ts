@@ -73,8 +73,8 @@ export class PonteClient {
     return j.alarms ?? []
   }
 
-  async metadata(artist: string, title: string): Promise<void> {
-    await this.request('POST', '/api/metadata', JSON.stringify({ artist, title }), 'application/json', 5000)
+  async metadata(artist: string, title: string, duration = 0): Promise<void> {
+    await this.request('POST', '/api/metadata', JSON.stringify({ artist, title, duration }), 'application/json', 5000)
   }
 
   async state(): Promise<PonteState> {
