@@ -16,7 +16,7 @@ AzuraCast ma al ponte, che le manda in onda al posto della regia e, quando finis
 ## Installazione rapida su Proxmox (VM nuova)
 
 1. Copia `proxmox/crea-vm.sh` sul nodo Proxmox ed eseguilo come root: `bash crea-vm.sh`.
-   Crea una VM Ubuntu 24.04 con 4 core, 8 GB di RAM e 150 GB di disco, che parte da sola insieme a Proxmox.
+   Crea una VM Ubuntu 24.04 con 4 core, 8 GB di RAM e 300 GB di disco (la selezione della libreria per la diretta autonoma occupa circa 100 GB), che parte da sola insieme a Proxmox.
    Per indirizzo fisso, storage o dimensioni diverse: `IP=192.168.1.50/24 GATEWAY=192.168.1.1 STORAGE=local-lvm DISCO=200G bash crea-vm.sh`.
 2. Entra nella VM (`ssh radio@<indirizzo>`), copia la cartella `ponte` ed esegui `sudo bash installa-server.sh`.
    Installa AzuraCast con l'installatore ufficiale e poi il ponte, genera frase segreta, token e password,
@@ -135,6 +135,37 @@ processore audio. Liquidsoap rimanda al conduttore il programma senza la sua voc
 - La voce va in onda solo quando c'è un programma (regia o esterna): senza, l'uscita verso AzuraCast resta
   ferma e AzuraCast usa la sua AutoDJ.
 - `MICROFONO_REMOTO=no` lo disattiva.
+
+### Diretta autonoma (musica dal server)
+
+Dal pannello, conduttori e amministratori possono mandare in onda la musica della libreria del server
+**al posto della regia** (per esempio quando la regia è spenta). Precedenza: diretta esterna, poi diretta
+autonoma, poi regia. La coda si sceglie dal pannello; con la coda vuota il ponte sceglie a caso, senza
+ripetere troppo presto lo stesso brano o artista. Dal pannello si possono anche caricare brani dal telefono
+(finiscono in `musica/caricati/`). Inizio e fine della diretta autonoma arrivano come notifica.
+
+La musica sta in `/opt/radio-ponte/musica` (montata in `/musica` nei due contenitori):
+
+- `musica/regia/...`: la selezione della libreria della regia. La prima copia si fa a mano: nella regia,
+  scheda Collegamento → "Copia la selezione su disco…" su un disco USB, poi sul server
+  ```bash
+  sudo rsync -a --info=progress2 /media/<disco>/regia/ /opt/radio-ponte/musica/regia/
+  sudo chown -R 1000:1000 /opt/radio-ponte/musica
+  ```
+  Dopo, la regia invia via internet solo i brani nuovi o cambiati (di notte, con un limite di MB al giorno)
+  e toglie quelli usciti dalla selezione; manda anche titoli corretti e volume misurato.
+- `musica/caricati/`: i brani caricati dal pannello.
+
+Il ponte rilegge la cartella ogni 30 minuti e ogni volta che la regia controlla la libreria.
+
+**Spazio su disco**: la selezione occupa circa 100 GB. `crea-vm.sh` ora crea dischi da 300 GB. Per
+ingrandire una VM già creata (esempio VM 210, +150 GB), sul nodo Proxmox e poi nella VM:
+
+```bash
+qm resize 210 scsi0 +150G          # sul nodo Proxmox
+sudo growpart /dev/sda 1 && sudo resize2fs /dev/sda1   # nella VM
+df -h /                            # controlla lo spazio
+```
 
 ### HTTPS
 

@@ -44,6 +44,7 @@ export class Alarms {
   private active = new Map<AlarmKey, ActiveAlarm>()
   private studioConnected = false
   private externalConnected = false
+  private autonomousActive = false
   private disconnectedAt: number | null = null
   private lastHeartbeat: number | null = null
   private reconnects: number[] = []
@@ -68,6 +69,7 @@ export class Alarms {
     if (this.active.has(key)) return
     let message = MESSAGES[key][0] + (detail ? ` (${detail})` : '')
     if (key === 'studio_scollegato' && this.externalConnected) message = '📡 La regia è scollegata dal ponte (in onda c\'è la diretta esterna).'
+    else if (key === 'studio_scollegato' && this.autonomousActive) message = '📡 La regia è scollegata dal ponte (in onda c\'è la diretta autonoma).'
     this.active.set(key, { key, since: new Date(this.now()).toISOString(), message })
     this.notify(message, key, true)
   }
@@ -75,6 +77,15 @@ export class Alarms {
   private close(key: AlarmKey): void {
     if (!this.active.delete(key)) return
     this.notify(MESSAGES[key][1], key, false)
+  }
+
+  private onAirSource(): boolean {
+    return this.studioConnected || this.externalConnected || this.autonomousActive
+  }
+
+  /** Diretta autonoma dal server avviata o fermata (dal pannello). */
+  setAutonomous(on: boolean): void {
+    this.autonomousActive = on
   }
 
   /** Evento da Liquidsoap. */
@@ -98,7 +109,9 @@ export class Alarms {
       case 'esterna_scollegata':
         this.externalConnected = false
         this.notify(
-          this.studioConnected
+          this.autonomousActive
+            ? '🏠 Diretta esterna terminata: è tornata in onda la diretta autonoma.'
+            : this.studioConnected
             ? '🏠 Diretta esterna terminata: è tornata in onda la regia.'
             : '🏠 Diretta esterna terminata. La regia non è collegata: AzuraCast passa alla sua AutoDJ di riserva.',
           'esterna',
@@ -107,14 +120,14 @@ export class Alarms {
         break
       case 'silenzio':
         // il silenzio con nessuna sorgente collegata è già coperto da un altro allarme
-        if (this.studioConnected || this.externalConnected) this.open('silenzio', detail ? `da ${detail} secondi` : '')
+        if (this.onAirSource()) this.open('silenzio', detail ? `da ${detail} secondi` : '')
         break
       case 'audio_ripreso':
         this.close('silenzio')
         break
       case 'azuracast_errore':
         this.lastAzuraError = detail
-        if (this.studioConnected || this.externalConnected) this.open('azuracast', detail)
+        if (this.onAirSource()) this.open('azuracast', detail)
         break
       case 'azuracast_collegato':
         this.lastAzuraError = null

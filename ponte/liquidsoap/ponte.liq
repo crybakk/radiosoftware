@@ -110,15 +110,32 @@ esterna =
     source.fail()
   end
 
+# --- diretta autonoma: musica dalla libreria del server, scelta dal pannello ---
+# Il controllo decide i brani e li mette in questa coda.
+autonoma_attiva = ref(false)
+autonoma_coda = request.queue(id="autonoma_coda")
+autonoma_suona = amplify(1., override="liq_amplify", autonoma_coda)
+# Niente sfumature tra i brani: in questo percorso crossfade salta il primo brano dopo una
+# pausa e fade.in/fade.out danno silenzio con Liquidsoap 2.3.3 (provato). I brani si susseguono.
+autonoma_suona.on_track(
+  fun (m) -> if m["filename"] != "" then notify("autonoma_brano", m["filename"]) end
+)
+# Disponibile solo quando ha brani in coda: a diretta ferma la coda è vuota.
+autonoma = autonoma_suona
+
 def dissolvenza(a, b) =
   add(normalize=false, [fade.in(duration=1., b), fade.out(duration=1., a)])
+end
+def diretto(_, b) =
+  add(normalize=false, [b])
 end
 programma =
   fallback(
     id="selettore",
     track_sensitive=false,
-    transitions=[dissolvenza, dissolvenza],
-    [esterna, programma]
+    # la diretta autonoma parte subito, senza dissolvenza dalla sorgente precedente
+    transitions=[dissolvenza, diretto, dissolvenza],
+    [esterna, autonoma, programma]
   )
 
 # --- microfono remoto (voce del conduttore dal pannello, via il controllo) ---
@@ -239,10 +256,51 @@ def set_voce(req) =
 end
 harbor.http.register.simple(port=8092, method="POST", "/voce", set_voce)
 
+def risposta_ok() =
+  http.response(content_type="application/json", data="{\"ok\":true}")
+end
+def risposta_errore() =
+  http.response(status_code=400, content_type="application/json", data="{\"ok\":false}")
+end
+
+def set_autonoma(req) =
+  try
+    let json.parse (m : {on: bool}) = req.body()
+    autonoma_attiva := m.on
+    if not m.on then
+      # fuori onda: si svuota la coda, così alla ripartenza non suona un brano vecchio
+      list.iter(fun (r) -> request.destroy(r), autonoma_coda.queue())
+      autonoma_coda.set_queue([])
+      autonoma_coda.skip()
+    end
+    risposta_ok()
+  catch _ do
+    risposta_errore()
+  end
+end
+harbor.http.register.simple(port=8092, method="POST", "/autonoma", set_autonoma)
+
+def autonoma_aggiungi(req) =
+  try
+    let json.parse (m : {uri: string}) = req.body()
+    autonoma_coda.push.uri(m.uri)
+    risposta_ok()
+  catch _ do
+    risposta_errore()
+  end
+end
+harbor.http.register.simple(port=8092, method="POST", "/autonoma/aggiungi", autonoma_aggiungi)
+
+def autonoma_salta(_) =
+  autonoma_coda.skip()
+  risposta_ok()
+end
+harbor.http.register.simple(port=8092, method="POST", "/autonoma/salta", autonoma_salta)
+
 def stato(_) =
   http.response(
     content_type="application/json",
-    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready(), voce=voce_in_onda()})
+    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready(), voce=voce_in_onda(), autonoma=autonoma_attiva()})
   )
 end
 harbor.http.register.simple(port=8092, method="GET", "/stato", stato)

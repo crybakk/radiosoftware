@@ -40,7 +40,7 @@ command -v docker >/dev/null || errore "Docker non risulta installato: controlla
 
 passo "Ponte: copio i file in $CARTELLA_PONTE"
 mkdir -p "$CARTELLA_PONTE"
-rsync -a --exclude .env --exclude proxmox "$QUI/" "$CARTELLA_PONTE/"
+rsync -a --exclude .env --exclude proxmox --exclude musica "$QUI/" "$CARTELLA_PONTE/"
 cd "$CARTELLA_PONTE"
 
 NUOVO_ENV=0

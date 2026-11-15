@@ -3,6 +3,7 @@ import type { PonteBackup, PonteState } from '../../core/ponteClient'
 import type { PonteSettings } from '../../core/types'
 import { hhmm } from './format'
 import { listInputDevices } from './uplinkCapture'
+import { ServerLibrarySection } from './ServerLibrarySection'
 import type { Radio } from './useRadio'
 
 const api = window.radio
@@ -343,6 +344,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           </button>
         </div>
       </section>
+      <ServerLibrarySection draft={draft} set={set} />
     </div>
   )
 }

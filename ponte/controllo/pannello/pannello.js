@@ -115,6 +115,9 @@ function connect() {
     } else if (m.t === 'alarms') {
       $('alarms').hidden = !m.alarms.length
       $('alarms').textContent = m.alarms.map((a) => `⚠ ${a.message}`).join('  ·  ')
+    } else if (m.t === 'autonoma') {
+      auto = m.state
+      renderAuto()
     } else if (m.t === 'mic') {
       mic = m.mic
       renderMic()
@@ -176,6 +179,7 @@ function render() {
   renderQueue(ctl)
   renderCarts(ctl)
   renderMic()
+  renderAuto()
   if (state?.lastError) notice(state.lastError)
 }
 
@@ -415,6 +419,109 @@ $('mic-air').addEventListener('click', async () => {
   }
 })
 $('mic-return').addEventListener('input', () => ($('mic-ret').volume = Number($('mic-return').value)))
+
+// ---------- diretta autonoma ----------
+
+let auto = null
+const autoCmd = (cmd) => request({ t: 'auto', cmd })
+
+function renderAuto() {
+  const card = $('auto-card')
+  card.hidden = !me || !auto
+  if (card.hidden) return
+  const ctl = canCommand()
+  card.classList.toggle('live', auto.active)
+  const badge = $('auto-badge')
+  badge.textContent = auto.active ? 'IN ONDA' : ''
+  badge.className = `mic-who ${auto.active ? 'auto' : ''}`
+  $('auto-hint').textContent = auto.libraryCount
+    ? `Il ponte suona la libreria del server (${auto.libraryCount} brani) al posto della regia. Con la coda vuota sceglie da solo.`
+    : 'La libreria del server è vuota: carica qualche brano qui sotto o copia la libreria dalla regia.'
+  const now = $('auto-now')
+  now.replaceChildren()
+  if (auto.active && auto.onAir) {
+    now.append(el('div', 'now-title', auto.onAir.title), el('div', 'now-artist', auto.onAir.artist))
+  }
+  if (auto.active && auto.prepared) now.append(el('div', 'hint', `Prossimo: ${auto.prepared.artist} · ${auto.prepared.title}`))
+  $('auto-start').hidden = auto.active
+  $('auto-start').disabled = !ctl || !auto.libraryCount
+  $('auto-skip').hidden = !auto.active
+  $('auto-stop').hidden = !auto.active
+  $('auto-skip').disabled = $('auto-stop').disabled = !ctl
+  const ul = $('auto-queue')
+  ul.replaceChildren()
+  for (const t of auto.queue) {
+    const li = trackRow(t)
+    if (ctl) {
+      const a = el('div', 't-actions')
+      a.append(button('✕', 'Togli dalla coda', () => autoCmd({ type: 'remove', uid: t.uid }).catch((e) => notice(e.message)), 'small'))
+      li.append(a)
+    }
+    ul.append(li)
+  }
+  $('auto-file').disabled = !ctl
+  $('auto-file').parentElement.hidden = !ctl
+}
+
+for (const [id, type] of [['auto-start', 'start'], ['auto-skip', 'skip'], ['auto-stop', 'stop']]) {
+  $(id).addEventListener('click', () => autoCmd({ type }).catch((e) => notice(e.message)))
+}
+
+$('auto-search-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const ul = $('auto-results')
+  ul.replaceChildren(el('li', 'hint', 'Ricerca…'))
+  try {
+    const tracks = await autoCmd({ type: 'search', q: $('auto-q').value.trim() })
+    ul.replaceChildren()
+    if (!tracks.length) ul.append(el('li', 'hint', 'Nessun brano trovato sul server'))
+    for (const t of tracks) {
+      const li = trackRow(t)
+      if (canCommand()) {
+        const a = el('div', 't-actions')
+        a.append(
+          button('⤒', 'Metti come prossimo', () => autoCmd({ type: 'enqueue', id: t.id, where: 'next' }).then(() => notice(`"${t.title}" è il prossimo`), (e) => notice(e.message)), 'small'),
+          button('+', 'Aggiungi in fondo alla coda', () => autoCmd({ type: 'enqueue', id: t.id, where: 'end' }).then(() => notice(`"${t.title}" aggiunto in coda`), (e) => notice(e.message)), 'small')
+        )
+        li.append(a)
+      }
+      ul.append(li)
+    }
+  } catch (err) {
+    ul.replaceChildren(el('li', 'error', err.message))
+  }
+})
+
+function uploadOne(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest()
+    x.open('PUT', `/api/autonoma/carica?nome=${encodeURIComponent(file.name)}`)
+    x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+    x.onload = () => {
+      let body = {}
+      try { body = JSON.parse(x.responseText) } catch {}
+      x.status === 200 ? resolve(body.track) : reject(new Error(body.error || `errore ${x.status}`))
+    }
+    x.onerror = () => reject(new Error('caricamento interrotto'))
+    x.send(file)
+  })
+}
+
+$('auto-file').addEventListener('change', async (e) => {
+  const files = [...e.target.files]
+  e.target.value = ''
+  const msg = $('auto-upload')
+  msg.hidden = false
+  for (const [i, f] of files.entries()) {
+    try {
+      const t = await uploadOne(f, (p) => (msg.textContent = `Caricamento ${i + 1} di ${files.length}: ${f.name} ${Math.round(p * 100)}%`))
+      await autoCmd({ type: 'enqueue', id: t.id, where: 'end' })
+      msg.textContent = `"${t.title}" caricato e messo in coda`
+    } catch (err) {
+      msg.textContent = `${f.name}: ${err.message}`
+    }
+  }
+})
 
 // ---------- utenti ----------
 

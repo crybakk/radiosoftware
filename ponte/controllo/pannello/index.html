@@ -67,6 +67,28 @@
           <audio id="mic-ret" autoplay></audio>
         </section>
 
+        <section class="card auto" id="auto-card" hidden>
+          <div class="section-title">Diretta autonoma dal server <span id="auto-badge" class="mic-who"></span></div>
+          <p class="hint" id="auto-hint">Il ponte suona la musica della libreria del server al posto della regia. Con la coda vuota sceglie da solo.</p>
+          <div id="auto-now" class="auto-now"></div>
+          <div class="mic-row auto-ctl">
+            <button id="auto-start" class="primary">▶ Avvia diretta autonoma</button>
+            <button id="auto-skip" hidden>⏭ Salta</button>
+            <button id="auto-stop" class="ghost" hidden>■ Ferma e torna alla regia</button>
+          </div>
+          <ul class="list" id="auto-queue"></ul>
+          <form id="auto-search-form" class="search">
+            <input id="auto-q" placeholder="Cerca nella libreria del server" autocomplete="off" />
+            <button type="submit">Cerca</button>
+          </form>
+          <ul class="list" id="auto-results"></ul>
+          <label class="upload">
+            <input type="file" id="auto-file" accept="audio/*,.mp3,.m4a,.aac,.flac,.ogg,.opus,.wav" multiple />
+            <span>⬆ Carica brani dal dispositivo</span>
+          </label>
+          <p id="auto-upload" class="hint" hidden></p>
+        </section>
+
         <section class="card">
           <div class="section-title">In coda</div>
           <ul class="list" id="queue"></ul>

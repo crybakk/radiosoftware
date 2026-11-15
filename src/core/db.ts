@@ -233,6 +233,9 @@ export class RadioDb {
 
   /** Porta i dati delle versioni precedenti al formato attuale. */
   private migrate(): void {
+    // v0.4: scelta a mano dei brani da tenere sulla libreria del server (null = decide la regola)
+    const cols = (this.db.prepare('PRAGMA table_info(tracks)').all() as Row[]).map((r) => String(r.name))
+    if (!cols.includes('server_choice')) this.db.exec('ALTER TABLE tracks ADD COLUMN server_choice INTEGER')
     // v0.1: eventi con un solo brano (tabella "events") → eventi con azioni (tabella "schedule")
     const old = this.db.prepare('SELECT * FROM events').all() as Row[]
     if (old.length) {
@@ -471,6 +474,19 @@ export class RadioDb {
         .all(...params, q.limit ?? 200, q.offset ?? 0) as Row[]
     ).map(rowToTrack)
     return { tracks, total }
+  }
+
+  /** Musica della libreria con dimensione del file e scelta a mano per il server. */
+  musicForServer(): { track: Track; size: number; choice: boolean | null }[] {
+    return (this.db.prepare("SELECT * FROM tracks WHERE kind = 'music'").all() as Row[]).map((r) => ({
+      track: rowToTrack(r),
+      size: Number(r.file_size),
+      choice: r.server_choice == null ? null : Number(r.server_choice) === 1
+    }))
+  }
+
+  setServerChoice(id: number, choice: boolean | null): void {
+    this.db.prepare('UPDATE tracks SET server_choice = ? WHERE id = ?').run(choice === null ? null : choice ? 1 : 0, id)
   }
 
   /** Brani candidati per la rotazione automatica. */

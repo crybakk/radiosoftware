@@ -105,7 +105,7 @@ export class PonteService {
     for (const l of this.listeners) l(s)
   }
 
-  private client(): PonteClient | null {
+  client(): PonteClient | null {
     const p = this.settings
     if (!p || !p.host.trim() || !p.controlToken) return null
     return new PonteClient(p.host, p.controlPort, p.controlToken, p.controlHttps)
