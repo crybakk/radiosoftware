@@ -98,8 +98,10 @@ function showApp() {
 function showRole() {
   $('who').textContent = `${me.name} · ${me.role}`
   $('users-btn').hidden = me.role !== 'amministratore'
-  if (me.role !== 'amministratore' && !$('users').hidden) {
+  $('ann-btn').hidden = me.role !== 'amministratore'
+  if (me.role !== 'amministratore' && (!$('users').hidden || !$('ann').hidden)) {
     $('users').hidden = true
+    $('ann').hidden = true
     $('main').hidden = false
   }
   $('readonly').hidden = canCommand()
@@ -762,6 +764,7 @@ $('users-btn').addEventListener('click', () => {
   $('main').hidden = true
   $('progs').hidden = true
   $('stats').hidden = true
+  $('ann').hidden = true
   $('users').hidden = false
   loadUsers()
 })

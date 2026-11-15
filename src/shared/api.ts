@@ -1,3 +1,4 @@
+import type { VoiceInfo, VoiceSettings } from '../../ponte/controllo/src/annunci.ts'
 import type { NewsSource } from '../core/news'
 import type { TrackEdit, TrackSearch } from '../core/db'
 import type { EngineStep } from '../core/playout'
@@ -23,6 +24,15 @@ export interface LibraryStatus {
 }
 
 /** Funzioni che il processo principale offre all'interfaccia (window.radio). */
+export type VoiceState = VoiceInfo & { installed: boolean; downloading: boolean }
+/** Brano in onda e prossimo, per {brano} e {prossimo_brano} negli annunci. */
+export interface AnnounceCtx {
+  track?: { title: string; artist: string } | null
+  nextTrack?: { title: string; artist: string } | null
+  /** Nome della radio (se diverso da quello salvato, per le prove). */
+  radio?: string
+}
+
 export interface RadioApi {
   // libreria
   listFolders(): Promise<LibraryFolder[]>
@@ -50,11 +60,17 @@ export interface RadioApi {
   fillQueue(upcoming: { trackId: number; at: string }[], count: number): Promise<Track[]>
   logStart(track: Track, at: string): Promise<number>
   /** Esegue le azioni di un evento e restituisce i passi per il motore. */
-  expandEvent(event: ScheduledEvent): Promise<EngineStep[]>
+  expandEvent(event: ScheduledEvent, ctx?: AnnounceCtx): Promise<EngineStep[]>
   /** Sceglie un file di playlist o una cartella. */
   choosePath(kind: 'playlist' | 'folder' | 'audio'): Promise<string | null>
   /** Prova una fonte di notiziari: scarica come all'ora dell'evento e restituisce il brano da ascoltare. */
   newsTest(source: NewsSource): Promise<{ track: Track | null; note: string }>
+  /** Voci della voce sintetica, con lo stato (scaricata o no). */
+  voiceList(): Promise<VoiceState[]>
+  voiceInstall(id: string): Promise<VoiceState[]>
+  voiceRemove(id: string): Promise<VoiceState[]>
+  /** Prova un annuncio: restituisce il brano da ascoltare in preascolto. */
+  voiceTest(text: string, voice?: VoiceSettings, ctx?: AnnounceCtx): Promise<{ track: Track | null; note: string }>
   logEnd(logId: number, at: string, playedSeconds: number): Promise<void>
   listLog(from: string, to: string): Promise<LogEntry[]>
   exportLogCsv(from: string, to: string): Promise<string | null>

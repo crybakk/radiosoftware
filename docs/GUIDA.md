@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, notiziari scaricati in automatico (regia), dopo il bot Telegram della radio.
+**Ultimo aggiornamento:** 15/11/2026, voce sintetica per gli annunci (regia e server), dopo i notiziari automatici.
 
 ## Indice
 
@@ -17,6 +17,7 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
     - [Report SIAE trimestrale](#report-siae-trimestrale)
 8. [Impostazioni](#8-impostazioni)
     - [Notiziari](#notiziari)
+    - [Voce sintetica](#voce-sintetica)
 9. [Il server: VM su Proxmox](#9-il-server-vm-su-proxmox)
     - [Ascolto e Icecast secondario](#ascolto-e-icecast-secondario)
 10. [Collegare la regia al ponte](#10-collegare-la-regia-al-ponte)
@@ -31,6 +32,7 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
     - [Programmi e puntate on demand](#programmi-e-puntate-on-demand)
     - [Repliche](#repliche)
     - [Statistiche degli ascoltatori](#statistiche-degli-ascoltatori)
+    - [Annunci vocali del server](#annunci-vocali-del-server)
 13. [Allarmi e notifiche](#13-allarmi-e-notifiche)
     - [Bot Telegram della radio](#bot-telegram-della-radio)
 14. [Backup e ripristino](#14-backup-e-ripristino)
@@ -218,7 +220,8 @@ Solo in regia: il server non manda notiziari.
     - **Età massima (minuti)**: se l'ultima edizione è più vecchia è considerata "vecchia" (0 = nessun limite).
       Per il feed conta la data della puntata, per il link diretto la data del file sul sito;
     - **Se è vecchio o non si scarica**: **Saltalo**, **Manda l'ultimo scaricato** (anche se vecchio) oppure
-      **Manda un file a scelta** (es. un jingle o un messaggio registrato).
+      **Manda un file a scelta** (es. un jingle o un messaggio registrato) oppure **Leggi un testo con la voce
+      sintetica** (scrivi il testo, vedi [Voce sintetica](#voce-sintetica)).
 2. **Prova** scarica come farebbe all'ora dell'evento e dice cosa andrebbe in onda; **🎧 Ascolta in preascolto**
    lo fa sentire sull'uscita del preascolto. Poi **Salva**.
 3. Scheda **Eventi**: crea un evento (es. **Ogni ora**, minuto 00, **Dopo il brano**) con l'azione **Notiziario**
@@ -230,6 +233,34 @@ Nel registro il notiziario compare con fonte **notiziario** e tipo Notiziario, q
 Se viene saltato, il motivo compare nella striscia gialla degli avvisi in alto.
 
 Prima di ritrasmettere notiziari di altri, assicurati di avere il loro permesso.
+
+### Voce sintetica
+
+Una voce sintetica gratuita legge annunci scritti da te, con l'ora, il brano e il programma inseriti da soli.
+Funziona senza internet; serve internet solo la prima volta, per scaricare la voce (circa 65 MB per Paola,
+30 MB per Riccardo).
+
+1. **Impostazioni** → **Voce sintetica**:
+    - **Voce**: **Paola** (donna) o **Riccardo** (uomo, qualità più bassa). Se non è ancora
+      scaricata premi **Scarica … adesso** (oppure si scarica da sola alla prima prova);
+    - **Nome della radio**: quello che dice al posto di `{radio}`;
+    - le regolazioni: **Velocità**, **Espressività (intonazione)**, **Variazione del ritmo**, **Pausa tra le
+      frasi**, **Tono** e **Volume**. **Valori normali** le rimette come all'inizio;
+    - scrivi un testo di prova e premi **🎧 Ascolta in preascolto**. Poi **Salva**.
+2. Scheda **Eventi**: crea un evento (es. **Ogni ora**, minuto 00, **Dopo il brano**) con l'azione
+   **Annuncio vocale** e scrivi il testo. I pulsanti sopra il testo inseriscono le parti che si riempiono da sole:
+
+| Nel testo | Diventa |
+|---|---|
+| `{ora}` | "22 e 50", "23 in punto", "mezzanotte e 5" |
+| `{data}` | "sabato 15 novembre" |
+| `{radio}` | il nome della radio |
+| `{brano}`, `{artista}` | il brano appena andato in onda (o in onda adesso) |
+| `{prossimo_brano}`, `{prossimo_artista}` | il brano che viene dopo |
+| `{programma}`, `{prossimo_programma}`, `{ora_prossimo_programma}` | dalle fasce dei programmi del ponte |
+
+Se una parte non si sa (es. nessun brano dopo), la frase viene detta senza; la prova ti dice quali mancavano.
+Nel registro l'annuncio compare con fonte **annuncio** e tipo Jingle, quindi non va nel report SIAE.
 
 ## 9. Il server: VM su Proxmox
 
@@ -608,6 +639,23 @@ metti nel `.env` del server `ICECAST_ESTERNO_ADMIN_UTENTE` e `ICECAST_ESTERNO_AD
 amministrazione di quell'Icecast) e riavvia. Se non si riesce a leggere, le statistiche contano solo il principale
 e la pagina lo dice.
 
+### Annunci vocali del server
+
+Quando trasmette il server (diretta autonoma o musica di riserva, cioè senza la regia) il server può fare da solo
+annunci a orario con la stessa voce sintetica. Quando c'è la regia, gli annunci li fanno gli eventi della regia.
+
+Menu **☰ → Annunci vocali** (solo amministratori):
+
+1. scegli la **Voce** e, se serve, premi **Scarica … adesso** (il server la scarica una volta sola);
+2. **Nome della radio** per `{radio}` (vuoto = il nome del server) e le regolazioni, come in regia;
+3. **Aggiungi annuncio**: testo (stesse parti della regia, tabella in [Voce sintetica](#voce-sintetica)),
+   **Alle** un'ora precisa oppure **Ogni ora al minuto**, i giorni e **attivo**;
+4. **🎧 Ascolta** prova il testo con le impostazioni della pagina; poi **Salva**.
+
+All'ora scelta l'annuncio va in onda dopo il brano in corso. Con la musica di riserva può slittare di un brano,
+perché il server prepara in anticipo il brano successivo. Se non va in onda entro 10 minuti viene lasciato perdere.
+Gli annunci non entrano nel registro dei brani né nel report SIAE.
+
 ## 13. Allarmi e notifiche
 
 Il ponte avvisa via Telegram e/o email (da configurare nel `.env` del server; la scheda **Collegamento** ha
@@ -702,6 +750,10 @@ Il ponte tiene gli ultimi 14.
 | "replica … non disponibile" nella regia | il programma non ha puntate pubblicate, è nascosto, oppure la regia non raggiunge il ponte |
 | Il notiziario viene sempre saltato "perché vecchio" | il feed aggiorna la puntata in ritardo: aumenta l'**Età massima** o scegli **Manda l'ultimo scaricato** |
 | "nel feed non c'è nessun file audio" | il link non è il feed del podcast (è la pagina web): cerca il link RSS del podcast |
+| "voce non scaricata" o la prova resta su "Preparo la voce…" | serve internet la prima volta per scaricare la voce: premi **Scarica … adesso** e aspetta qualche minuto |
+| La voce dice male un nome | scrivilo come si pronuncia (es. "Elvis Prèsli"); per le sigle usa i punti o gli spazi |
+| L'annuncio del server va in onda un brano dopo | normale con la musica di riserva: il server prepara il brano successivo in anticipo |
+| Gli annunci del server non partono mai | partono solo quando trasmette il server (senza regia, studio ed esterne); controlla giorni, orario e **attivo** |
 | Nel report mancano i brani della notte | il ponte non era raggiungibile quando hai aperto il report: premi **Aggiorna** con il ponte collegato |
 
 ## 16. In arrivo
@@ -709,7 +761,6 @@ Il ponte tiene gli ultimi 14.
 Prossime fasi (l'ordine può cambiare):
 
 - FluidStream, se un giorno servirà;
-- voce sintetica (gratuita, senza internet) per annunci con ora, brano e programma, anche sul server;
 - rotazioni generate dall'AI a partire da una descrizione del palinsesto.
 
 ## 17. Modifiche alla guida
@@ -730,3 +781,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Installazione su Proxmox passo passo: chiave SSH dal PC, copia del programma con lo ZIP, VM in DHCP; prove del server nuovo con AzuraCast ancora acceso (altro nome e porta 9443) |
 | 15/11/2026 | Bot Telegram della radio: audio dei brani sconosciuti da etichettare rispondendo nella chat, "Non è musica", menu in sola lettura con stato, ascoltatori, puntate e brani etichettati |
 | 15/11/2026 | Notiziari scaricati in automatico: fonti in Impostazioni (feed di un podcast o link diretto), età massima, cosa fare se manca; azione **Notiziario** negli eventi |
+| 15/11/2026 | Voce sintetica gratuita (Paola o Riccardo) con regolazioni: azione **Annuncio vocale** negli eventi, notiziario mancante letto dalla voce, annunci a orario del server dal pannello |

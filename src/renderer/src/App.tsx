@@ -1,3 +1,4 @@
+import { PreviewContext } from './VoiceSection'
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
 import { ConnectionView, uplinkClass } from './ConnectionView'
 import { EventsView } from './EventsView'
@@ -37,6 +38,7 @@ export function App() {
   const onAir = radio.snapshot.onAir.length > 0
 
   return (
+    <PreviewContext.Provider value={radio.preview}>
     <div className="app">
       <header className="topbar">
         <div className={`onair-lamp ${onAir ? 'lit' : ''}`}>{onAir ? 'IN ONDA' : 'FERMO'}</div>
@@ -82,6 +84,7 @@ export function App() {
         </ViewErrorBoundary>
       </main>
     </div>
+    </PreviewContext.Provider>
   )
 }
 

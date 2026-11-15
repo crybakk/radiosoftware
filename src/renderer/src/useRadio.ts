@@ -25,7 +25,15 @@ export function useRadio() {
       logStart: (track, at) => api.logStart(track, at.toISOString()),
       logEnd: (id, at, seconds) => api.logEnd(id, at.toISOString(), seconds),
       expandEvent: async (event) => {
-        const steps = await api.expandEvent(event)
+        // brano in onda e prossimo, per gli annunci con la voce sintetica
+        const snap = engineRef.current?.snapshot()
+        const on = snap?.onAir.map((o) => o.track) ?? []
+        const cur = on.find((t) => t.kind === 'music') ?? on.at(-1)
+        const next = snap?.queue.find((q) => q.track.kind === 'music')?.track
+        const steps = await api.expandEvent(event, {
+          track: cur ? { title: cur.title, artist: cur.artist } : null,
+          nextTrack: next ? { title: next.title, artist: next.artist } : null
+        })
         // un evento può aver cambiato il profilo di rotazione
         if (event.actions.some((a) => a.type === 'rotation')) setSettings(await api.getSettings())
         return steps

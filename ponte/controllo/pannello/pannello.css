@@ -184,3 +184,17 @@ main { display: grid; gap: 12px; padding: 12px; max-width: 1100px; margin: 0 aut
 .chart .dot { fill: #3987e5; stroke: var(--panel); stroke-width: 2; }
 .tip { position: absolute; pointer-events: none; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 12px; white-space: nowrap; z-index: 2; }
 .tip b { display: block; font-size: 14px; }
+
+/* annunci vocali */
+.ann-list { display: grid; gap: 10px; }
+.ann-item { display: grid; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ann-item textarea { width: 100%; box-sizing: border-box; }
+.ann-item .days { display: flex; gap: 2px; }
+.ann-item .days label { display: inline-flex; flex-direction: column; align-items: center; font-size: 12px; }
+.ann-item .days input, .ann-item .check input { width: auto; }
+.ann-item input[type=time] { width: auto; min-width: 120px; }
+.ann-item .ann-minute { width: 70px; }
+.ann-item audio { width: 100%; }
+#ann-sliders { display: grid; gap: 6px; }
+#ann-sliders label { display: grid; gap: 2px; }
+#ann-tags code { font-size: 12px; }

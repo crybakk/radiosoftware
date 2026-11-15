@@ -121,6 +121,10 @@ describe('download dei notiziari', () => {
     expect(down.item?.title).toBe('GR di ieri')
     expect(down.note).toMatch(/non scaricato \(rete giù\)/)
     expect((await f.forAir(src())).item).toBeNull()
+    // voce sintetica al posto del notiziario
+    const voce = await f.forAir(src({ ifMissing: 'voce', fallbackText: 'Il notiziario non è disponibile.' }))
+    expect(voce).toMatchObject({ item: null, speak: 'Il notiziario non è disponibile.', fresh: false })
+    expect(() => validateSource({ name: 'GR', url: 'https://x.it', ifMissing: 'voce' })).toThrow(/testo/)
   })
 })
 

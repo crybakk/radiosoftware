@@ -62,6 +62,8 @@ import { PlayLog, type PlaySource } from './registro.ts'
 import { FpStore, parseFpFile, UnknownStore, type UnknownLabel } from './riconoscimento.ts'
 import { EsterneRecognition } from './esterne.ts'
 import { LabelBot, type Section } from './telegram.ts'
+import { AnnounceScheduler, AnnounceStore } from './annunciRadio.ts'
+import { programContext, Synth } from './sintesi.ts'
 import { activeSlot, Programs } from './programmi.ts'
 import { apiNowPlaying, icecastListeners, NowPlaying } from './nowplaying.ts'
 import { ListenerLog, period, readSecondary, report, type SecondaryConfig } from './ascoltatori.ts'
@@ -241,7 +243,7 @@ const logPlay = (source: PlaySource, file: string): void => {
 const nowPlaying = new NowPlaying()
 playLog.onAdd = (e) => nowPlaying.set({ artist: e.artist, title: e.title, duration: e.duration, at: Date.parse(e.at), source: e.source })
 let esternaSince: number | null = null
-auto.onPlay = (t) => playLog.add({ source: 'autonoma', id: t.id, title: t.title, artist: t.artist, duration: t.duration })
+auto.onPlay = (t) => t.id.startsWith('.annunci/') || playLog.add({ source: 'autonoma', id: t.id, title: t.title, artist: t.artist, duration: t.duration })
 // ---------- riconoscimento dei brani nelle dirette esterne ----------
 
 const fpStore = new FpStore(join(DATA_DIR, 'impronte'))
@@ -399,6 +401,39 @@ setInterval(rescan, 30 * 60_000)
 // ---------- programmi e puntate on demand ----------
 
 const programs = new Programs(join(DATA_DIR, 'programmi'))
+
+// ---------- annunci con la voce sintetica (solo quando trasmette il server) ----------
+
+// gli MP3 vanno nella cartella della musica (la vede anche Liquidsoap), in una sottocartella nascosta
+// che la libreria non legge; le voci scaricate stanno con i dati
+const synth = new Synth({ voicesDir: join(DATA_DIR, 'voci'), outDir: join(MUSIC_DIR, '.annunci'), ffmpeg: 'ffmpeg' })
+const announceStore = new AnnounceStore(join(DATA_DIR, 'annunci.json'))
+/** true se adesso va in onda il server: diretta autonoma, oppure riserva (né regia né esterna). */
+async function serverOnAir(): Promise<boolean> {
+  if (auto.state().active) return true
+  const ls = (await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) }).then((r) => r.json())) as { studio?: boolean; esterna?: boolean; autonoma?: boolean }
+  return !ls.studio && !ls.esterna && !ls.autonoma
+}
+function announceContext() {
+  const a = auto.state()
+  const cur = nowPlaying.current()
+  const next = a.active ? (a.prepared ?? a.queue[0] ?? null) : null
+  return {
+    track: cur ? { title: cur.title, artist: cur.artist } : null,
+    nextTrack: next && next.artist !== 'Annuncio vocale' ? { title: next.title, artist: next.artist } : null,
+    ...programContext(programs.list(), new Date())
+  }
+}
+const announcer = new AnnounceScheduler({
+  store: announceStore,
+  speak: (text, voice) => synth.speak(text, voice),
+  onAir: serverOnAir,
+  context: announceContext,
+  stationName: env('NOME_RADIO', 'Radio'),
+  folder: '.annunci'
+})
+auto.interject = () => announcer.take()
+announcer.start()
 let recorder: Recorder | null = null
 if (env('REGISTRAZIONE_PUNTATE', 'si') !== 'no') {
   recorder = new Recorder({
@@ -858,6 +893,49 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     )
       return
 
+    // --- annunci con la voce sintetica (pannello, amministratori) ---
+    if (url.pathname.startsWith('/api/annunci')) {
+      const me = sessionUser(req)
+      if (!me) return json(res, 401, { error: 'accesso richiesto' })
+      if (req.method !== 'GET' && !sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+      if (req.method === 'GET' && url.pathname === '/api/annunci') {
+        return json(res, 200, { ...announceStore.get(), stationName: env('NOME_RADIO', 'Radio'), voices: synth.voices(), waiting: announcer.waiting() })
+      }
+      if (req.method === 'GET' && url.pathname === '/api/annunci/audio') {
+        // solo i file prodotti dalla voce, per ascoltare la prova
+        const f = url.searchParams.get('f') ?? ''
+        if (!/^annuncio-[0-9a-f]+\.mp3$/.test(f)) return json(res, 400, { error: 'file non valido' })
+        const file = join(MUSIC_DIR, '.annunci', f)
+        if (!existsSync(file)) return json(res, 404, { error: 'non trovato' })
+        res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': String((await stat(file)).size), 'Cache-Control': 'no-store' })
+        return void createReadStream(file).pipe(res)
+      }
+      if (!can(me.role, 'utenti')) return json(res, 403, { error: 'solo gli amministratori possono cambiare gli annunci' })
+      const body = await readJson(req)
+      if (req.method === 'POST' && url.pathname === '/api/annunci') {
+        const cfg = await announceStore.save(body as never)
+        console.log(`[annunci] ${me.name} ha salvato ${cfg.items.length} annunci`)
+        return json(res, 200, { ...cfg, stationName: env('NOME_RADIO', 'Radio'), voices: synth.voices(), waiting: announcer.waiting() })
+      }
+      if (req.method === 'POST' && url.pathname === '/api/annunci/voce') {
+        const id = String(body.id ?? '')
+        const action = body.remove ? synth.removeVoice(id) : synth.installVoice(id)
+        // lo scaricamento può durare minuti: si risponde subito e il pannello ricontrolla
+        if (!body.remove) {
+          action.catch((e: unknown) => console.error(`[annunci] voce non scaricata: ${e instanceof Error ? e.message : String(e)}`))
+          await new Promise((r) => setTimeout(r, 300))
+        } else await action
+        return json(res, 200, { voices: synth.voices() })
+      }
+      if (req.method === 'POST' && url.pathname === '/api/annunci/prova') {
+        const f = announcer.fill(String(body.text ?? ''), typeof body.radio === 'string' ? body.radio : undefined)
+        if (!f.text.replace(/[\s.,;:!?]/g, '')) return json(res, 400, { error: 'testo vuoto' })
+        const r = await synth.speak(f.text, (body.voice ?? announceStore.get().voice) as never)
+        return json(res, 200, { text: f.text, missing: f.missing, seconds: r.seconds, url: `/api/annunci/audio?f=${encodeURIComponent(r.file.split(/[\\/]/).at(-1)!)}` })
+      }
+      return json(res, 404, { error: 'non trovato' })
+    }
+
     // --- pannello remoto (sessione) ---
     if (req.method === 'POST' && url.pathname === '/api/login') {
       if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
@@ -1302,6 +1380,7 @@ internalServer.listen(INTERNAL_PORT, () => console.log(`Eventi interni sulla por
 const shutdown = async (): Promise<void> => {
   video?.stop()
   labelBot?.stop()
+  announcer.stop()
   await recorder?.stop().catch(() => {})
   publicServer.close()
   internalServer.close()

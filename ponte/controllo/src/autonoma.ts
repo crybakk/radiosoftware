@@ -39,6 +39,8 @@ export class AutonomousPlayer {
   onActive: (on: boolean, by: string) => void = () => {}
   /** Un brano della diretta autonoma è andato in onda (per il registro). */
   onPlay: (t: ServerTrack) => void = () => {}
+  /** Annuncio da mettere prima del prossimo brano (voce sintetica), se ce n'è uno. */
+  interject: () => { id: string; title: string; seconds: number } | null = () => null
   private readonly lib: Library
   private readonly lq: LiquidsoapAuto
   private readonly now: () => number
@@ -147,6 +149,12 @@ export class AutonomousPlayer {
     this.emit()
   }
 
+  /** Brano "virtuale" per un annuncio (il file è nella cartella della musica, fuori dalla libreria). */
+  private announce(): ServerTrack | null {
+    const j = this.interject()
+    return j ? { id: j.id, title: j.title, artist: 'Annuncio vocale', duration: j.seconds, bitrate: 128, gainDb: 0, mtime: 0, size: 0 } : null
+  }
+
   /** Una preparazione alla volta (timer di fine brano e "salta" insieme): mai due brani nel mixer. */
   private prepareNext(): Promise<void> {
     this.preparing ??= this.doPrepareNext().finally(() => (this.preparing = null))
@@ -157,13 +165,15 @@ export class AutonomousPlayer {
     if (this.prepared) return
     // i brani in coda tolti dalla libreria nel frattempo (eliminati, spostati) si saltano:
     // Liquidsoap non li troverebbe e la diretta resterebbe muta
+    const announce = this.announce()
     let queued: (ServerTrack & { uid: string }) | undefined
-    while (!queued && this.queue.length) {
+    while (!announce && !queued && this.queue.length) {
       const q = this.queue.shift()!
       const cur = this.lib.get(q.id)
       if (cur) queued = { ...cur, uid: q.uid }
     }
     const next =
+      announce ??
       queued ??
       this.lib.pickRandom(
         this.history.map((t) => t.id),
@@ -184,6 +194,8 @@ export class AutonomousPlayer {
    * Usa la stessa memoria dei brani recenti, così non si ripetono artisti.
    */
   nextReserve(): string | null {
+    const a = this.announce()
+    if (a) return this.lib.path(a)
     const t = this.lib.pickRandom(
       this.history.map((x) => x.id),
       this.history.slice(-RECENT_ARTISTS).map((x) => x.artist)

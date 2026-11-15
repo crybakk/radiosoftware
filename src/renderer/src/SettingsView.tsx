@@ -3,6 +3,7 @@ import type { Settings, Track } from '../../core/types'
 import type { NewsSource } from '../../core/news'
 import { listOutputDevices } from './audio'
 import { mmss } from './format'
+import { VoiceSection } from './VoiceSection'
 import type { Radio } from './useRadio'
 
 const NUMBERS: { key: keyof Settings; label: string; hint: string; min: number; max: number; step?: number }[] = [
@@ -17,7 +18,8 @@ const NUMBERS: { key: keyof Settings; label: string; hint: string; min: number; 
 const FALLBACKS: { value: NewsSource['ifMissing']; label: string }[] = [
   { value: 'salta', label: 'Saltalo' },
   { value: 'vecchio', label: "Manda l'ultimo scaricato" },
-  { value: 'file', label: 'Manda un file a scelta' }
+  { value: 'file', label: 'Manda un file a scelta' },
+  { value: 'voce', label: 'Leggi un testo con la voce sintetica' }
 ]
 
 /** Problema in una fonte dei notiziari (null = va bene). */
@@ -25,6 +27,7 @@ function newsProblem(n: NewsSource): string | null {
   if (!n.name.trim()) return 'manca il nome di una fonte'
   if (!/^https?:\/\/\S+$/i.test(n.url.trim())) return `il link di "${n.name}" deve cominciare con http:// o https://`
   if (n.ifMissing === 'file' && !n.fallbackFile) return `scegli il file da mandare quando manca "${n.name}"`
+  if (n.ifMissing === 'voce' && !n.fallbackText?.trim()) return `scrivi il testo da leggere quando manca "${n.name}"`
   return null
 }
 
@@ -59,6 +62,16 @@ function NewsRow({ n, onChange, onRemove, radio }: { n: NewsSource; onChange: (n
             ))}
           </select>
         </label>
+        {n.ifMissing === 'voce' && (
+          <label className="span2">
+            <span>Testo da leggere al suo posto</span>
+            <input
+              value={n.fallbackText ?? ''}
+              placeholder="es. Sono le {ora}: il notiziario oggi non è disponibile."
+              onChange={(e) => onChange({ ...n, fallbackText: e.target.value })}
+            />
+          </label>
+        )}
         {n.ifMissing === 'file' && (
           <label>
             <span>File da mandare</span>
@@ -218,6 +231,8 @@ export function SettingsView({ radio }: { radio: Radio }) {
           Aggiungi fonte
         </button>
       </section>
+
+      <VoiceSection draft={draft} setDraft={setDraft} />
 
       <div className="row end sticky">
         {newsError && dirty && <span className="hint error-text">Notiziari: {newsError}</span>}

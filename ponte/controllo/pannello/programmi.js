@@ -33,6 +33,7 @@ $('progs-btn').addEventListener('click', () => {
   $('main').hidden = true
   $('users').hidden = true
   $('stats').hidden = true
+  $('ann').hidden = true
   $('progs').hidden = false
   loadProgs()
 })
