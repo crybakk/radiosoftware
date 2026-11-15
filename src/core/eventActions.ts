@@ -9,6 +9,8 @@ import type { ScheduledEvent, Track } from './types'
 export interface EventEffects {
   runCommand(command: string): void
   now(): Date
+  /** Puntata da mandare in replica (dal server); null se non c'è. */
+  replay?(programId: string, episodeId?: string): Promise<Track | null>
 }
 
 /** Estrae i percorsi da una playlist M3U/M3U8 o PLS. I percorsi relativi sono rispetto alla playlist. */
@@ -63,6 +65,24 @@ export function streamTrack(url: string, minutes: number, title: string): Track 
     analyzedAt: null,
     addedAt: new Date().toISOString()
   }
+}
+
+/** Brano "virtuale" per la replica di una puntata (audio in streaming dal server). */
+export function replayTrack(program: { title: string }, episode: { title: string; length: number; path: string }): Track {
+  const t = streamTrack(episode.path, episode.length / 60, `Replica: ${episode.title}`)
+  const seconds = Math.max(1, Math.round(episode.length))
+  return { ...t, artist: program.title, duration: seconds, cueOut: seconds, mixPoint: seconds }
+}
+
+/** Sceglie la puntata da replicare: quella indicata o la più recente. */
+export function pickReplay(
+  programs: { id: string; title: string; episodes: { id: string; title: string; length: number; path: string }[] }[],
+  programId: string,
+  episodeId?: string
+): Track | null {
+  const p = programs.find((x) => x.id === programId)
+  const e = p && (episodeId ? p.episodes.find((x) => x.id === episodeId) : p.episodes[0])
+  return p && e ? replayTrack(p, e) : null
 }
 
 async function playlistTracks(db: RadioDb, path: string): Promise<{ tracks: Track[]; missing: number }> {
@@ -149,6 +169,18 @@ export async function expandEvent(db: RadioDb, event: ScheduledEvent, fx: EventE
       case 'rotation':
         db.saveSettings({ rotationProfile: a.profile })
         break
+      case 'replay': {
+        let t: Track | null = null
+        let why = 'nessuna puntata pubblicata'
+        try {
+          t = fx.replay ? await fx.replay(a.programId) : null
+        } catch (err) {
+          why = err instanceof Error ? err.message : String(err)
+        }
+        if (t) front.push(t)
+        else steps.push({ kind: 'error', message: `replica di "${a.title || a.programId}" non disponibile: ${why}` })
+        break
+      }
       case 'command':
         try {
           fx.runCommand(a.command)

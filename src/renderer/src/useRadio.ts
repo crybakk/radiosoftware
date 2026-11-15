@@ -76,7 +76,8 @@ export function useRadio() {
         executeRemote(engine, cmd, {
           getTrack: (id) => api.getTrack(id),
           search: async (q) => (await api.search({ text: q, limit: 50 })).tracks,
-          carts: () => cartsRef.current
+          carts: () => cartsRef.current,
+          replay: (programId, episodeId) => api.ponteReplay(programId, episodeId)
         })
       ),
     [engine]

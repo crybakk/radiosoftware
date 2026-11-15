@@ -75,7 +75,7 @@ export interface Settings {
 export interface PonteSettings {
   /** Invio del programma al ponte acceso. */
   enabled: boolean
-  /** Indirizzo del server ponte (nome o IP), lo stesso di AzuraCast. */
+  /** Indirizzo del server ponte (nome o IP): il dominio della radio. */
   host: string
   srtPort: number
   /** Frase segreta SRT, uguale a SRT_PASSPHRASE del ponte. */
@@ -91,14 +91,23 @@ export interface PonteSettings {
   controlPort: number
   /** Token del servizio di controllo, uguale a CONTROLLO_TOKEN del ponte. */
   controlToken: string
-  /** Il servizio di controllo usa HTTPS (certificato di AzuraCast). */
+  /** Il servizio di controllo usa HTTPS (Caddy, porta 443). */
   controlHttps: boolean
   /** Permette di comandare la regia dal pannello remoto. */
   remoteControl: boolean
-  /** Invia artista e titolo dei brani ad AzuraCast. */
+  /** Invia artista e titolo dei brani agli Icecast. */
   sendMetadata: boolean
   /** Ora del backup automatico giornaliero (0-23, -1 = mai). */
   backupHour: number
+  /** Invia da solo al server i brani nuovi della selezione (di notte, entro il limite giornaliero). */
+  librarySync: boolean
+  /** Sotto questa qualità (kbps) un brano non va sul server. */
+  libraryMinKbps: number
+  /** Massimo di MB caricati sul server in un giorno (traffico 4G). */
+  libraryDailyMb: number
+  /** Ore in cui si può caricare: dalle ... alle ... (es. 1 e 6). */
+  librarySyncFrom: number
+  librarySyncTo: number
 }
 
 export const DEFAULT_PONTE: PonteSettings = {
@@ -110,12 +119,17 @@ export const DEFAULT_PONTE: PonteSettings = {
   bitrateKbps: 128,
   source: 'programma',
   inputDeviceId: '',
-  controlPort: 9080,
+  controlPort: 443,
   controlToken: '',
-  controlHttps: false,
+  controlHttps: true,
   remoteControl: true,
   sendMetadata: true,
-  backupHour: 4
+  backupHour: 4,
+  librarySync: true,
+  libraryMinKbps: 192,
+  libraryDailyMb: 1024,
+  librarySyncFrom: 1,
+  librarySyncTo: 6
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -155,6 +169,8 @@ export type EventAction =
   | { type: 'stop' }
   | { type: 'rotation'; profile: RotationProfile | null }
   | { type: 'command'; command: string }
+  /** Replica: l'ultima puntata pubblicata del programma (dal server). */
+  | { type: 'replay'; programId: string; title: string }
 
 export const ACTION_LABELS: Record<EventAction['type'], string> = {
   play: 'Brano',
@@ -165,7 +181,8 @@ export const ACTION_LABELS: Record<EventAction['type'], string> = {
   clear: 'Svuota coda',
   stop: 'Ferma tutto',
   rotation: 'Regole di rotazione',
-  command: 'Comando esterno'
+  command: 'Comando esterno',
+  replay: 'Replica di un programma'
 }
 
 /** Evento a orario fisso. */

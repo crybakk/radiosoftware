@@ -1,4 +1,5 @@
 /** Dialogo con il servizio di controllo del ponte (HTTP + token). */
+import type { Report, Sample } from '../../ponte/controllo/src/ascoltatori.ts'
 
 export interface PonteAlarm {
   key: string
@@ -17,7 +18,7 @@ export interface PonteState {
   externalConnected?: boolean
   lastHeartbeat: string | null
   reconnectsLast10Min: number
-  lastAzuracastError: string | null
+  lastIcecastError: string | null
   alarms: PonteAlarm[]
   liquidsoap: { studio?: boolean; esterna?: boolean } | null
   notifiche: string[]
@@ -85,15 +86,25 @@ export class PonteClient {
     this.token = token
   }
 
-  private async request(method: string, path: string, body?: BodyInit, type?: string, timeoutMs = 10_000): Promise<Response> {
+  private async request(
+    method: string,
+    path: string,
+    body?: BodyInit,
+    type?: string,
+    timeoutMs = 10_000,
+    signal?: AbortSignal
+  ): Promise<Response> {
     let r: Response
     try {
+      const timeout = AbortSignal.timeout(timeoutMs)
       r = await fetch(this.base + path, {
         method,
         headers: { Authorization: `Bearer ${this.token}`, ...(type ? { 'Content-Type': type } : {}) },
         body,
-        signal: AbortSignal.timeout(timeoutMs)
-      })
+        signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
+        // corpo in streaming (file della libreria)
+        ...(body && typeof (body as ReadableStream).getReader === 'function' ? { duplex: 'half' } : {})
+      } as RequestInit)
     } catch (e) {
       const msg = e instanceof Error && e.name === 'TimeoutError' ? 'il ponte non risponde' : 'ponte non raggiungibile'
       throw new PonteError(msg)
@@ -112,8 +123,8 @@ export class PonteClient {
     return j.alarms ?? []
   }
 
-  async metadata(artist: string, title: string): Promise<void> {
-    await this.request('POST', '/api/metadata', JSON.stringify({ artist, title }), 'application/json', 5000)
+  async metadata(artist: string, title: string, duration = 0): Promise<void> {
+    await this.request('POST', '/api/metadata', JSON.stringify({ artist, title, duration }), 'application/json', 5000)
   }
 
   async state(): Promise<PonteState> {
@@ -136,10 +147,130 @@ export class PonteClient {
     return (await (await this.request('GET', '/api/backup')).json()) as PonteBackup[]
   }
 
+  /** Brani della regia già presenti sul server. */
+  async listLibrary(): Promise<{ id: string; size: number }[]> {
+    return (await (await this.request('GET', '/api/libreria', undefined, undefined, 60_000)).json()) as { id: string; size: number }[]
+  }
+
+  /** Carica un file nella libreria del server (in streaming). */
+  async uploadLibraryFile(meta: LibraryMeta, body: ReadableStream<Uint8Array>, signal?: AbortSignal): Promise<void> {
+    const q = new URLSearchParams({
+      id: meta.id,
+      titolo: meta.title,
+      artista: meta.artist,
+      durata: String(meta.duration),
+      guadagno: String(meta.gainDb)
+    })
+    await this.request('PUT', `/api/libreria?${q}`, body, 'application/octet-stream', 60 * 60_000, signal)
+  }
+
+  async deleteLibraryFile(id: string): Promise<void> {
+    await this.request('DELETE', `/api/libreria?${new URLSearchParams({ id })}`)
+  }
+
+  /** Titoli e volumi aggiornati (anche per i file copiati a mano). */
+  async sendLibraryMeta(tracks: LibraryMeta[]): Promise<number> {
+    const r = await this.request('POST', '/api/libreria/dati', JSON.stringify({ tracks }), 'application/json', 60_000)
+    return ((await r.json()) as { updated: number }).updated
+  }
+
+  /** Impronte audio già sul server: id e numero di valori. */
+  async listFingerprints(): Promise<{ id: string; n: number }[]> {
+    return (await (await this.request('GET', '/api/impronte', undefined, undefined, 60_000)).json()) as { id: string; n: number }[]
+  }
+
+  /** Più impronte in un corpo solo: [lunghezza u32 LE][file impronta]… */
+  async uploadFingerprints(body: Uint8Array): Promise<number> {
+    const r = await this.request('PUT', '/api/impronte', new Blob([body as Uint8Array<ArrayBuffer>]), 'application/octet-stream', 5 * 60_000)
+    return ((await r.json()) as { saved: number }).saved
+  }
+
+  async deleteFingerprints(ids: string[]): Promise<void> {
+    await this.request('DELETE', '/api/impronte', JSON.stringify({ ids }), 'application/json', 60_000)
+  }
+
+  /** Brani caricati dal pannello sul server, da scaricare in regia. */
+  async listUploaded(): Promise<UploadedTrack[]> {
+    return (await (await this.request('GET', '/api/caricati', undefined, undefined, 60_000)).json()) as UploadedTrack[]
+  }
+
+  async downloadUploaded(id: string, signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+    const r = await this.request('GET', `/api/caricati/file?${new URLSearchParams({ id })}`, undefined, undefined, 60 * 60_000, signal)
+    if (!r.body) throw new PonteError('risposta vuota dal ponte')
+    return r.body
+  }
+
+  /** Il brano scaricato prende sul server il percorso che ha in regia (così non si ricarica). */
+  async moveUploaded(from: string, to: string): Promise<void> {
+    await this.request('POST', '/api/caricati/sposta', JSON.stringify({ da: from, a: to }), 'application/json', 60_000)
+  }
+
+  /** Brani suonati dal server (diretta autonoma, musica di riserva) con inizio in [from, to). */
+  async listPlays(from: Date, to: Date): Promise<ServerPlay[]> {
+    const q = new URLSearchParams({ da: from.toISOString(), a: to.toISOString() })
+    return (await (await this.request('GET', `/api/registro?${q}`, undefined, undefined, 60_000)).json()) as ServerPlay[]
+  }
+
+  /** Statistiche degli ascoltatori di un giorno o di una settimana (data AAAA-MM-GG). */
+  async listenerStats(periodo: 'giorno' | 'settimana', data: string): Promise<ListenerStats> {
+    const q = new URLSearchParams({ periodo, data })
+    return (await (await this.request('GET', `/api/ascoltatori?${q}`, undefined, undefined, 30_000)).json()) as ListenerStats
+  }
+
+  /** Programmi del server con le puntate pubblicate (dalla più recente), per le repliche. */
+  async listPrograms(): Promise<PonteProgram[]> {
+    const list = (await (await this.request('GET', '/api/programmi/regia')).json()) as PonteProgram[]
+    // l'audio si ascolta dall'indirizzo pubblico del ponte
+    return list.map((p) => ({ ...p, episodes: p.episodes.map((e) => ({ ...e, path: this.base + e.path })) }))
+  }
+
   async downloadBackup(name: string): Promise<Uint8Array> {
     const r = await this.request('GET', `/api/backup/${encodeURIComponent(name)}`, undefined, undefined, 5 * 60_000)
     return new Uint8Array(await r.arrayBuffer())
   }
+}
+
+export type ListenerStats = Report & {
+  now: Sample | null
+  /** Icecast secondario configurato sul server. */
+  secondary: boolean
+  periodo: 'giorno' | 'settimana'
+}
+
+export interface PonteProgram {
+  id: string
+  title: string
+  /** Puntate pubblicate; path è l'indirizzo completo dell'audio. */
+  episodes: { id: string; title: string; length: number; path: string }[]
+}
+
+export interface UploadedTrack {
+  id: string
+  size: number
+  title: string
+  artist: string
+  duration: number
+}
+
+/** Voce del registro del server (vedi ponte/controllo/src/registro.ts). */
+export interface ServerPlay {
+  at: string
+  source: 'autonoma' | 'riserva' | 'esterna'
+  id: string
+  title: string
+  artist: string
+  duration: number
+  /** Solo per i brani sconosciuti etichettati dal pannello. */
+  composer?: string
+  publisher?: string
+}
+
+export interface LibraryMeta {
+  id: string
+  title: string
+  artist: string
+  duration: number
+  gainDb: number
 }
 
 /** Il backup automatico è dovuto? Una volta al giorno, all'ora scelta o appena dopo. */

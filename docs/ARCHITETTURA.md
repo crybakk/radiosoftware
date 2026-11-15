@@ -2,6 +2,13 @@
 
 Stato: **bozza da approvare** (14/11/2026). Nulla qui è definitivo finché non viene confermato.
 
+> **Aggiornamento 15/11/2026 (fase 6):** AzuraCast è stato tolto. Il server è una sola VM con il ponte,
+> un Icecast principale e Caddy (HTTPS automatico); il ponte manda lo stesso segnale anche a un Icecast
+> secondario esterno e, quando servono, a YouTube e Facebook (logo fisso o video da OBS, massimo 720p).
+> Quando nessuno è in diretta il ponte suona la musica di riserva dalla libreria del server. FluidStream è
+> rimandato. Dove qui sotto si parla di AzuraCast e della sua AutoDJ, vale quanto scritto in questo riquadro
+> e in [ponte/README.md](../ponte/README.md).
+
 ## 1. Obiettivi
 
 - Playout automatico H24 sul PC di regia (playlist, rotazioni, jingle, dissolvenze), simile a RadioDJ.
@@ -75,7 +82,7 @@ Regola chiave: **tutte le connessioni partono dal PC di regia verso il server**.
 
 ### 4.1.2 Registro di trasmissione e report SIAE
 
-- Ogni brano effettivamente andato in onda viene registrato con data, ora, durata reale trasmessa, titolo, artista, autori/compositori, ISRC ed etichetta. Vengono registrati anche i brani mandati dal remoto e quelli dell'AutoDJ di riserva, letti da AzuraCast.
+- Ogni brano effettivamente andato in onda viene registrato con data, ora, durata reale trasmessa, titolo, artista, autori/compositori, ISRC ed etichetta. Vengono registrati anche i brani suonati dal server (diretta autonoma e musica di riserva del ponte), scaricati dal registro del ponte (`GET /api/registro`).
 - Licenza: SIAE "radio personale". Serve solo il report SIAE (niente SCF).
 - Esportazione per periodo nel tracciato del fac simile SIAE ([docs/siae/template.csv](siae/template.csv)): CSV separato da punto e virgola, **una riga per opera**, con il numero di passaggi nel periodo.
 
@@ -86,7 +93,7 @@ Regola chiave: **tutte le connessioni partono dal PC di regia verso il server**.
 | EDITORE | MusicBrainz, se presente, altrimenti inserimento manuale |
 | INTERPRETE | Artista del brano |
 | UTILIZZAZIONI | Conteggio dei passaggi effettivi nel periodo |
-| PREZZO DI VENDITA | Da chiarire |
+| ~~PREZZO DI VENDITA~~ | Tolta (decisione del 15/11/2026): il report è trimestrale, in CSV da caricare sul portale |
 | CODICE OPERA | Codice SIAE dell'opera: non è su MusicBrainz, inserimento manuale |
 | CODICE ISWC | MusicBrainz (opera) |
 | CODICE ISRC | MusicBrainz (registrazione) o tag ID3 TSRC |

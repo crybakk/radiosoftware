@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { PonteStatus } from '../main/ponte'
+import type { ServerSyncStatus } from '../main/serverSync'
+import type { MbStatus } from '../main/musicbrainz'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { LibraryStatus, RadioApi } from '../shared/api'
 
@@ -30,6 +32,18 @@ const api: RadioApi = {
   logEnd: call('logEnd'),
   listLog: call('listLog'),
   exportLogCsv: call('exportLogCsv'),
+  siaeReport: call('siaeReport'),
+  exportSiaeCsv: call('exportSiaeCsv'),
+  incompleteMusic: call('incompleteMusic'),
+  mbStatus: call('mbStatus'),
+  mbStart: call('mbStart'),
+  mbStop: call('mbStop'),
+  mbRetry: call('mbRetry'),
+  onMbStatus: (cb: (s: MbStatus) => void) => {
+    const listener = (_e: unknown, s: MbStatus): void => cb(s)
+    ipcRenderer.on('mbStatus', listener)
+    return () => ipcRenderer.removeListener('mbStatus', listener)
+  },
   onLibraryStatus: (cb: (s: LibraryStatus) => void) => {
     const listener = (_e: unknown, s: LibraryStatus): void => cb(s)
     ipcRenderer.on('libraryStatus', listener)
@@ -42,9 +56,23 @@ const api: RadioApi = {
   ponteBackupNow: call('ponteBackupNow'),
   ponteListBackups: call('ponteListBackups'),
   ponteState: call('ponteState'),
+  ponteListPrograms: call('ponteListPrograms'),
+  ponteListeners: call('ponteListeners'),
+  ponteReplay: call('ponteReplay'),
   ponteTestNotification: call('ponteTestNotification'),
   ponteRestore: call('ponteRestore'),
   restoredFrom: call('restoredFrom'),
+  serverSyncStatus: call('serverSyncStatus'),
+  serverSyncList: call('serverSyncList'),
+  serverSyncChoice: call('serverSyncChoice'),
+  serverSyncNow: call('serverSyncNow'),
+  serverSyncStop: call('serverSyncStop'),
+  serverSyncExport: call('serverSyncExport'),
+  onServerSyncStatus: (cb: (s: ServerSyncStatus) => void) => {
+    const listener = (_e: unknown, s: ServerSyncStatus): void => cb(s)
+    ipcRenderer.on('serverSyncStatus', listener)
+    return () => ipcRenderer.removeListener('serverSyncStatus', listener)
+  },
   sendRemoteState: (state: RemoteState) => ipcRenderer.send('remote:state', state),
   onRemoteCommand: (cb: (cmd: RemoteCommand, by: string) => Promise<unknown>) => {
     const listener = (_e: unknown, id: number, cmd: RemoteCommand, by: string): void => {

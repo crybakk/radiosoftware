@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { RadioDb } from '../core/db'
-import { backupDue, parsePonteHost, PonteClient, type PonteAlarm, type PonteBackup, type PonteState } from '../core/ponteClient'
+import { backupDue, parsePonteHost, PonteClient, type PonteAlarm, type PonteBackup, type ListenerStats, type PonteProgram, type PonteState } from '../core/ponteClient'
+import { pickReplay } from '../core/eventActions'
 import type { PonteSettings, Track } from '../core/types'
 import { Uplink, type UplinkStatus } from '../core/uplink'
 import { RemoteLink, remoteTrack, remoteUrl, type RemoteCommand, type RemoteLinkStatus, type RemoteState } from '../core/remote'
@@ -105,7 +106,7 @@ export class PonteService {
     for (const l of this.listeners) l(s)
   }
 
-  private client(): PonteClient | null {
+  client(): PonteClient | null {
     const p = this.settings
     if (!p || !p.host.trim() || !p.controlToken) return null
     return new PonteClient(p.host, p.controlPort, p.controlToken, p.controlHttps)
@@ -158,12 +159,12 @@ export class PonteService {
     this.remote.sendState({ ...state, uplink: this.uplink.getStatus().state })
   }
 
-  /** Un brano è andato in onda: titolo ad AzuraCast (non per jingle e spot). */
+  /** Un brano è andato in onda: titolo agli Icecast (non per jingle e spot). */
   onTrackStart(track: Track): void {
     const c = this.client()
     if (!c || !this.settings?.sendMetadata || !this.settings.enabled) return
     if (track.kind === 'jingle' || track.kind === 'spot') return
-    c.metadata(track.artist, track.title).catch(() => {
+    c.metadata(track.artist, track.title, Math.max(0, (track.cueOut || track.duration) - track.cueIn)).catch(() => {
       // non è grave: il prossimo brano riproverà
     })
   }
@@ -240,6 +241,24 @@ export class PonteService {
     const c = this.client()
     if (!c) throw new Error('Ponte non configurato: servono indirizzo e token')
     return c.state()
+  }
+
+  async listenerStats(periodo: 'giorno' | 'settimana', data: string): Promise<ListenerStats> {
+    const c = this.client()
+    if (!c) throw new Error('Ponte non configurato: servono indirizzo e token')
+    return c.listenerStats(periodo, data)
+  }
+
+  /** Programmi del server con le puntate pubblicate (repliche). */
+  async listPrograms(): Promise<PonteProgram[]> {
+    const c = this.client()
+    if (!c) throw new Error('Ponte non configurato: servono indirizzo e token')
+    return c.listPrograms()
+  }
+
+  /** Brano per la replica di una puntata (la più recente del programma se manca episodeId). */
+  async replayTrack(programId: string, episodeId?: string): Promise<Track | null> {
+    return pickReplay(await this.listPrograms(), programId, episodeId)
   }
 
   async testNotification(): Promise<{ ok: boolean; results: { channel: string; ok: boolean; error?: string }[] }> {

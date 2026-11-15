@@ -3,10 +3,14 @@
  *
  * Porta pubblica (CONTROLLO_PORTA, predefinita 9080), protetta da token:
  *   POST /api/heartbeat   segnali di vita e stato dalla regia
- *   POST /api/metadata    titolo/artista in onda → Liquidsoap → AzuraCast
+ *   POST /api/metadata    titolo/artista in onda → Liquidsoap → Icecast
  *   PUT  /api/backup      copia del database della regia
  *   GET  /api/backup      elenco copie;  GET /api/backup/<nome> scarica una copia
  *   GET  /api/stato       stato del ponte e allarmi attivi
+ *   GET  /api/registro?da=<ISO>&a=<ISO>   brani suonati dal server (diretta autonoma, riserva, esterne riconosciute)
+ *   GET/PUT/DELETE /api/impronte   impronte audio della libreria della regia (riconoscimento nelle esterne)
+ *   GET  /api/caricati, GET /api/caricati/file?id=, POST /api/caricati/sposta   brani caricati dal pannello,
+ *        che la regia scarica e cataloga
  *   POST /api/test-notifica  invia una notifica di prova
  *   GET  /health          senza token, per i controlli automatici
  *   WS   /ws/regia        canale in tempo reale con la regia (autenticazione col token nel primo messaggio)
@@ -15,13 +19,28 @@
  *   GET  /                pagine del pannello
  *   POST /api/login, POST /api/logout, GET /api/io
  *   GET/POST /api/utenti, DELETE /api/utenti/<nome>   (solo amministratori)
- *   WS   /ws/pannello     stato della regia e comandi
+ *   WS   /ws/pannello     stato della regia e comandi, microfono, diretta autonoma, ospiti
+ *   GET  /ospite.html?t=<link>, WS /ws/ospite?t=<link>   pagina e canale degli ospiti (link creato dal pannello)
+ *   PUT  /api/autonoma/carica?nome=<file>   carica un brano nella libreria del server (conduttori)
+ *   GET/PUT /api/video/logo   immagine delle dirette video su YouTube e Facebook (conduttori)
+ *   GET/POST /api/sconosciuti, GET /api/sconosciuti/clip?id=   brani non riconosciuti nelle esterne (etichette)
  *
- * Con CERTIFICATO_TLS e CHIAVE_TLS (per esempio quelli di AzuraCast) la porta pubblica usa HTTPS.
- * Porta interna 8091 (solo rete Docker): POST /internal/event da Liquidsoap.
+ * Statistiche degli ascoltatori: GET /api/ascoltatori?periodo=giorno|settimana&data=AAAA-MM-GG (pannello o token)
+ * Titolo in onda come AzuraCast (senza accesso): GET /api/nowplaying, /api/nowplaying/<stazione>,
+ *   /api/nowplaying_static/<stazione>.json, /api/station/<stazione>/playlist.m3u|pls, GET /api/logo
+ * Programmi e puntate on demand: vedi programmiApi.ts (API pubbliche come quelle dei podcast di AzuraCast,
+ *   pagine ascolta.html e podcast.html, gestione dal pannello, ultime puntate per le repliche della regia).
+ *
+ * Libreria del server copiata dalla regia (token): GET /api/libreria, PUT /api/libreria?id=regia/...,
+ *   DELETE /api/libreria?id=regia/..., POST /api/libreria/dati (titoli e volumi corretti)
+ *
+ * Di solito davanti c'è Caddy, che fa l'HTTPS (porta 443). Senza Caddy, con CERTIFICATO_TLS e CHIAVE_TLS
+ * la porta pubblica usa HTTPS da sola.
+ * Porta interna 8091 (solo rete Docker): POST /internal/event da Liquidsoap, GET /internal/riserva
+ * (brano a caso per la riserva del ponte).
  */
 import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs'
-import { mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import { dirname, extname, join } from 'node:path'
@@ -34,6 +53,19 @@ import { Notifier } from './notifier.ts'
 import { Relay } from './relay.ts'
 import { can, ROLES, sameSecret, Users, type PublicUser, type Role } from './users.ts'
 import { VoiceHub, voiceSockets, weriftFactory } from './voce.ts'
+import { Guests } from './ospiti.ts'
+import { AUDIO_EXT, Library } from './libreria.ts'
+import { AutonomousPlayer } from './autonoma.ts'
+import { VideoLive } from './video.ts'
+import { PlayLog, type PlaySource } from './registro.ts'
+import { FpStore, parseFpFile, UnknownStore, type UnknownLabel } from './riconoscimento.ts'
+import { EsterneRecognition } from './esterne.ts'
+import { LabelBot, type Section } from './telegram.ts'
+import { activeSlot, Programs } from './programmi.ts'
+import { apiNowPlaying, icecastListeners, NowPlaying } from './nowplaying.ts'
+import { ListenerLog, period, readSecondary, report, type SecondaryConfig } from './ascoltatori.ts'
+import { Recorder } from './puntate.ts'
+import { handleProgramApi } from './programmiApi.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -51,6 +83,7 @@ const BACKUP_KEEP = num('BACKUP_DA_TENERE', 14)
 const MAX_BACKUP_BYTES = 1024 * 1024 * 1024
 const CERT_FILE = env('CERTIFICATO_TLS')
 const KEY_FILE = env('CHIAVE_TLS')
+const LISTEN_URL = env('ASCOLTO_URL') || (env('DOMINIO') ? `https://${env('DOMINIO')}${env('ICECAST_MOUNT', '/radio.mp3')}` : '')
 const PANEL_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'pannello')
 
 if (TOKEN.length < 16) {
@@ -91,7 +124,10 @@ relay.onStudioChange = (c) => console.log(`[regia] canale di controllo ${c ? 'co
 // segnale di vita a livello di applicazione: la regia capisce se il canale è ancora vivo
 setInterval(() => relay.pingStudio(), 15_000)
 
-// ---------- microfono remoto (WebRTC) ----------
+await mkdir(DATA_DIR, { recursive: true })
+let guests: Guests | null = null
+
+// ---------- microfono remoto e ospiti (WebRTC) ----------
 
 function portRange(v: string): [number, number] {
   const m = /^(\d+)\s*-\s*(\d+)$/.exec(v.trim())
@@ -100,43 +136,52 @@ function portRange(v: string): [number, number] {
   return a > 0 && b >= a && b < 65536 ? [a, b] : [40000, 40049]
 }
 
-async function setVoiceOnAir(on: boolean): Promise<boolean> {
-  const r = await fetch(`${LIQUIDSOAP}/voce`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ on }),
-    signal: AbortSignal.timeout(3000)
-  }).catch(() => null)
-  return !!r?.ok
-}
+// Posti audio in Liquidsoap: 0 = microfono del conduttore, 1-3 = ospiti.
+// Voce verso Liquidsoap sulla porta 41030+2n, ritorno da Liquidsoap sulla 41040+2n (rete interna;
+// porte pari perché RTP usa la successiva per RTCP).
+const SLOT_NAMES = ['voce', 'ospite1', 'ospite2', 'ospite3']
+const VOICE_HOST = env('VOCE_LIQUIDSOAP_HOST', 'liquidsoap')
+const setVoiceOnAir = (slot: string, on: boolean): Promise<boolean> => lqPost('/voce', { slot, on })
 
 if (env('MICROFONO_REMOTO', 'si') !== 'no') {
-  const [vHost, vPort] = env('VOCE_LIQUIDSOAP', 'liquidsoap:41030').split(':')
-  const sockets = voiceSockets({ host: vHost, port: Number(vPort) || 41030 }, num('RITORNO_VOCE_PORTA', 41040), (pkt) =>
-    voice.sendReturn(pkt)
-  )
-  const voice: VoiceHub = new VoiceHub({
-    factory: weriftFactory({
-      portRange: portRange(env('WEBRTC_PORTE', '40000-40049')),
-      stun: env('WEBRTC_STUN', 'stun:stun.l.google.com:19302'),
-      addresses: env('WEBRTC_INDIRIZZI')
-        .split(',')
-        .map((x) => x.trim())
-        .filter(Boolean)
-    }),
-    sendVoice: (pkt) => sockets.sendVoice(pkt),
-    setOnAir: setVoiceOnAir
+  const factory = weriftFactory({
+    portRange: portRange(env('WEBRTC_PORTE', '40000-40049')),
+    stun: env('WEBRTC_STUN', 'stun:stun.l.google.com:19302'),
+    addresses: env('WEBRTC_INDIRIZZI')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
   })
+  const slots = SLOT_NAMES.map((name, n) => {
+    const sockets = voiceSockets({ host: VOICE_HOST, port: 41030 + 2 * n }, 41040 + 2 * n, (pkt) => hub.sendReturn(pkt))
+    const hub: VoiceHub = new VoiceHub({
+      factory,
+      sendVoice: (pkt) => sockets.sendVoice(pkt),
+      setOnAir: (on) => setVoiceOnAir(name, on)
+    })
+    return hub
+  })
+  const voice = slots[0]
   voice.onChange = (m) => {
     console.log(`[microfono] ${m.user ? `${m.user}, ${m.onAir ? 'IN ONDA' : 'fuori onda'}` : 'chiuso'}`)
     relay.setMic(m)
   }
   relay.voice = voice
-  // all'avvio il microfono è chiuso: se Liquidsoap era rimasto con la voce aperta la togliamo
-  setTimeout(() => void setVoiceOnAir(false), 3000)
+  guests = new Guests({
+    file: join(DATA_DIR, 'inviti-ospiti.json'),
+    slots: slots.slice(1),
+    station: env('NOME_RADIO', 'Radio'),
+    listenUrl: LISTEN_URL
+  })
+  guests.onChange = (list) => {
+    console.log(`[ospiti] ${list.map((g) => `${g.name} (${g.state}${g.onAir ? ', IN ONDA' : ''})`).join(', ') || 'nessuno'}`)
+    relay.setGuests(list)
+  }
+  relay.guests = guests
+  // all'avvio tutte le voci sono chiuse: se Liquidsoap era rimasto con una voce aperta la togliamo
+  setTimeout(() => SLOT_NAMES.forEach((n) => void setVoiceOnAir(n, false)), 3000)
 }
 
-await mkdir(DATA_DIR, { recursive: true })
 const users = new Users(join(DATA_DIR, 'utenti.json'), join(DATA_DIR, 'sessioni.json'))
 if (users.count() === 0) {
   const pw = env('PANNELLO_ADMIN_PASSWORD')
@@ -151,15 +196,426 @@ if (users.count() === 0) {
 let lastStudio: Record<string, unknown> | null = null
 let lastMetadata: { artist: string; title: string; at: string } | null = null
 
+// ---------- diretta autonoma (musica dalla libreria del server) ----------
+
+const MUSIC_DIR = env('CARTELLA_MUSICA', '/musica')
+const UPLOAD_DIR = join(MUSIC_DIR, 'caricati')
+const MAX_UPLOAD_BYTES = 300 * 1024 * 1024
+const library = new Library(MUSIC_DIR, join(DATA_DIR, 'libreria.json'))
+
+async function lqPost(path: string, body: unknown = {}): Promise<boolean> {
+  const r = await fetch(`${LIQUIDSOAP}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(5000)
+  }).catch(() => null)
+  return !!r?.ok
+}
+
+const auto = new AutonomousPlayer(library, {
+  setActive: (on) => lqPost('/autonoma', { on }),
+  push: (uri) => lqPost('/autonoma/aggiungi', { uri }),
+  skip: () => lqPost('/autonoma/salta')
+})
+auto.onChange = (st) => relay.setAuto(st)
+auto.onActive = (on, by) => {
+  alarms.setAutonomous(on)
+  const text = on
+    ? `📻 Diretta autonoma avviata${by ? ` da ${by}` : ''}: il ponte suona la libreria del server al posto della regia.`
+    : `🏠 Diretta autonoma fermata${by ? ` da ${by}` : ''}.`
+  console.log(`[autonoma] ${text}`)
+  void notifier.send(text)
+}
+relay.auto = auto
+
+// registro dei brani suonati dal server, per il report SIAE della regia
+const playLog = new PlayLog(join(DATA_DIR, 'registro-server.jsonl'))
+const logPlay = (source: PlaySource, file: string): void => {
+  const t = library.byPath(file)
+  if (!t) return console.log(`[registro] ${source}: brano non in libreria ${file}`)
+  playLog.add({ source, id: t.id, title: t.title, artist: t.artist, duration: t.duration })
+}
+// titolo in onda per le app (formato AzuraCast): ogni brano del registro, più i metadati della regia
+const nowPlaying = new NowPlaying()
+playLog.onAdd = (e) => nowPlaying.set({ artist: e.artist, title: e.title, duration: e.duration, at: Date.parse(e.at), source: e.source })
+let esternaSince: number | null = null
+auto.onPlay = (t) => playLog.add({ source: 'autonoma', id: t.id, title: t.title, artist: t.artist, duration: t.duration })
+// ---------- riconoscimento dei brani nelle dirette esterne ----------
+
+const fpStore = new FpStore(join(DATA_DIR, 'impronte'))
+const unknowns = new UnknownStore(join(DATA_DIR, 'sconosciuti'), fpStore.index)
+let lastUnknownAlert = 0
+
+/** Etichetta un brano sconosciuto (dal pannello o dal bot Telegram). */
+function labelUnknown(id: string, label: UnknownLabel, by: string): void {
+  const had = unknowns.get(id)?.label
+  const u = unknowns.setLabel(id, label)
+  // la prima volta: nel registro vanno tutti i passaggi già sentiti
+  if (!had && u.label) {
+    for (const at of u.heard) {
+      playLog.add({ at, source: 'esterna', id: u.id, title: u.label.title, artist: u.label.artist, duration: u.seconds, composer: u.label.composer, publisher: u.label.publisher })
+    }
+  }
+  console.log(`[riconoscimento] ${by} ha etichettato ${id}: ${u.label?.artist} - ${u.label?.title}`)
+}
+function discardUnknown(id: string, by: string): void {
+  unknowns.discard(id)
+  console.log(`[riconoscimento] ${by} ha scartato ${id}`)
+}
+
+/** Sezioni del menu del bot Telegram (solo lettura). */
+function botSections(): Section[] {
+  const n = (x: number): string => (Math.round(x * 10) / 10).toLocaleString('it-IT')
+  const hm = (t: number | string): string => new Date(t).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+  return [
+    {
+      key: 'onda',
+      label: '📻 In onda',
+      render: async () => {
+        const ls = (await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
+          .then((r) => r.json())
+          .catch(() => null)) as { studio?: boolean; esterna?: boolean; autonoma?: boolean; voce?: [string, boolean][] } | null
+        const st = alarms.status()
+        const lines: string[] = []
+        if (!ls) lines.push('⚠️ Il mixer del ponte non risponde.')
+        else if (ls.esterna) lines.push('📡 In onda: diretta esterna')
+        else if (ls.autonoma) lines.push('🤖 In onda: diretta autonoma')
+        else if (ls.studio) lines.push('🎚 In onda: regia dello studio')
+        else lines.push('🆘 In onda: flusso di emergenza (musica casuale dalla libreria)')
+        const voices = (ls?.voce ?? []).filter(([, on]) => on).map(([name]) => name)
+        if (voices.length) lines.push(`🎙 Voci in onda dal pannello: ${voices.join(', ')}`)
+        const cur = nowPlaying.current()
+        if (cur) lines.push(`🎵 ${cur.artist ? `${cur.artist} - ` : ''}${cur.title} (dalle ${hm(cur.at)})`)
+        lines.push(`Regia ${st.studioConnected ? 'collegata' : 'non collegata'} al ponte.`)
+        if (st.alarms.length) lines.push('', '🚨 Allarmi attivi:', ...st.alarms.map((a) => `• ${a.message} (dalle ${hm(a.since)})`))
+        else lines.push('Nessun allarme attivo.')
+        return lines.join('\n')
+      }
+    },
+    {
+      key: 'ascoltatori',
+      label: '🎧 Ascoltatori',
+      render: () => {
+        const now = listenerLog.latest()
+        const lines: string[] = []
+        if (now && Date.now() - now.t < 5 * 60_000) {
+          lines.push(`🎧 Adesso: ${now.a + (now.b ?? 0)}${now.b === null ? '' : ` (${now.a} sul principale, ${now.b} sul secondario)`}`)
+        } else lines.push('🎧 Adesso: non disponibile')
+        for (const kind of ['giorno', 'settimana'] as const) {
+          const p = period(kind, '')
+          const r = report(listenerLog.read(p.from, p.to), p.from, p.to, p.step, programs.list())
+          const peakAt = r.peakAt ? ` alle ${kind === 'giorno' ? hm(r.peakAt) : new Date(r.peakAt).toLocaleString('it-IT', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''
+          lines.push('', kind === 'giorno' ? 'Oggi:' : 'Questa settimana:', `picco ${r.peak}${peakAt}, media ${n(r.avg)}, ${n(r.hours)} ore di ascolto`)
+        }
+        return lines.join('\n')
+      }
+    },
+    {
+      key: 'puntate',
+      label: '🎙 Puntate',
+      render: () => {
+        const titles = new Map(programs.list().map((p) => [p.id, p.title]))
+        const eps = programs.episodes()
+        const rec = eps.filter((e) => e.status === 'registrazione')
+        const drafts = eps.filter((e) => e.status === 'bozza')
+        const lines: string[] = []
+        if (rec.length) lines.push('🔴 In registrazione:', ...rec.map((e) => `• ${titles.get(e.programId) ?? e.programId} (dalle ${hm(e.recordedFrom)})`), '')
+        if (drafts.length) {
+          lines.push('📝 Bozze da pubblicare (dal pannello):')
+          for (const e of drafts.slice(-15)) lines.push(`• ${titles.get(e.programId) ?? e.programId}: ${e.title} (${Math.round(e.length / 60)} min)`)
+        } else lines.push('Nessuna puntata da pubblicare.')
+        return lines.join('\n')
+      }
+    }
+  ]
+}
+
+// bot Telegram per etichettare (diverso da quello degli allarmi)
+let labelBot: LabelBot | null = null
+if (env('TELEGRAM_ETICHETTE_TOKEN') && env('TELEGRAM_ETICHETTE_CHAT_ID')) {
+  labelBot = new LabelBot({
+    token: env('TELEGRAM_ETICHETTE_TOKEN'),
+    chatId: env('TELEGRAM_ETICHETTE_CHAT_ID'),
+    stateFile: join(DATA_DIR, 'telegram-etichette.json'),
+    stationName: env('NOME_RADIO', 'Radio'),
+    get: (id) => unknowns.get(id),
+    pending: () => unknowns.list().filter((u) => !u.label),
+    labelled: () => unknowns.list().filter((u) => u.label),
+    sections: botSections(),
+    clipFile: (id) => unknowns.clipFile(id),
+    label: labelUnknown,
+    discard: discardUnknown
+  })
+  labelBot.start()
+}
+
+const esterne = new EsterneRecognition({
+  fp: fpStore,
+  unknowns,
+  playLog,
+  url: env('RICONOSCIMENTO_AUDIO_URL', 'http://liquidsoap:8093/programma'),
+  onUnknown: (n, u) => {
+    // con il bot delle etichette arriva subito l'audio da etichettare
+    if (labelBot) {
+      labelBot.sendUnknown(u).catch((e: unknown) => console.error(`[telegram] invio non riuscito: ${e instanceof Error ? e.message : String(e)}`))
+      return
+    }
+    // altrimenti un avviso ogni tanto, non a ogni brano
+    if (Date.now() - lastUnknownAlert < 30 * 60_000) return
+    lastUnknownAlert = Date.now()
+    void notifier.send(`🎵 Diretta esterna: ${n} ${n === 1 ? 'brano sconosciuto' : 'brani sconosciuti'} da etichettare nel pannello (Brani sconosciuti).`)
+  }
+})
+const riconoscimentoAttivo = env('RICONOSCIMENTO', 'si') !== 'no'
+// se il controllo riparte durante un'esterna, si riprende l'ascolto
+setTimeout(() => {
+  if (!riconoscimentoAttivo) return
+  void fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
+    .then((r) => r.json() as Promise<{ esterna?: boolean }>)
+    .then((st) => esterne.setActive(!!st.esterna))
+    .catch(() => {})
+}, 4000)
+
+// all'avvio la diretta autonoma è ferma: se Liquidsoap era rimasto acceso la spegniamo
+setTimeout(() => void lqPost('/autonoma', { on: false }), 3000)
+const rescan = (): void =>
+  void library
+    .scan()
+    .then((n) => {
+      console.log(`[autonoma] libreria del server: ${n} brani`)
+      relay.setAuto(auto.state())
+    })
+    .catch((e: unknown) => console.error(`[autonoma] scansione: ${e instanceof Error ? e.message : String(e)}`))
+rescan()
+setInterval(rescan, 30 * 60_000)
+
+// ---------- programmi e puntate on demand ----------
+
+const programs = new Programs(join(DATA_DIR, 'programmi'))
+let recorder: Recorder | null = null
+if (env('REGISTRAZIONE_PUNTATE', 'si') !== 'no') {
+  recorder = new Recorder({
+    programs,
+    url: env('PUNTATE_AUDIO_URL', 'http://liquidsoap:8093/programma'),
+    bitrate: env('PUNTATE_BITRATE', '128k'),
+    onDraft: (e) => {
+      const p = programs.get(e.programId)
+      void notifier.send(`🎙️ Nuova puntata registrata di "${p?.title ?? e.programId}": da rivedere e pubblicare dal pannello (Programmi e puntate).`)
+    }
+  })
+  recorder.start()
+}
+
+// ---------- titolo in onda come AzuraCast ----------
+
+const ICECAST_INTERNO = env('ICECAST_INTERNO', 'http://icecast:8000')
+const MOUNT = env('ICECAST_MOUNT', '/radio.mp3')
+let icecastCache = { at: 0, listeners: 0, online: true, reachable: false }
+async function icecastStatus(fresh = false): Promise<{ listeners: number; online: boolean; reachable: boolean }> {
+  if (!fresh && Date.now() - icecastCache.at < 15_000) return icecastCache
+  const st = await fetch(`${ICECAST_INTERNO}/status-json.xsl`, { signal: AbortSignal.timeout(3000) })
+    .then((r) => r.json())
+    .catch(() => null)
+  // Icecast non raggiungibile: si dice "in onda" (il ponte manda sempre qualcosa) e 0 ascoltatori
+  icecastCache = { at: Date.now(), reachable: !!st, ...(st ? icecastListeners(st, MOUNT) : { listeners: 0, online: true }) }
+  return icecastCache
+}
+
+// ---------- statistiche degli ascoltatori (ogni minuto, storico di un anno) ----------
+
+const listenerLog = new ListenerLog(join(DATA_DIR, 'ascoltatori'))
+const secondaryIcecast: SecondaryConfig = {
+  host: env('ICECAST_ESTERNO_HOST'),
+  port: num('ICECAST_ESTERNO_PORTA', 8000),
+  mount: env('ICECAST_ESTERNO_MOUNT', '/radio.mp3'),
+  adminUser: env('ICECAST_ESTERNO_ADMIN_UTENTE', 'admin'),
+  adminPassword: env('ICECAST_ESTERNO_ADMIN_PASSWORD')
+}
+let secondaryWarned = false
+async function sampleListeners(): Promise<void> {
+  const ice = await icecastStatus(true)
+  // senza l'Icecast principale non si scrive nulla: meglio un buco che uno zero falso
+  if (!ice.reachable) return
+  const b = await readSecondary(secondaryIcecast)
+  if (secondaryIcecast.host && b === null && !secondaryWarned) {
+    secondaryWarned = true
+    console.log('[ascoltatori] Icecast secondario non leggibile: pagina status-json.xsl chiusa? Imposta ICECAST_ESTERNO_ADMIN_PASSWORD')
+  }
+  listenerLog.add({ t: Date.now(), a: ice.listeners, b })
+}
+setInterval(() => void sampleListeners().catch(() => {}), 60_000)
+setTimeout(() => void sampleListeners().catch(() => {}), 10_000)
+listenerLog.prune()
+setInterval(() => listenerLog.prune(), 24 * 3600_000)
+
+function listenerReport(url: URL): Record<string, unknown> {
+  const kind = url.searchParams.get('periodo') === 'settimana' ? 'settimana' : 'giorno'
+  const p = period(kind, url.searchParams.get('data') ?? '')
+  return {
+    now: listenerLog.latest(),
+    secondary: !!secondaryIcecast.host,
+    periodo: kind,
+    ...report(listenerLog.read(p.from, p.to), p.from, p.to, p.step, programs.list())
+  }
+}
+
+async function handleNowPlaying(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+  const p = url.pathname
+  const st = programs.settings().station
+  const isStation = (s: string): boolean => s === st || s === '1'
+  const m = /^\/api\/(?:nowplaying(?:\/([^/]+))?|nowplaying_static\/([^/]+)\.json|station\/([^/]+)\/playlist\.(m3u|pls)|logo)$/.exec(p)
+  if (!m || (req.method !== 'GET' && req.method !== 'HEAD')) return false
+  const cors = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-cache' }
+  if (p === '/api/logo') {
+    const f = logoFile()
+    if (!f) return json(res, 404, { error: 'nessun logo' }), true
+    res.writeHead(200, { ...cors, 'Content-Type': f.endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'public, max-age=600' })
+    pipeline(createReadStream(f), res).catch(() => res.destroy())
+    return true
+  }
+  if (m[3]) {
+    if (!isStation(m[3])) return json(res, 404, { error: 'stazione non trovata' }), true
+    const name = env('NOME_RADIO', 'Radio')
+    const body = m[4] === 'm3u' ? `#EXTM3U\n#EXTINF:-1,${name}\n${LISTEN_URL}\n` : `[playlist]\nFile1=${LISTEN_URL}\nTitle1=${name}\nLength1=-1\nNumberOfEntries=1\nVersion=2\n`
+    res.writeHead(200, { ...cors, 'Content-Type': m[4] === 'm3u' ? 'audio/x-mpegurl' : 'audio/x-scpls', 'Content-Disposition': `attachment; filename="${st}.${m[4]}"` })
+    res.end(body)
+    return true
+  }
+  const which = m[1] ?? m[2]
+  if (which !== undefined && !isStation(which)) return json(res, 404, { error: 'stazione non trovata' }, cors), true
+  const base = `${tls || viaHttps(req) ? 'https' : 'http'}://${req.headers.host ?? 'localhost'}`
+  const ice = await icecastStatus()
+  const now = Date.now()
+  const prog = programs.list().find((x) => activeSlot(x.slots, new Date(now)))
+  const progArt = prog?.art ? `${base}/api/station/${st}/public/podcast/${prog.id}/art-${prog.artUpdatedAt}.jpg` : ''
+  const data = apiNowPlaying(nowPlaying, {
+    base,
+    station: st,
+    name: env('NOME_RADIO', 'Radio'),
+    description: env('DESCRIZIONE_RADIO'),
+    listenUrl: LISTEN_URL,
+    mount: MOUNT,
+    bitrate: num('ICECAST_BITRATE', 128),
+    listeners: ice.listeners,
+    online: ice.online,
+    live: { isLive: esternaSince !== null, streamer: esternaSince !== null ? (prog?.title ?? 'Diretta esterna') : '', since: esternaSince },
+    art: progArt || (logoFile() ? `${base}/api/logo` : ''),
+    now
+  })
+  json(res, 200, p === '/api/nowplaying' ? [data] : data, cors)
+  return true
+}
+
+// ---------- dirette video (YouTube, Facebook) ----------
+
+const LOGO_FILES = { png: join(DATA_DIR, 'logo-video.png'), jpg: join(DATA_DIR, 'logo-video.jpg') }
+const MAX_LOGO_BYTES = 5 * 1024 * 1024
+const logoFile = (): string | null => (existsSync(LOGO_FILES.png) ? LOGO_FILES.png : existsSync(LOGO_FILES.jpg) ? LOGO_FILES.jpg : null)
+let video: VideoLive | null = null
+if (env('DIRETTE_VIDEO', 'si') !== 'no') {
+  video = new VideoLive({
+    file: join(DATA_DIR, 'dirette-video.json'),
+    logo: logoFile,
+    audioUrl: env('VIDEO_AUDIO_URL', 'http://liquidsoap:8093/programma'),
+    obsPort: num('VIDEO_OBS_PORTA', 9020),
+    obsPassphrase: env('VIDEO_OBS_PASSPHRASE')
+  })
+  const v = video
+  let last = ''
+  v.onChange = (st) => {
+    const line = `${st.state}${st.error ? `: ${st.error}` : ''}`
+    if (line !== last) console.log(`[video] ${line}`)
+    last = line
+    relay.setVideo(st)
+  }
+  v.onAlert = (text) => void notifier.send(text)
+  v.onLog = (line) => console.log(`[video] ffmpeg: ${line}`)
+  relay.video = v
+  relay.setVideo(v.status())
+}
+
+async function saveLogo(req: IncomingMessage): Promise<void> {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const c of req as AsyncIterable<Buffer>) {
+    size += c.length
+    if (size > MAX_LOGO_BYTES) throw new Error('immagine troppo grande (massimo 5 MB)')
+    chunks.push(c)
+  }
+  const data = Buffer.concat(chunks)
+  const kind = data.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+    ? 'png'
+    : data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff
+      ? 'jpg'
+      : null
+  if (!kind) throw new Error("l'immagine deve essere PNG o JPEG")
+  const file = LOGO_FILES[kind]
+  await writeFile(`${file}.tmp`, data)
+  await rename(`${file}.tmp`, file)
+  await rm(kind === 'png' ? LOGO_FILES.jpg : LOGO_FILES.png, { force: true })
+}
+
+/** Nome di file sicuro per i brani caricati dal pannello. */
+function safeName(name: string): string | null {
+  const base = name.split(/[\\/]/).pop() ?? ''
+  const ext = extname(base).toLowerCase()
+  if (!AUDIO_EXT.has(ext)) return null
+  const stem = base
+    .slice(0, -ext.length)
+    .replace(/[^\p{L}\p{N} ._()&'-]/gu, '_')
+    .trim()
+    .slice(0, 150)
+  return stem ? `${stem}${ext}` : null
+}
+
+/** Percorso nella libreria per un brano della regia: "regia/<cartella>/<...>/<file>", senza "..". */
+function studioPath(id: string): string | null {
+  const parts = id.split('/')
+  if (parts[0] !== 'regia' || parts.length < 2) return null
+  if (parts.some((p) => !p || p === '.' || p === '..' || p.startsWith('.') || /[\\\0]/.test(p))) return null
+  if (!AUDIO_EXT.has(extname(id).toLowerCase())) return null
+  return join(MUSIC_DIR, ...parts)
+}
+
+async function saveUpload(req: IncomingMessage, file: string): Promise<string> {
+  const dir = dirname(file)
+  await mkdir(dir, { recursive: true })
+  const tmp = join(dir, `.${file.slice(dir.length + 1)}.part`)
+  let size = 0
+  req.on('data', (c: Buffer) => {
+    size += c.length
+    if (size > MAX_UPLOAD_BYTES) req.destroy(new Error('file troppo grande (massimo 300 MB)'))
+  })
+  try {
+    await pipeline(req, createWriteStream(tmp))
+  } catch (e) {
+    await rm(tmp, { force: true })
+    throw e
+  }
+  await rename(tmp, file)
+  return file
+}
+
 // ---------- utilità HTTP ----------
 
-function json(res: ServerResponse, status: number, body: unknown): void {
+/** Con Caddy davanti (PROXY_FIDATO=si) l'indirizzo vero del browser è l'ultimo di X-Forwarded-For. */
+const TRUST_PROXY = env('PROXY_FIDATO', 'no') === 'si'
+function clientIp(req: IncomingMessage): string {
+  const fwd = TRUST_PROXY ? String(req.headers['x-forwarded-for'] ?? '').split(',').pop()?.trim() : ''
+  return fwd || req.socket.remoteAddress || ''
+}
+function viaHttps(req: IncomingMessage): boolean {
+  return TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https'
+}
+
+function json(res: ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}): void {
   const data = JSON.stringify(body)
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(data) })
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(data), ...extra })
   res.end(data)
 }
 
-async function readJson(req: IncomingMessage, limit = 64 * 1024): Promise<Record<string, unknown>> {
+async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const c of req) {
@@ -167,7 +623,11 @@ async function readJson(req: IncomingMessage, limit = 64 * 1024): Promise<Record
     if (size > limit) throw new Error('richiesta troppo grande')
     chunks.push(c as Buffer)
   }
-  const text = Buffer.concat(chunks).toString('utf8')
+  return Buffer.concat(chunks)
+}
+
+async function readJson(req: IncomingMessage, limit = 64 * 1024): Promise<Record<string, unknown>> {
+  const text = (await readBody(req, limit)).toString('utf8')
   return text ? (JSON.parse(text) as Record<string, unknown>) : {}
 }
 
@@ -258,7 +718,8 @@ async function serveStatic(res: ServerResponse, path: string): Promise<boolean> 
     'Content-Type': MIME[extname(name)] ?? 'application/octet-stream',
     'Cache-Control': 'no-cache',
     'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy': "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; frame-ancestors 'none'"
+    // media-src https: per l'ascolto della radio nella sala d'attesa degli ospiti
+    'Content-Security-Policy': "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; media-src 'self' blob: https: http:; frame-ancestors 'none'"
   })
   res.end(data)
   return true
@@ -329,10 +790,39 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     }
     if (!url.pathname.startsWith('/api/')) return json(res, 404, { error: 'non trovato' })
 
+    // --- statistiche degli ascoltatori (pannello con accesso, regia con il token) ---
+    if (req.method === 'GET' && url.pathname === '/api/ascoltatori') {
+      if (!sessionUser(req) && !authorized(req)) return json(res, 401, { error: 'accesso richiesto' })
+      return json(res, 200, listenerReport(url))
+    }
+
+    // --- titolo in onda e ascolto (pubblici, come AzuraCast) ---
+    if (await handleNowPlaying(req, res, url)) return
+
+    // --- programmi e puntate (pubbliche, pannello, regia) ---
+    if (
+      await handleProgramApi(req, res, url, {
+        programs,
+        recorder,
+        stationName: env('NOME_RADIO', 'Radio'),
+        listenUrl: LISTEN_URL,
+        nowPlaying: () => {
+          const a = auto.state()
+          if (a.active && a.onAir) return { artist: a.onAir.artist, title: a.onAir.title }
+          return lastMetadata ? { artist: lastMetadata.artist, title: lastMetadata.title } : null
+        },
+        user: sessionUser,
+        sameOrigin,
+        authorized,
+        base: (r) => `${tls || viaHttps(r) ? 'https' : 'http'}://${r.headers.host ?? 'localhost'}`
+      })
+    )
+      return
+
     // --- pannello remoto (sessione) ---
     if (req.method === 'POST' && url.pathname === '/api/login') {
       if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
-      const ip = req.socket.remoteAddress ?? ''
+      const ip = clientIp(req)
       const cancel = reserveAttempt(ip)
       if (!cancel) return json(res, 429, { error: 'Troppi tentativi: riprova tra un minuto' })
       const body = await readJson(req, 4096)
@@ -341,7 +831,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       cancel()
       res.setHeader(
         'Set-Cookie',
-        `sessione=${s.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${30 * 86400}${tls ? '; Secure' : ''}`
+        `sessione=${s.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${30 * 86400}${tls || viaHttps(req) ? '; Secure' : ''}`
       )
       return json(res, 200, { user: s.user })
     }
@@ -354,6 +844,69 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       }
       res.setHeader('Set-Cookie', 'sessione=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0')
       return json(res, 200, { ok: true })
+    }
+    if (req.method === 'PUT' && url.pathname === '/api/autonoma/carica') {
+      const me = sessionUser(req)
+      if (!me) return json(res, 401, { error: 'accesso richiesto' })
+      if (!can(me.role, 'comandare')) return json(res, 403, { error: 'il tuo ruolo non permette di caricare brani' })
+      if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+      const name = safeName(url.searchParams.get('nome') ?? '')
+      if (!name) return json(res, 400, { error: 'formato non supportato (mp3, m4a, aac, flac, ogg, opus, wav)' })
+      const file = await saveUpload(req, join(UPLOAD_DIR, name))
+      const t = await library.addFile(file)
+      library.save()
+      relay.setAuto(auto.state())
+      console.log(`[autonoma] ${me.name} ha caricato ${t.id}`)
+      return json(res, 200, { track: { id: t.id, title: t.title, artist: t.artist, duration: t.duration } })
+    }
+    if (url.pathname === '/api/video/logo') {
+      const me = sessionUser(req)
+      if (!me) return json(res, 401, { error: 'accesso richiesto' })
+      if (req.method === 'GET') {
+        const f = logoFile()
+        if (!f) return json(res, 404, { error: 'nessun logo' })
+        res.writeHead(200, { 'Content-Type': f.endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'no-store' })
+        return await pipeline(createReadStream(f), res)
+      }
+      if (req.method === 'PUT') {
+        if (!can(me.role, 'comandare')) return json(res, 403, { error: 'il tuo ruolo non permette di cambiare il logo' })
+        if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+        await saveLogo(req)
+        video?.logoChanged()
+        console.log(`[video] ${me.name} ha caricato il logo`)
+        return json(res, 200, { ok: true })
+      }
+    }
+    if (url.pathname === '/api/sconosciuti' || url.pathname === '/api/sconosciuti/clip') {
+      const me = sessionUser(req)
+      if (!me) return json(res, 401, { error: 'accesso richiesto' })
+      if (req.method === 'GET' && url.pathname === '/api/sconosciuti') {
+        return json(res, 200, { items: unknowns.list(), attivo: esterne.isActive(), ultimo: esterne.last })
+      }
+      if (req.method === 'GET') {
+        const f = unknowns.clipFile(url.searchParams.get('id') ?? '')
+        const st = f ? await stat(f).catch(() => null) : null
+        if (!f || !st) return json(res, 404, { error: 'audio non trovato' })
+        res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': st.size, 'Cache-Control': 'no-store' })
+        return await pipeline(createReadStream(f), res)
+      }
+      if (req.method === 'POST') {
+        if (!can(me.role, 'comandare')) return json(res, 403, { error: 'il tuo ruolo non permette di etichettare i brani' })
+        if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+        const body = await readJson(req, 8192)
+        const id = String(body.id ?? '')
+        if (body.azione === 'scarta') {
+          discardUnknown(id, me.name)
+          return json(res, 200, { items: unknowns.list() })
+        }
+        labelUnknown(
+          id,
+          { title: String(body.title ?? ''), artist: String(body.artist ?? ''), composer: String(body.composer ?? ''), publisher: String(body.publisher ?? '') },
+          me.name
+        )
+        return json(res, 200, { items: unknowns.list() })
+      }
+      return json(res, 404, { error: 'non trovato' })
     }
     if (url.pathname === '/api/io' || url.pathname.startsWith('/api/utenti')) {
       const me = sessionUser(req)
@@ -397,6 +950,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       const artist = String(body.artist ?? '').slice(0, 300)
       const title = String(body.title ?? '').slice(0, 300)
       lastMetadata = { artist, title, at: new Date().toISOString() }
+      nowPlaying.set({ artist, title, duration: Number(body.duration) || 0, at: Date.now(), source: 'regia' })
       const r = await fetch(`${LIQUIDSOAP}/metadata`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -423,6 +977,103 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       })
       // se la lettura si interrompe la risposta viene chiusa (vedi sotto)
       return await pipeline(createReadStream(file), res)
+    }
+    if (url.pathname === '/api/libreria' || url.pathname === '/api/libreria/dati') {
+      if (req.method === 'GET') {
+        // prima si guarda la cartella: ci possono essere file copiati a mano (disco USB)
+        await Promise.race([library.scan().catch(() => 0), new Promise((r) => setTimeout(r, 45_000))])
+        if (library.isScanning()) return json(res, 503, { error: 'il server sta ancora leggendo la libreria: riprova più tardi' })
+        return json(res, 200, library.all().filter((t) => t.id.startsWith('regia/')).map((t) => ({ id: t.id, size: t.size })))
+      }
+      if (req.method === 'POST' && url.pathname === '/api/libreria/dati') {
+        const body = await readJson(req, 16 * 1024 * 1024)
+        const list = Array.isArray(body.tracks) ? (body.tracks as Record<string, unknown>[]) : []
+        let n = 0
+        for (const m of list) {
+          if (library.setMeta(String(m.id), { title: String(m.title ?? ''), artist: String(m.artist ?? ''), duration: Number(m.duration), gainDb: Number(m.gainDb) })) n++
+        }
+        library.save()
+        return json(res, 200, { ok: true, updated: n })
+      }
+      const id = url.searchParams.get('id') ?? ''
+      const file = studioPath(id)
+      if (!file) return json(res, 400, { error: 'percorso non valido' })
+      if (req.method === 'PUT') {
+        await saveUpload(req, file)
+        const q = url.searchParams
+        const t = await library.addFile(file, {
+          title: q.get('titolo') ?? undefined,
+          artist: q.get('artista') ?? undefined,
+          duration: Number(q.get('durata')),
+          gainDb: Number(q.get('guadagno'))
+        })
+        library.save()
+        return json(res, 200, { ok: true, id: t.id, size: t.size })
+      }
+      if (req.method === 'DELETE') {
+        await rm(file, { force: true })
+        library.remove(id)
+        library.save()
+        return json(res, 200, { ok: true })
+      }
+    }
+    if (url.pathname === '/api/impronte') {
+      if (req.method === 'GET') return json(res, 200, fpStore.list())
+      if (req.method === 'PUT') {
+        // più impronte in un corpo solo: [lunghezza u32][file impronta] ...
+        const body = await readBody(req, 64 * 1024 * 1024)
+        let o = 0
+        let n = 0
+        while (o + 4 <= body.length) {
+          const len = body.readUInt32LE(o)
+          o += 4
+          if (len > 4 * 1024 * 1024 || o + len > body.length) return json(res, 400, { error: 'impronte non valide' })
+          const { meta, fp } = parseFpFile(body.subarray(o, o + len))
+          o += len
+          if (!/^regia\//.test(meta.id)) return json(res, 400, { error: `percorso non valido: ${meta.id}` })
+          fpStore.put(meta, fp)
+          n++
+        }
+        return json(res, 200, { ok: true, saved: n })
+      }
+      if (req.method === 'DELETE') {
+        const body = await readJson(req, 16 * 1024 * 1024)
+        const ids = Array.isArray(body.ids) ? body.ids.map(String) : []
+        for (const id of ids) fpStore.remove(id)
+        return json(res, 200, { ok: true, removed: ids.length })
+      }
+    }
+    if (req.method === 'GET' && url.pathname === '/api/caricati') {
+      return json(res, 200, library.all().filter((t) => t.id.startsWith('caricati/')).map((t) => ({ id: t.id, size: t.size, title: t.title, artist: t.artist, duration: t.duration })))
+    }
+    if (req.method === 'GET' && url.pathname === '/api/caricati/file') {
+      const t = library.get(url.searchParams.get('id') ?? '')
+      if (!t || !t.id.startsWith('caricati/')) return json(res, 404, { error: 'brano non trovato' })
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': t.size })
+      return await pipeline(createReadStream(library.path(t)), res)
+    }
+    if (req.method === 'POST' && url.pathname === '/api/caricati/sposta') {
+      // la regia l'ha scaricato e catalogato: il file prende il percorso che avrà dalla regia, così non si ricarica
+      const body = await readJson(req)
+      const t = library.get(String(body.da ?? ''))
+      const dest = studioPath(String(body.a ?? ''))
+      if (!t || !t.id.startsWith('caricati/')) return json(res, 404, { error: 'brano non trovato' })
+      if (!dest) return json(res, 400, { error: 'percorso non valido' })
+      await mkdir(dirname(dest), { recursive: true })
+      await rename(library.path(t), dest)
+      library.remove(t.id)
+      const moved = await library.addFile(dest, { title: t.title, artist: t.artist, duration: t.duration, gainDb: t.gainDb })
+      library.save()
+      relay.setAuto(auto.state())
+      console.log(`[libreria] ${t.id} spostato in ${moved.id} (catalogato dalla regia)`)
+      return json(res, 200, { ok: true, id: moved.id, size: moved.size })
+    }
+    if (req.method === 'GET' && url.pathname === '/api/registro') {
+      if (!authorized(req)) return json(res, 401, { error: 'token non valido' })
+      const from = new Date(url.searchParams.get('da') ?? '')
+      const to = new Date(url.searchParams.get('a') ?? '')
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return json(res, 400, { error: 'date non valide' })
+      return json(res, 200, playLog.list(from, to))
     }
     if (req.method === 'GET' && url.pathname === '/api/stato') {
       const ls = await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
@@ -453,7 +1104,7 @@ const onRequest = (req: IncomingMessage, res: ServerResponse): void =>
 const publicServer = certs ? createHttpsServer(certs, onRequest) : createServer(onRequest)
 
 if (tls) {
-  // il certificato di AzuraCast si rinnova da solo: lo ricarichiamo ogni 12 ore
+  // il certificato può essere rinnovato da fuori: lo ricarichiamo ogni 12 ore
   setInterval(() => {
     const c = loadCert()
     if (c) (publicServer as ReturnType<typeof createHttpsServer>).setSecureContext(c)
@@ -522,6 +1173,16 @@ publicServer.on('upgrade', (req, socket, head) => {
         wire(ws, relay.attachPanel(ws, me, host || undefined, current), () => current() !== null)
       })
     }
+    if (url.pathname === '/ws/ospite') {
+      const invite = guests?.validInvite(url.searchParams.get('t'))
+      if (!guests || !invite || !sameOrigin(req)) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
+        return socket.destroy()
+      }
+      const g = guests
+      const host = (req.headers.host ?? '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '')
+      return wss.handleUpgrade(req, socket, head, (ws) => wire(ws, g.attach(ws, invite, host || undefined)))
+    }
     socket.destroy()
   } catch (e) {
     console.error(`[ws] richiesta di collegamento non valida: ${e instanceof Error ? e.message : String(e)}`)
@@ -533,11 +1194,24 @@ publicServer.on('upgrade', (req, socket, head) => {
 
 const internalServer = createServer(async (req, res) => {
   try {
+    if (req.method === 'GET' && req.url === '/internal/riserva') {
+      const uri = auto.nextReserve()
+      res.writeHead(uri ? 200 : 404, { 'Content-Type': 'text/plain; charset=utf-8' })
+      return void res.end(uri ?? '')
+    }
     if (req.method === 'POST' && req.url === '/internal/event') {
       const body = await readJson(req)
       const kind = String(body.kind ?? '')
       console.log(`[evento] ${kind} ${body.detail ?? ''}`)
-      alarms.onEvent(kind, String(body.detail ?? ''))
+      if (kind === 'autonoma_brano') auto.onTrackStart(String(body.detail ?? ''))
+      else if (kind === 'riserva_brano') logPlay('riserva', String(body.detail ?? ''))
+      else {
+        if (riconoscimentoAttivo && kind === 'esterna_collegata') esterne.setActive(true)
+        if (kind === 'esterna_scollegata') esterne.setActive(false)
+        if (kind === 'esterna_collegata') esternaSince = Date.now()
+        if (kind === 'esterna_scollegata') esternaSince = null
+        alarms.onEvent(kind, String(body.detail ?? ''))
+      }
       return json(res, 200, { ok: true })
     }
     return json(res, 404, { error: 'non trovato' })
@@ -549,10 +1223,13 @@ const internalServer = createServer(async (req, res) => {
 publicServer.listen(PUBLIC_PORT, () => console.log(`Controllo in ascolto sulla porta ${PUBLIC_PORT}${tls ? ' (HTTPS)' : ''}`))
 internalServer.listen(INTERNAL_PORT, () => console.log(`Eventi interni sulla porta ${INTERNAL_PORT}`))
 
-const shutdown = (): void => {
+const shutdown = async (): Promise<void> => {
+  video?.stop()
+  labelBot?.stop()
+  await recorder?.stop().catch(() => {})
   publicServer.close()
   internalServer.close()
   process.exit(0)
 }
-process.on('SIGTERM', shutdown)
-process.on('SIGINT', shutdown)
+process.on('SIGTERM', () => void shutdown())
+process.on('SIGINT', () => void shutdown())

@@ -1,26 +1,19 @@
 import { useEffect, useState } from 'react'
 import type { LogEntry } from '../../core/types'
 import { KIND_LABEL, mmss } from './format'
-
-/** Mezzanotte locale del giorno "AAAA-MM-GG"; null se la data è vuota o non valida (campo cancellato). */
-export function dayStart(s: string): Date | null {
-  const m = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(s)
-  if (!m) return null
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-  return Number.isNaN(d.getTime()) ? null : d
-}
-
-/** Intervallo [inizio di `from`, fine di `to`) in ISO; null se una delle due date non è valida. */
-export function logRange(from: string, to: string): [string, string] | null {
-  const start = dayStart(from)
-  const end = dayStart(to)
-  if (!start || !end) return null
-  end.setDate(end.getDate() + 1)
-  return [start.toISOString(), end.toISOString()]
-}
+import { SiaeSection } from './SiaeSection'
+import { logRange } from './logRange'
 
 function isoDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  regia: 'Regia',
+  'flusso esterno': 'Flusso esterno',
+  autonoma: 'Diretta autonoma',
+  riserva: 'Riserva del server',
+  esterna: 'Esterna'
 }
 
 export function LogView() {
@@ -47,6 +40,7 @@ export function LogView() {
 
   return (
     <div className="log-view">
+      <SiaeSection />
       <section className="panel grow">
         <div className="section-title">Registro di trasmissione</div>
         <div className="row">
@@ -72,13 +66,13 @@ export function LogView() {
         </div>
         <div className="hint">
           {entries.length} passaggi, di cui {music.length} brani musicali.
-          {incomplete > 0 && ` ${incomplete} brani senza autori o codice SIAE: completali dalla scheda brano in Libreria.`}{' '}
-          Il report SIAE nel formato del fac simile arriva con la fase 7.
+          {incomplete > 0 && ` ${incomplete} brani senza autori o codice SIAE: completali dalla scheda brano in Libreria.`}
         </div>
         <table className="table">
           <thead>
             <tr>
               <th>Ora</th>
+              <th>Fonte</th>
               <th>Durata</th>
               <th>Tipo</th>
               <th>Titolo</th>
@@ -99,6 +93,7 @@ export function LogView() {
                     second: '2-digit'
                   })}
                 </td>
+                <td>{SOURCE_LABEL[e.source] ?? e.source}</td>
                 <td className="mono">{e.endedAt ? mmss(e.playedSeconds) : 'in onda'}</td>
                 <td>{KIND_LABEL[e.kind]}</td>
                 <td>{e.title}</td>

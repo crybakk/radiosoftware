@@ -3,6 +3,7 @@ import { ponteControlBase, ponteHostProblem, type PonteBackup, type PonteState }
 import type { PonteSettings } from '../../core/types'
 import { hhmm } from './format'
 import { listInputDevices } from './uplinkCapture'
+import { ServerLibrarySection } from './ServerLibrarySection'
 import type { Radio } from './useRadio'
 
 const api = window.radio
@@ -133,7 +134,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           </div>
         )}
         <p className="hint">
-          Se il collegamento cade, la regia riprova da sola. Nel frattempo AzuraCast manda in onda la sua AutoDJ di riserva.
+          Se il collegamento cade, la regia riprova da sola. Nel frattempo il ponte manda in onda la sua musica di riserva.
         </p>
       </section>
 
@@ -255,7 +256,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
         <div className="form-grid">
           <label>
             <span>
-              Indirizzo del server <em>· lo stesso di AzuraCast, es. radio.esempio.it</em>
+              Indirizzo del server <em>· il dominio della radio (DOMINIO), es. radio.esempio.it</em>
             </span>
             <input value={draft.host} onChange={(e) => set('host', e.target.value.trim())} placeholder="radio.esempio.it" />
           </label>
@@ -310,7 +311,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           )}
           <label>
             <span>
-              Porta del servizio di controllo <em>· CONTROLLO_PORTA</em>
+              Porta del servizio di controllo <em>· 443 con HTTPS</em>
             </span>
             <input type="number" value={draft.controlPort} onChange={num('controlPort', 1, 65535)} />
           </label>
@@ -333,7 +334,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           </label>
           <label className="check">
             <input type="checkbox" checked={draft.controlHttps} onChange={(e) => set('controlHttps', e.target.checked)} />
-            <span>Il servizio di controllo usa HTTPS (certificato di AzuraCast)</span>
+            <span>Il servizio di controllo usa HTTPS (consigliato)</span>
           </label>
           <label className="check">
             <input type="checkbox" checked={draft.remoteControl} onChange={(e) => set('remoteControl', e.target.checked)} />
@@ -341,7 +342,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           </label>
           <label className="check">
             <input type="checkbox" checked={draft.sendMetadata} onChange={(e) => set('sendMetadata', e.target.checked)} />
-            <span>Invia artista e titolo ad AzuraCast</span>
+            <span>Invia artista e titolo agli ascoltatori (Icecast)</span>
           </label>
         </div>
         <div className="row end">
@@ -353,6 +354,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           </button>
         </div>
       </section>
+      <ServerLibrarySection draft={draft} set={set} />
     </div>
   )
 }

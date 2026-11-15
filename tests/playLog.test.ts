@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { RadioDb } from '../src/core/db'
-import { dayStart, logRange } from '../src/renderer/src/LogView'
+import { dayStart, logRange } from '../src/renderer/src/logRange'
 import { makeTrack } from './helpers'
 
 describe('registro di trasmissione', () => {

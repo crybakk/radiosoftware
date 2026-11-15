@@ -5,12 +5,16 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ffmpegStatic from 'ffmpeg-static'
 import { logToCsv } from '../core/csv'
+import { quarterRange, siaeCsv, siaeRows } from '../core/siae'
+import { syncServerPlays } from '../core/serverPlays'
+import { MusicBrainzService } from './musicbrainz'
 import { RadioDb, type TrackEdit, type TrackSearch } from '../core/db'
 import { RotationService } from '../core/rotationService'
 import type { ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
 import { LibraryService } from './library'
 import { serveFile } from './media'
 import { applyPendingRestore, PonteService, type StudioReport } from './ponte'
+import { ServerLibrarySync } from './serverSync'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 
 protocol.registerSchemesAsPrivileged([
@@ -84,6 +88,49 @@ if (primary) app.whenReady().then(() => {
   const rotation = new RotationService(db)
   const ponte = new PonteService(db, app.getPath('userData'), ffmpegPath())
   ponte.applySettings(db.getSettings().ponte)
+  const serverSync = new ServerLibrarySync(db, app.getPath('userData'), () => ponte.client(), (st) =>
+    win?.webContents.send('serverSyncStatus', st)
+  )
+  const mb = new MusicBrainzService(db, (st) => win?.webContents.send('mbStatus', st))
+  // brani caricati dal pannello e scaricati in regia: analisi, impronta e MusicBrainz da soli
+  serverSync.onCatalogued = (ids) => {
+    void library.analyzeAll()
+    void mb.lookup(ids)
+  }
+
+  // brani suonati dal server (diretta autonoma, riserva) → registro di trasmissione
+  let serverPlaysError: string | null = null
+  const importServerPlays = async (): Promise<number> => {
+    const c = ponte.client()
+    if (!c) {
+      serverPlaysError = 'ponte non configurato'
+      return 0
+    }
+    try {
+      const n = await syncServerPlays(db, c)
+      serverPlaysError = null
+      return n
+    } catch (e) {
+      serverPlaysError = e instanceof Error ? e.message : String(e)
+      return 0
+    }
+  }
+  const siaeReport = async (year: number, q: number) => {
+    await importServerPlays()
+    const [from, to] = quarterRange(year, q)
+    const entries = db.listLog(from, to)
+    const ids = [...new Set(entries.map((e) => e.trackId).filter((id): id is number => id != null))]
+    const tracks = new Map(db.getTracks(ids).map((t) => [t.id, t]))
+    return { rows: siaeRows(entries, tracks), serverError: serverPlaysError }
+  }
+
+  // ogni 10 minuti: nelle ore scelte invia al server i brani nuovi della selezione,
+  // e scarica i brani suonati dal server
+  const syncTimer = setInterval(() => {
+    void serverSync.tick()
+    void importServerPlays()
+  }, 10 * 60_000)
+  void importServerPlays()
 
   protocol.handle('media', async (request) => {
     const url = new URL(request.url)
@@ -176,6 +223,7 @@ if (primary) app.whenReady().then(() => {
   handle('expandEvent', (event: ScheduledEvent) =>
     expandEvent(db, event, {
       now: () => new Date(),
+      replay: (programId) => ponte.replayTrack(programId),
       runCommand: (command) => {
         const child = spawn(command, { shell: true, detached: true, windowsHide: true, stdio: 'ignore' })
         child.on('error', () => {})
@@ -209,6 +257,27 @@ if (primary) app.whenReady().then(() => {
     return res.filePath
   })
 
+  // report SIAE e completamento dati
+  handle('siaeReport', (year: number, q: number) => siaeReport(year, q))
+  handle('exportSiaeCsv', async (year: number, q: number) => {
+    const { rows } = await siaeReport(year, q)
+    const res = await dialog.showSaveDialog(win!, {
+      title: 'Salva il report SIAE',
+      defaultPath: `SIAE_${year}_T${q}.csv`,
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    })
+    if (res.canceled || !res.filePath) return null
+    writeFileSync(res.filePath, siaeCsv(rows), 'utf8')
+    return res.filePath
+  })
+  handle('incompleteMusic', () => db.incompleteMusic())
+  handle('mbStatus', () => mb.status())
+  handle('mbStart', () => {
+    void mb.start()
+  })
+  handle('mbStop', () => mb.stop())
+  handle('mbRetry', () => mb.retry())
+
   // ponte
   handle('ponteStatus', () => ponte.getStatus())
   handle('ponteCapture', (active: boolean, sampleRate: number) => ponte.setCapture(active, sampleRate))
@@ -216,6 +285,9 @@ if (primary) app.whenReady().then(() => {
   handle('ponteBackupNow', () => ponte.backupNow())
   handle('ponteListBackups', () => ponte.listBackups())
   handle('ponteState', () => ponte.remoteState())
+  handle('ponteListPrograms', () => ponte.listPrograms())
+  handle('ponteListeners', (periodo: 'giorno' | 'settimana', data: string) => ponte.listenerStats(periodo, data))
+  handle('ponteReplay', (programId: string, episodeId?: string) => ponte.replayTrack(programId, episodeId))
   handle('ponteTestNotification', () => ponte.testNotification())
   handle('ponteRestore', async (name: string) => {
     await ponte.prepareRestore(name)
@@ -223,6 +295,21 @@ if (primary) app.whenReady().then(() => {
     app.quit()
   })
   handle('restoredFrom', () => restoredFrom)
+
+  // libreria del server (diretta autonoma)
+  handle('serverSyncStatus', () => serverSync.status())
+  handle('serverSyncList', (filter: 'esclusi' | 'tutti', q: string) => serverSync.list(filter, q))
+  handle('serverSyncChoice', (id: number, choice: boolean | null) => serverSync.setChoice(id, choice))
+  handle('serverSyncNow', () => serverSync.syncNow(true))
+  handle('serverSyncStop', () => serverSync.stop())
+  handle('serverSyncExport', async () => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Scegli il disco o la cartella dove copiare la selezione',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (res.canceled || !res.filePaths[0]) return null
+    return serverSync.exportTo(res.filePaths[0])
+  })
   ipcMain.on('uplink:pcm', (_e, pcm: Uint8Array) => ponte.writePcm(pcm))
   ipcMain.on('remote:state', (_e, state: RemoteState) => ponte.sendRemoteState(state))
   // comandi dal pannello remoto: li esegue l'interfaccia, che ha il motore di messa in onda
@@ -264,6 +351,9 @@ if (primary) app.whenReady().then(() => {
   void library.analyzeAll()
 
   app.on('before-quit', () => {
+    clearInterval(syncTimer)
+    mb.stop()
+    serverSync.stop()
     library.stop()
     ponte.stop()
     db.closeDanglingLog(new Date())

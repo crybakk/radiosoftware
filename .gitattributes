@@ -1,0 +1,8 @@
+# I file del server girano su Linux: sempre con fine riga Unix (LF), anche se scaricati o copiati da Windows.
+*.sh          text eol=lf
+*.liq         text eol=lf
+Caddyfile     text eol=lf
+Dockerfile    text eol=lf
+*.yml         text eol=lf
+.env.esempio  text eol=lf
+ponte/**      text eol=lf

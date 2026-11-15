@@ -3,6 +3,7 @@ import type { TrackEdit } from '../../core/db'
 import { TRACK_KINDS, type LibraryFolder, type Track, type TrackKind } from '../../core/types'
 import type { LibraryStatus } from '../../shared/api'
 import { KIND_LABEL, mmss } from './format'
+import { MusicBrainzSection } from './MusicBrainzSection'
 import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
 
@@ -83,9 +84,23 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
                 </div>
               </div>
             )}
+            {status.fingerprintTotal > 0 && (
+              <div>
+                Impronte audio per riconoscere i brani nelle esterne: {status.fingerprints} di {status.fingerprintTotal}
+                {status.fingerprinting ? ' (in corso)' : ''}
+                <div className="progress thin">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${(status.fingerprints / Math.max(1, status.fingerprintTotal)) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
+
+      <MusicBrainzSection onEdit={setEditing} refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} />
 
       <section className="panel grow">
         <div className="section-title">Brani</div>
@@ -126,7 +141,7 @@ const TEXT_FIELDS: { key: keyof TrackEdit; label: string; hint?: string }[] = [
   { key: 'iswc', label: 'ISWC' }
 ]
 
-function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose: () => void; onSaved: () => void }) {
+export function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose: () => void; onSaved: () => void }) {
   const [edit, setEdit] = useState<TrackEdit>({})
   const value = <K extends keyof TrackEdit>(k: K): TrackEdit[K] =>
     (k in edit ? edit[k] : (track as unknown as TrackEdit)[k]) as TrackEdit[K]

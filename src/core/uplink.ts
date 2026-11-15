@@ -73,8 +73,8 @@ export function backoffSeconds(attempt: number): number {
 /**
  * Invio del programma al ponte. Riceve PCM dall'interfaccia e lo passa a ffmpeg.
  * Se il collegamento cade, riprova da solo con attese crescenti, all'infinito.
- * Durante la riconnessione l'audio non inviato va perso: AzuraCast nel frattempo
- * suona la sua AutoDJ di riserva.
+ * Durante la riconnessione l'audio non inviato va perso: il ponte nel frattempo
+ * suona la sua musica di riserva.
  */
 export class Uplink {
   private proc: ChildProcessWithoutNullStreams | null = null

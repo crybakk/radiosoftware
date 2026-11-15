@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { RadioDb } from '../src/core/db'
-import { expandEvent, parsePlaylist } from '../src/core/eventActions'
+import { expandEvent, parsePlaylist, pickReplay } from '../src/core/eventActions'
 import { applyProfile } from '../src/core/rotationService'
 import type { EventAction, ScheduledEvent } from '../src/core/types'
 import { makeTrack } from './helpers'
@@ -64,6 +64,41 @@ describe('azioni degli eventi', () => {
     expect(steps[3]).toEqual({ kind: 'mode', mode: 'auto' })
     expect(commands).toEqual(['echo ciao'])
     expect(db.getSettings().rotationProfile?.name).toBe('Sera')
+    db.close()
+  })
+
+  it('replica: ultima puntata del programma dal server', async () => {
+    const programs = [
+      {
+        id: 'sera',
+        title: 'La sera',
+        episodes: [
+          { id: 'e2', title: 'Puntata 2', length: 3540.4, path: 'https://radio.test/api/station/radio/public/podcast/sera/episode/e2/download.mp3' },
+          { id: 'e1', title: 'Puntata 1', length: 1800, path: 'https://radio.test/e1.mp3' }
+        ]
+      },
+      { id: 'vuoto', title: 'Vuoto', episodes: [] }
+    ]
+    const t = pickReplay(programs, 'sera')!
+    expect(t).toMatchObject({ kind: 'program', title: 'Replica: Puntata 2', artist: 'La sera', duration: 3540, cueOut: 3540, path: programs[0].episodes[0].path })
+    expect(t.id).toBeLessThan(0)
+    expect(pickReplay(programs, 'sera', 'e1')!.duration).toBe(1800)
+    expect(pickReplay(programs, 'vuoto')).toBeNull()
+    expect(pickReplay(programs, 'altro')).toBeNull()
+
+    const db = new RadioDb(':memory:')
+    const fx = { now: () => new Date(), runCommand: () => {}, replay: async (id: string) => pickReplay(programs, id) }
+    const ok = await expandEvent(db, ev([{ type: 'replay', programId: 'sera', title: 'La sera' }]), fx)
+    expect((ok[0] as { tracks: { title: string }[] }).tracks[0].title).toBe('Replica: Puntata 2')
+    const none = await expandEvent(db, ev([{ type: 'replay', programId: 'vuoto', title: 'Vuoto' }]), fx)
+    expect(none[0]).toMatchObject({ kind: 'error', message: 'replica di "Vuoto" non disponibile: nessuna puntata pubblicata' })
+    const offline = await expandEvent(db, ev([{ type: 'replay', programId: 'sera', title: 'La sera' }]), {
+      ...fx,
+      replay: async () => {
+        throw new Error('ponte non raggiungibile')
+      }
+    })
+    expect(offline[0]).toMatchObject({ kind: 'error', message: 'replica di "La sera" non disponibile: ponte non raggiungibile' })
     db.close()
   })
 

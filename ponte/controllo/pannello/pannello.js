@@ -93,6 +93,7 @@ function showApp() {
   $('users-btn').hidden = me.role !== 'amministratore'
   $('readonly').hidden = canCommand()
   connect()
+  loadUnknowns()
 }
 
 // ---------- canale in tempo reale ----------
@@ -115,6 +116,15 @@ function connect() {
     } else if (m.t === 'alarms') {
       $('alarms').hidden = !m.alarms.length
       $('alarms').textContent = m.alarms.map((a) => `⚠ ${a.message}`).join('  ·  ')
+    } else if (m.t === 'ospiti') {
+      guestList = m.guests
+      renderGuests()
+    } else if (m.t === 'video') {
+      video = m.video
+      renderVideo()
+    } else if (m.t === 'autonoma') {
+      auto = m.state
+      renderAuto()
     } else if (m.t === 'mic') {
       mic = m.mic
       renderMic()
@@ -176,6 +186,8 @@ function render() {
   renderQueue(ctl)
   renderCarts(ctl)
   renderMic()
+  renderAuto()
+  renderGuests()
   if (state?.lastError) notice(state.lastError)
 }
 
@@ -416,11 +428,303 @@ $('mic-air').addEventListener('click', async () => {
 })
 $('mic-return').addEventListener('input', () => ($('mic-ret').volume = Number($('mic-return').value)))
 
+// ---------- ospiti ----------
+
+let guestList = null
+const guestCmd = (cmd) => request({ t: 'guest', cmd })
+const guestAct = (cmd) => guestCmd(cmd).catch((e) => notice(e.message))
+
+function renderGuests() {
+  const card = $('guests-card')
+  card.hidden = !me || guestList === null
+  if (card.hidden) return
+  const ctl = canCommand()
+  $('guests-ctl').hidden = !ctl
+  const live = guestList.filter((g) => g.onAir).length
+  $('guests-count').textContent = guestList.length ? `${guestList.length} ${guestList.length === 1 ? 'collegato' : 'collegati'}${live ? ` · ${live} in onda` : ''}` : ''
+  $('guests-count').className = `mic-who ${live ? 'onair' : ''}`
+  const box = $('guests-list')
+  box.replaceChildren()
+  if (!guestList.length) box.append(el('p', 'hint', 'Nessun ospite collegato. Crea un link e mandalo all\'ospite.'))
+  for (const g of guestList) {
+    const row = el('div', 'g-row')
+    const name = el('div', 'g-name', g.name)
+    name.append(el('small', null, g.state === 'attesa' ? `in sala d'attesa da ${hhmm(g.since)}` : g.connected ? (g.onAir ? 'IN ONDA' : 'collegato, fuori onda') : 'si sta collegando…'))
+    row.append(name)
+    if (ctl) {
+      if (g.state === 'attesa') {
+        row.append(button('Fai entrare', '', () => guestAct({ type: 'admit', id: g.id }), 'primary small'), button('Rifiuta', '', () => guestAct({ type: 'reject', id: g.id }), 'small'))
+      } else {
+        const air = button(g.onAir ? '● IN ONDA' : 'Metti in onda', g.onAir ? 'Togli dall\'onda' : '', () => guestAct({ type: 'air', id: g.id, on: !g.onAir }), `small ${g.onAir ? 'live' : ''}`)
+        air.disabled = !g.connected
+        row.append(air, button('Chiudi', '', () => guestAct({ type: 'kick', id: g.id }), 'small ghost'))
+      }
+    }
+    box.append(row)
+  }
+}
+
+function inviteUrl(inv) {
+  return `${location.origin}/ospite.html?t=${encodeURIComponent(inv.token)}`
+}
+
+$('invite-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  try {
+    const inv = await guestCmd({ type: 'invite', label: $('invite-label').value.trim() })
+    $('invite-url').value = inviteUrl(inv)
+    $('invite-out').hidden = false
+    $('invite-share').hidden = !navigator.share
+    $('invite-label').value = ''
+    if (!$('invites-list').hidden) loadInvites()
+  } catch (err) {
+    notice(err.message)
+  }
+})
+$('invite-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('invite-url').value)
+    notice('Link copiato')
+  } catch {
+    $('invite-url').select()
+  }
+})
+$('invite-share').addEventListener('click', () => {
+  navigator.share({ title: 'Invito in radio', text: 'Apri questo link per collegarti in diretta:', url: $('invite-url').value }).catch(() => {})
+})
+
+async function loadInvites() {
+  const ul = $('invites-list')
+  try {
+    const list = await guestCmd({ type: 'invites' })
+    ul.replaceChildren()
+    if (!list.length) ul.append(el('li', 'hint', 'Nessun link attivo'))
+    for (const inv of list) {
+      const li = el('li')
+      const main = el('div', 't-main')
+      main.append(el('div', 't-title', inv.label || 'senza nome'), el('div', 't-artist', `di ${inv.by}, scade alle ${hhmm(inv.expiresAt)}`))
+      li.append(
+        main,
+        button('Copia', '', () => navigator.clipboard.writeText(inviteUrl(inv)).then(() => notice('Link copiato'), () => {}), 'small'),
+        button('Revoca', 'Il link smette di funzionare', () => guestCmd({ type: 'revoke', token: inv.token }).then(loadInvites, (e) => notice(e.message)), 'small')
+      )
+      ul.append(li)
+    }
+  } catch (err) {
+    ul.replaceChildren(el('li', 'error', err.message))
+  }
+}
+$('invites-show').addEventListener('click', () => {
+  $('invites-list').hidden = !$('invites-list').hidden
+  if (!$('invites-list').hidden) loadInvites()
+})
+
+// ---------- diretta autonoma ----------
+
+let auto = null
+const autoCmd = (cmd) => request({ t: 'auto', cmd })
+
+function renderAuto() {
+  const card = $('auto-card')
+  card.hidden = !me || !auto
+  if (card.hidden) return
+  const ctl = canCommand()
+  card.classList.toggle('live', auto.active)
+  const badge = $('auto-badge')
+  badge.textContent = auto.active ? 'IN ONDA' : ''
+  badge.className = `mic-who ${auto.active ? 'auto' : ''}`
+  $('auto-hint').textContent = auto.libraryCount
+    ? `Il ponte suona la libreria del server (${auto.libraryCount} brani) al posto della regia. Con la coda vuota sceglie da solo.`
+    : 'La libreria del server è vuota: carica qualche brano qui sotto o copia la libreria dalla regia.'
+  const now = $('auto-now')
+  now.replaceChildren()
+  if (auto.active && auto.onAir) {
+    now.append(el('div', 'now-title', auto.onAir.title), el('div', 'now-artist', auto.onAir.artist))
+  }
+  if (auto.active && auto.prepared) now.append(el('div', 'hint', `Prossimo: ${auto.prepared.artist} · ${auto.prepared.title}`))
+  $('auto-start').hidden = auto.active
+  $('auto-start').disabled = !ctl || !auto.libraryCount
+  $('auto-skip').hidden = !auto.active
+  $('auto-stop').hidden = !auto.active
+  $('auto-skip').disabled = $('auto-stop').disabled = !ctl
+  const ul = $('auto-queue')
+  ul.replaceChildren()
+  for (const t of auto.queue) {
+    const li = trackRow(t)
+    if (ctl) {
+      const a = el('div', 't-actions')
+      a.append(button('✕', 'Togli dalla coda', () => autoCmd({ type: 'remove', uid: t.uid }).catch((e) => notice(e.message)), 'small'))
+      li.append(a)
+    }
+    ul.append(li)
+  }
+  $('auto-file').disabled = !ctl
+  $('auto-file').parentElement.hidden = !ctl
+}
+
+for (const [id, type] of [['auto-start', 'start'], ['auto-skip', 'skip'], ['auto-stop', 'stop']]) {
+  $(id).addEventListener('click', () => autoCmd({ type }).catch((e) => notice(e.message)))
+}
+
+$('auto-search-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const ul = $('auto-results')
+  ul.replaceChildren(el('li', 'hint', 'Ricerca…'))
+  try {
+    const tracks = await autoCmd({ type: 'search', q: $('auto-q').value.trim() })
+    ul.replaceChildren()
+    if (!tracks.length) ul.append(el('li', 'hint', 'Nessun brano trovato sul server'))
+    for (const t of tracks) {
+      const li = trackRow(t)
+      if (canCommand()) {
+        const a = el('div', 't-actions')
+        a.append(
+          button('⤒', 'Metti come prossimo', () => autoCmd({ type: 'enqueue', id: t.id, where: 'next' }).then(() => notice(`"${t.title}" è il prossimo`), (e) => notice(e.message)), 'small'),
+          button('+', 'Aggiungi in fondo alla coda', () => autoCmd({ type: 'enqueue', id: t.id, where: 'end' }).then(() => notice(`"${t.title}" aggiunto in coda`), (e) => notice(e.message)), 'small')
+        )
+        li.append(a)
+      }
+      ul.append(li)
+    }
+  } catch (err) {
+    ul.replaceChildren(el('li', 'error', err.message))
+  }
+})
+
+function uploadOne(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest()
+    x.open('PUT', `/api/autonoma/carica?nome=${encodeURIComponent(file.name)}`)
+    x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+    x.onload = () => {
+      let body = {}
+      try { body = JSON.parse(x.responseText) } catch {}
+      x.status === 200 ? resolve(body.track) : reject(new Error(body.error || `errore ${x.status}`))
+    }
+    x.onerror = () => reject(new Error('caricamento interrotto'))
+    x.send(file)
+  })
+}
+
+$('auto-file').addEventListener('change', async (e) => {
+  const files = [...e.target.files]
+  e.target.value = ''
+  const msg = $('auto-upload')
+  msg.hidden = false
+  for (const [i, f] of files.entries()) {
+    try {
+      const t = await uploadOne(f, (p) => (msg.textContent = `Caricamento ${i + 1} di ${files.length}: ${f.name} ${Math.round(p * 100)}%`))
+      await autoCmd({ type: 'enqueue', id: t.id, where: 'end' })
+      msg.textContent = `"${t.title}" caricato e messo in coda`
+    } catch (err) {
+      msg.textContent = `${f.name}: ${err.message}`
+    }
+  }
+})
+
+// ---------- dirette video ----------
+
+let video = null
+const videoCmd = (cmd) => request({ t: 'video', cmd })
+const VIDEO_STATE = {
+  spenta: 'Spenta',
+  avvio: 'In partenza…',
+  attesa_obs: 'In attesa del video da OBS: avvia la trasmissione in OBS',
+  in_onda: 'IN ONDA',
+  errore: 'Ferma per un errore'
+}
+const DEST = { youtube: 'YouTube', facebook: 'Facebook' }
+let logoShown = null
+
+function renderVideo() {
+  const card = $('video-card')
+  card.hidden = !me || !video
+  if (card.hidden) return
+  const ctl = canCommand()
+  const on = video.state !== 'spenta' && video.state !== 'errore'
+  card.classList.toggle('live', video.state === 'in_onda')
+  const badge = $('video-badge')
+  badge.textContent = video.state === 'in_onda' ? 'IN ONDA' : on ? '…' : ''
+  badge.className = `mic-who ${video.state === 'in_onda' ? 'onair' : ''}`
+  const parts = [VIDEO_STATE[video.state] || video.state]
+  if (on) {
+    parts.push(`${video.source === 'obs' ? 'video da OBS' : 'logo'} → ${video.destinations.map((d) => DEST[d]).join(' e ')}`)
+    if (video.since) parts.push(`dalle ${hhmm(video.since)}`)
+    if (video.by) parts.push(`avviata da ${video.by}`)
+  }
+  if (video.detail) parts.push(video.detail)
+  if (video.error) parts.push(`⚠ ${video.error}`)
+  $('video-status').textContent = parts.join(' · ')
+  $('video-ctl').hidden = !ctl
+  $('video-start').hidden = on
+  $('video-stop').hidden = !on
+  for (const r of document.querySelectorAll('input[name="video-src"]')) r.disabled = on
+  $('video-yt').disabled = on || !video.youtube
+  $('video-fb').disabled = on || !video.facebook
+  $('video-yt').parentElement.title = video.youtube ? '' : 'Manca la chiave di YouTube (Impostazioni qui sotto)'
+  $('video-fb').parentElement.title = video.facebook ? '' : 'Manca la chiave di Facebook (Impostazioni qui sotto)'
+  if (!video.youtube) $('video-yt').checked = false
+  if (!video.facebook) $('video-fb').checked = false
+  const obs = document.querySelector('input[name="video-src"]:checked').value === 'obs'
+  $('video-obs-hint').hidden = !obs
+  $('video-obs-hint').textContent =
+    `In OBS: Impostazioni → Stream → Servizio "Personalizzato", Server srt://${location.hostname}:${video.obsPort}` +
+    (video.obsPassphrase ? '?passphrase=<frase segreta VIDEO_OBS_PASSPHRASE>' : '') +
+    ', chiave vuota. Uscita 1280×720, x264, intervallo fotogrammi chiave 2 s, 2500-4000 kbps. Prima avvia qui, poi "Avvia trasmissione" in OBS.'
+  $('video-delay').value = video.delayMs
+  $('video-settings').hidden = me.role !== 'amministratore'
+  if (video.hasLogo && logoShown !== true) {
+    $('video-logo').src = `/api/video/logo?${Date.now()}`
+    logoShown = true
+  }
+  $('video-logo').hidden = !video.hasLogo
+}
+for (const r of document.querySelectorAll('input[name="video-src"]')) r.addEventListener('change', renderVideo)
+
+$('video-start').addEventListener('click', () => {
+  const source = document.querySelector('input[name="video-src"]:checked').value
+  const destinations = [['video-yt', 'youtube'], ['video-fb', 'facebook']].filter(([id]) => $(id).checked).map(([, d]) => d)
+  videoCmd({ type: 'start', source, destinations }).catch((e) => notice(e.message))
+})
+$('video-stop').addEventListener('click', () => videoCmd({ type: 'stop' }).catch((e) => notice(e.message)))
+
+$('video-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const cmd = { type: 'config', delayMs: Number($('video-delay').value) || 0 }
+  if ($('video-yt-key').value.trim()) cmd.youtubeKey = $('video-yt-key').value.trim()
+  if ($('video-fb-key').value.trim()) cmd.facebookKey = $('video-fb-key').value.trim()
+  if ($('video-fb-url').value.trim()) cmd.facebookUrl = $('video-fb-url').value.trim()
+  try {
+    await videoCmd(cmd)
+    $('video-yt-key').value = $('video-fb-key').value = ''
+    notice('Impostazioni delle dirette video salvate')
+  } catch (err) {
+    notice(err.message)
+  }
+})
+
+$('video-logo-file').addEventListener('change', async (e) => {
+  const f = e.target.files[0]
+  e.target.value = ''
+  if (!f) return
+  try {
+    const r = await fetch('/api/video/logo', { method: 'PUT', credentials: 'same-origin', body: f })
+    const body = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(body.error || `errore ${r.status}`)
+    logoShown = false
+    notice('Logo caricato')
+  } catch (err) {
+    notice(err.message)
+  }
+})
+
 // ---------- utenti ----------
 
 $('users-btn').addEventListener('click', () => {
   $('menu').hidden = true
   $('main').hidden = true
+  $('progs').hidden = true
+  $('stats').hidden = true
   $('users').hidden = false
   loadUsers()
 })
@@ -476,6 +780,99 @@ $('user-form').addEventListener('submit', async (e) => {
     $('user-msg').textContent = err.message
   }
 })
+
+// ---------- brani sconosciuti delle dirette esterne ----------
+
+function unkDate(iso) {
+  return new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function unkItem(u) {
+  const li = el('li', 'unk-item')
+  const head = el('div', 'unk-head')
+  const times = u.heard.length > 1 ? ` · sentito ${u.heard.length} volte` : ''
+  head.append(el('b', null, u.label ? `${u.label.artist} - ${u.label.title}` : `Sentito il ${unkDate(u.heard[0])}`))
+  head.append(el('span', 'hint', ` ${Math.round(u.seconds / 60)} min${times}`))
+  const audio = el('audio')
+  audio.controls = true
+  audio.preload = 'none'
+  audio.src = `/api/sconosciuti/clip?id=${encodeURIComponent(u.id)}`
+  li.append(head, audio)
+  if (!canCommand()) return li
+  const form = el('form', 'unk-form')
+  const field = (name, ph, value) => {
+    const i = el('input')
+    i.name = name
+    i.placeholder = ph
+    i.value = value || ''
+    i.autocomplete = 'off'
+    return i
+  }
+  const l = u.label || {}
+  form.append(
+    field('title', 'Titolo', l.title),
+    field('artist', 'Interprete', l.artist),
+    field('composer', 'Autori, separati da virgola (per la SIAE)', l.composer),
+    field('publisher', 'Editore (se lo sai)', l.publisher)
+  )
+  const row = el('div', 'row')
+  row.append(el('button', 'primary', u.label ? 'Salva le modifiche' : 'Salva'))
+  row.append(
+    button('Non è musica', 'Era parlato o rumore: lo toglie dall\'archivio', async (e) => {
+      e.preventDefault()
+      if (!confirm('Togliere questo audio dall\'archivio? Non sarà più riconosciuto.')) return
+      try {
+        drawUnknowns((await api('/api/sconosciuti', { method: 'POST', body: JSON.stringify({ id: u.id, azione: 'scarta' }) })).items)
+      } catch (err) {
+        notice(err.message)
+      }
+    }, 'ghost')
+  )
+  form.append(row)
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const data = Object.fromEntries(new FormData(form))
+    try {
+      drawUnknowns((await api('/api/sconosciuti', { method: 'POST', body: JSON.stringify({ id: u.id, ...data }) })).items)
+      notice('Salvato: da ora il brano viene riconosciuto e va nel report SIAE')
+    } catch (err) {
+      notice(err.message)
+    }
+  })
+  li.append(form)
+  return li
+}
+
+let unkInfo = { attivo: false, ultimo: null }
+function drawUnknowns(items) {
+  const todo = items.filter((u) => !u.label)
+  const done = items.filter((u) => u.label)
+  // non ridisegnare mentre si sta scrivendo un'etichetta
+  if (document.activeElement && $('unk-card').contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return
+  $('unk-list').replaceChildren(...todo.map(unkItem))
+  $('unk-done').replaceChildren(...done.map(unkItem))
+  $('unk-done-box').hidden = !done.length
+  $('unk-done-title').textContent = `Già etichettati (${done.length})`
+  $('unk-badge').textContent = todo.length ? `${todo.length} da etichettare` : ''
+  const last = unkInfo.ultimo ? ` Ultimo riconosciuto: ${unkInfo.ultimo.artist} - ${unkInfo.ultimo.title} (${hhmm(unkInfo.ultimo.at)}).` : ''
+  $('unk-status').textContent =
+    (unkInfo.attivo ? 'Diretta esterna in corso: il server sta riconoscendo i brani.' : 'Il server riconosce i brani durante le dirette esterne.') +
+    last +
+    (todo.length
+      ? ' Ascolta i brani qui sotto e scrivi titolo e interprete: dalla volta dopo saranno riconosciuti da soli.'
+      : ' Nessun brano da etichettare.')
+}
+
+async function loadUnknowns() {
+  try {
+    const r = await api('/api/sconosciuti')
+    unkInfo = { attivo: r.attivo, ultimo: r.ultimo }
+    drawUnknowns(r.items)
+  } catch {
+    // pannello non ancora collegato: si riprova al prossimo giro
+  }
+}
+setInterval(() => !$('app').hidden && loadUnknowns(), 60_000)
 
 setInterval(() => state && studio && renderNow(), 250)
 start()

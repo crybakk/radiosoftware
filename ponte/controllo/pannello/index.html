@@ -22,12 +22,15 @@
       <header class="top">
         <div id="lamp" class="lamp">FERMO</div>
         <div id="studio" class="pill off">REGIA…</div>
+        <button id="listeners-pill" class="pill listeners" title="Ascoltatori adesso: apri le statistiche" hidden></button>
         <div class="spacer"></div>
         <button id="mode" class="mode" disabled>…</button>
         <button id="menu-btn" class="ghost" aria-label="Menu">☰</button>
       </header>
       <nav id="menu" class="menu" hidden>
         <span id="who"></span>
+        <button id="progs-btn" class="ghost">Programmi</button>
+        <button id="stats-btn" class="ghost">Ascoltatori</button>
         <button id="users-btn" class="ghost" hidden>Utenti</button>
         <button id="logout" class="ghost">Esci</button>
       </nav>
@@ -67,6 +70,93 @@
           <audio id="mic-ret" autoplay></audio>
         </section>
 
+        <section class="card guests mic" id="guests-card" hidden>
+          <div class="section-title">Ospiti <span id="guests-count" class="mic-who"></span></div>
+          <div id="guests-list"></div>
+          <div id="guests-ctl">
+            <form id="invite-form" class="search">
+              <input id="invite-label" placeholder="Per chi è il link? (es. Mario, intervista delle 18)" maxlength="60" />
+              <button type="submit">Crea link</button>
+            </form>
+            <div id="invite-out" hidden>
+              <div class="invite-url"><input id="invite-url" readonly /><button id="invite-copy" type="button">Copia</button><button id="invite-share" type="button" hidden>Invia…</button></div>
+              <p class="hint">Mandalo all'ospite (per esempio su WhatsApp). Vale 24 ore.</p>
+            </div>
+            <button id="invites-show" class="small ghost" type="button">Link attivi</button>
+            <ul class="list" id="invites-list" hidden></ul>
+          </div>
+        </section>
+
+        <section class="card auto" id="auto-card" hidden>
+          <div class="section-title">Diretta autonoma dal server <span id="auto-badge" class="mic-who"></span></div>
+          <p class="hint" id="auto-hint">Il ponte suona la musica della libreria del server al posto della regia. Con la coda vuota sceglie da solo.</p>
+          <div id="auto-now" class="auto-now"></div>
+          <div class="mic-row auto-ctl">
+            <button id="auto-start" class="primary">▶ Avvia diretta autonoma</button>
+            <button id="auto-skip" hidden>⏭ Salta</button>
+            <button id="auto-stop" class="ghost" hidden>■ Ferma e torna alla regia</button>
+          </div>
+          <ul class="list" id="auto-queue"></ul>
+          <form id="auto-search-form" class="search">
+            <input id="auto-q" placeholder="Cerca nella libreria del server" autocomplete="off" />
+            <button type="submit">Cerca</button>
+          </form>
+          <ul class="list" id="auto-results"></ul>
+          <label class="upload">
+            <input type="file" id="auto-file" accept="audio/*,.mp3,.m4a,.aac,.flac,.ogg,.opus,.wav" multiple />
+            <span>⬆ Carica brani dal dispositivo</span>
+          </label>
+          <p id="auto-upload" class="hint" hidden></p>
+        </section>
+
+        <section class="card video" id="video-card" hidden>
+          <div class="section-title">Dirette video (YouTube, Facebook) <span id="video-badge" class="mic-who"></span></div>
+          <p class="hint" id="video-status"></p>
+          <div id="video-ctl">
+            <div class="video-opts">
+              <label class="check"><input type="radio" name="video-src" value="logo" checked /> Logo fisso</label>
+              <label class="check"><input type="radio" name="video-src" value="obs" /> Video da OBS</label>
+            </div>
+            <div class="video-opts">
+              <label class="check"><input type="checkbox" id="video-yt" /> YouTube</label>
+              <label class="check"><input type="checkbox" id="video-fb" /> Facebook</label>
+            </div>
+            <p class="hint" id="video-obs-hint" hidden></p>
+            <div class="mic-row">
+              <button id="video-start" class="primary">▶ Avvia diretta video</button>
+              <button id="video-stop" class="ghost" hidden>■ Ferma diretta video</button>
+            </div>
+            <div class="video-logo">
+              <img id="video-logo" alt="Logo delle dirette video" hidden />
+              <label class="upload">
+                <input type="file" id="video-logo-file" accept="image/png,image/jpeg" />
+                <span>⬆ Carica il logo (PNG o JPEG, ideale 1280×720)</span>
+              </label>
+            </div>
+            <details id="video-settings">
+              <summary>Impostazioni (chiavi delle dirette, ritardo)</summary>
+              <form id="video-form" class="user-form">
+                <input id="video-yt-key" type="password" placeholder="Chiave di YouTube (YouTube Studio → Trasmetti dal vivo)" autocomplete="off" />
+                <input id="video-fb-url" placeholder="Server di Facebook (lascia vuoto per quello standard)" autocomplete="off" />
+                <input id="video-fb-key" type="password" placeholder="Chiave di Facebook (Live Producer → chiave di streaming)" autocomplete="off" />
+                <label class="vol">Ritardo dell'audio rispetto al video OBS (ms) <input id="video-delay" type="number" step="100" min="-10000" max="10000" /></label>
+                <button class="primary" type="submit">Salva</button>
+                <p class="hint">Le chiavi le possono cambiare solo gli amministratori. Lascia vuoto un campo chiave per non cambiarlo.</p>
+              </form>
+            </details>
+          </div>
+        </section>
+
+        <section class="card unk" id="unk-card">
+          <div class="section-title">Brani sconosciuti delle esterne <span id="unk-badge" class="mic-who"></span></div>
+          <p class="hint" id="unk-status"></p>
+          <ul class="list unk-list" id="unk-list"></ul>
+          <details id="unk-done-box" hidden>
+            <summary id="unk-done-title"></summary>
+            <ul class="list unk-list" id="unk-done"></ul>
+          </details>
+        </section>
+
         <section class="card">
           <div class="section-title">In coda</div>
           <ul class="list" id="queue"></ul>
@@ -86,6 +176,77 @@
           <div class="carts" id="carts"></div>
         </section>
       </main>
+
+      <section id="stats" class="users progs stats" hidden>
+        <div class="card">
+          <div class="section-title">Ascoltatori <button class="small ghost" id="stats-close">Chiudi</button></div>
+          <div class="row stats-bar">
+            <button class="small" data-periodo="giorno">Giorno</button>
+            <button class="small" data-periodo="settimana">Settimana</button>
+            <button class="small ghost" id="stats-prev" aria-label="Periodo prima">◀</button>
+            <input type="date" id="stats-date" />
+            <button class="small ghost" id="stats-next" aria-label="Periodo dopo">▶</button>
+          </div>
+          <div class="tiles" id="stats-tiles"></div>
+          <p class="hint" id="stats-note"></p>
+        </div>
+        <div class="card">
+          <div class="section-title" id="stats-chart-title">Andamento</div>
+          <div class="chart" id="stats-chart"></div>
+        </div>
+        <div class="card">
+          <div class="section-title">Per ora del giorno (media)</div>
+          <div class="chart" id="stats-hours"></div>
+        </div>
+        <div class="card">
+          <div class="section-title">Per programma</div>
+          <table class="table"><thead><tr><th>Programma</th><th>Media</th><th>Picco</th><th>Ore di ascolto</th></tr></thead>
+            <tbody id="stats-progs"></tbody></table>
+        </div>
+      </section>
+
+      <section id="progs" class="users progs" hidden>
+        <div class="card">
+          <div class="section-title">Programmi e puntate <button class="small ghost" id="progs-close">Chiudi</button></div>
+          <p class="hint" id="progs-status"></p>
+        </div>
+        <div class="card" id="drafts-card">
+          <div class="section-title">Puntate da rivedere <span id="drafts-badge" class="mic-who"></span></div>
+          <p class="hint">Ogni programma si registra da solo nella sua fascia. Ascolta la registrazione, segna dove inizia e dove
+            finisce la puntata, scrivi titolo e descrizione e pubblica: sarà ascoltabile nella pagina dei podcast e nell'app.</p>
+          <ul class="list prog-list" id="drafts"></ul>
+        </div>
+        <div class="card">
+          <div class="section-title">Programmi <button class="small" id="prog-new" hidden>Nuovo programma</button></div>
+          <ul class="list prog-list" id="progs-list"></ul>
+        </div>
+        <form class="card prog-form" id="prog-form" hidden>
+          <div class="section-title" id="prog-form-title">Nuovo programma</div>
+          <input type="hidden" name="pid" />
+          <label>Nome <input name="title" required maxlength="200" /></label>
+          <label>Conduttori <input name="author" maxlength="300" placeholder="Anna Rossi, Luca Bianchi" /></label>
+          <label>Descrizione <textarea name="description" rows="3" maxlength="4000"></textarea></label>
+          <div class="hint">Fasce orarie (per la registrazione automatica)</div>
+          <div id="prog-slots"></div>
+          <button type="button" class="small" id="prog-slot-add">Aggiungi fascia</button>
+          <label class="check"><input type="checkbox" name="record" checked /> Registra da solo le puntate nelle fasce</label>
+          <label class="check"><input type="checkbox" name="published" checked /> Visibile nella pagina dei podcast e nell'app</label>
+          <div class="row">
+            <button class="primary" type="submit">Salva</button>
+            <button type="button" class="ghost" id="prog-cancel">Annulla</button>
+          </div>
+        </form>
+        <details class="card" id="prog-settings" hidden>
+          <summary>Impostazioni</summary>
+          <form id="prog-settings-form" class="prog-form">
+            <label>Nome breve della stazione negli indirizzi per l'app (come su AzuraCast)
+              <input name="station" required pattern="[a-z0-9_\-]{1,40}" /></label>
+            <label>Minuti registrati prima e dopo ogni fascia <input name="marginMinutes" type="number" min="0" max="15" /></label>
+            <p class="hint" id="prog-api"></p>
+            <button class="primary" type="submit">Salva</button>
+          </form>
+        </details>
+      </section>
 
       <section id="users" class="card users" hidden>
         <div class="section-title">Utenti del pannello <button class="small ghost" id="users-close">Chiudi</button></div>
@@ -109,5 +270,7 @@
       </section>
     </section>
     <script src="pannello.js"></script>
+    <script src="programmi.js"></script>
+    <script src="ascoltatori.js"></script>
   </body>
 </html>

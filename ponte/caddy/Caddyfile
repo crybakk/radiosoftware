@@ -1,0 +1,16 @@
+# HTTPS automatico per il server della radio. Caddy ottiene e rinnova da solo il certificato
+# Let's Encrypt per DOMINIO (servono le porte 80 e 443 inoltrate dal router verso il server).
+{$DOMINIO} {
+	# ascolto della radio e stato di Icecast (titolo in onda, ascoltatori)
+	@icecast path {$ICECAST_MOUNT} /status-json.xsl
+	handle @icecast {
+		reverse_proxy icecast:8000 {
+			# lo stream va passato subito, senza buffer
+			flush_interval -1
+		}
+	}
+	# tutto il resto: pannello remoto, regia, ospiti
+	handle {
+		reverse_proxy controllo:9080
+	}
+}

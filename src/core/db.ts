@@ -105,6 +105,9 @@ CREATE TABLE IF NOT EXISTS settings (
 
 type Row = Record<string, unknown>
 
+/** Musica attiva a cui manca un dato che MusicBrainz può dare (autori, editore, ISRC, ISWC). */
+const MB_TODO = "kind = 'music' AND enabled = 1 AND (composer = '' OR publisher = '' OR isrc = '' OR iswc = '')"
+
 function rowToTrack(r: Row): Track {
   return {
     id: Number(r.id),
@@ -238,12 +241,27 @@ export class RadioDb {
 
   /** Porta i dati delle versioni precedenti al formato attuale. */
   private migrate(): void {
+    const cols = (this.db.prepare('PRAGMA table_info(tracks)').all() as Row[]).map((r) => String(r.name))
     // v0.2: "missing" distingue i brani disabilitati dalla scansione (file sparito o non audio) da quelli
     // disabilitati dall'utente; "kind_manual" ricorda che il tipo è stato cambiato a mano.
     // Nei database esistenti i brani già disabilitati restano tali (non si può sapere chi li ha disabilitati).
-    const cols = new Set((this.db.prepare('PRAGMA table_info(tracks)').all() as Row[]).map((r) => String(r.name)))
-    if (!cols.has('missing')) this.db.exec('ALTER TABLE tracks ADD COLUMN missing INTEGER NOT NULL DEFAULT 0')
-    if (!cols.has('kind_manual')) this.db.exec('ALTER TABLE tracks ADD COLUMN kind_manual INTEGER NOT NULL DEFAULT 0')
+    if (!cols.includes('missing')) this.db.exec('ALTER TABLE tracks ADD COLUMN missing INTEGER NOT NULL DEFAULT 0')
+    if (!cols.includes('kind_manual')) this.db.exec('ALTER TABLE tracks ADD COLUMN kind_manual INTEGER NOT NULL DEFAULT 0')
+    // v0.4: scelta a mano dei brani da tenere sulla libreria del server (null = decide la regola)
+    if (!cols.includes('server_choice')) this.db.exec('ALTER TABLE tracks ADD COLUMN server_choice INTEGER')
+    // v0.7: completamento dei dati con MusicBrainz
+    if (!cols.includes('mb_recording_id')) this.db.exec("ALTER TABLE tracks ADD COLUMN mb_recording_id TEXT NOT NULL DEFAULT ''")
+    if (!cols.includes('mb_checked_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN mb_checked_at TEXT')
+    // v0.8: impronta audio per il riconoscimento nelle dirette esterne
+    // (in una tabella a parte: le impronte pesano e non servono alle altre letture dei brani)
+    if (!cols.includes('fp_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN fp_at TEXT')
+    this.db.exec(
+      'CREATE TABLE IF NOT EXISTS fingerprints (track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE, fp BLOB NOT NULL)'
+    )
+    // v0.7: brani suonati dal server (diretta autonoma, riserva) importati nel registro, una volta sola
+    const logCols = (this.db.prepare('PRAGMA table_info(play_log)').all() as Row[]).map((r) => String(r.name))
+    if (!logCols.includes('ext_id')) this.db.exec('ALTER TABLE play_log ADD COLUMN ext_id TEXT')
+    this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS play_log_ext ON play_log(ext_id) WHERE ext_id IS NOT NULL')
     // v0.1: eventi con un solo brano (tabella "events") → eventi con azioni (tabella "schedule")
     const old = this.db.prepare('SELECT * FROM events').all() as Row[]
     if (old.length) {
@@ -381,7 +399,7 @@ export class RadioDb {
              composer=CASE WHEN composer='' THEN ? ELSE composer END,
              publisher=CASE WHEN publisher='' THEN ? ELSE publisher END,
              isrc=CASE WHEN isrc='' THEN ? ELSE isrc END,
-             duration=?, bitrate=?, sample_rate=?, file_size=?, file_mtime=?, analyzed_at=NULL
+             duration=?, bitrate=?, sample_rate=?, file_size=?, file_mtime=?, analyzed_at=NULL, fp_at=NULL
            WHERE id=?`
         )
         .run(
@@ -528,6 +546,19 @@ export class RadioDb {
         .all(...params, q.limit ?? 200, q.offset ?? 0) as Row[]
     ).map(rowToTrack)
     return { tracks, total }
+  }
+
+  /** Musica della libreria con dimensione del file e scelta a mano per il server. */
+  musicForServer(): { track: Track; size: number; choice: boolean | null }[] {
+    return (this.db.prepare("SELECT * FROM tracks WHERE kind = 'music'").all() as Row[]).map((r) => ({
+      track: rowToTrack(r),
+      size: Number(r.file_size),
+      choice: r.server_choice == null ? null : Number(r.server_choice) === 1
+    }))
+  }
+
+  setServerChoice(id: number, choice: boolean | null): void {
+    this.db.prepare('UPDATE tracks SET server_choice = ? WHERE id = ?').run(choice === null ? null : choice ? 1 : 0, id)
   }
 
   /** Brani candidati per la rotazione automatica. */
@@ -720,6 +751,162 @@ export class RadioDb {
       artist: String(r.artist),
       startedAt: String(r.started_at)
     }))
+  }
+
+  /**
+   * Passaggio suonato dal server (diretta autonoma, musica di riserva). extId evita i doppioni
+   * quando lo stesso periodo viene scaricato più volte. Restituisce true se è nuovo.
+   */
+  importPlay(p: {
+    extId: string
+    startedAt: string
+    seconds: number
+    source: string
+    track: Track | null
+    title: string
+    artist: string
+    composer?: string
+    publisher?: string
+  }): boolean {
+    const t = p.track
+    const end = new Date(new Date(p.startedAt).getTime() + p.seconds * 1000).toISOString()
+    const res = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO play_log(ext_id, track_id, started_at, ended_at, played_seconds, source, title, artist,
+           composer, publisher, isrc, iswc, siae_code, kind)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      )
+      .run(
+        p.extId,
+        t ? t.id : null,
+        p.startedAt,
+        end,
+        p.seconds,
+        p.source,
+        t?.title || p.title,
+        t?.artist || p.artist,
+        t?.composer || p.composer || '',
+        t?.publisher || p.publisher || '',
+        t?.isrc ?? '',
+        t?.iswc ?? '',
+        t?.siaeCode ?? '',
+        t?.kind ?? 'music'
+      )
+    return Number(res.changes) > 0
+  }
+
+  /** Inizio dell'ultimo passaggio importato dal server (null = mai). */
+  lastServerPlay(): string | null {
+    const r = this.db.prepare('SELECT MAX(started_at) AS m FROM play_log WHERE ext_id IS NOT NULL').get() as Row
+    return r.m == null ? null : String(r.m)
+  }
+
+  // ---------- impronte audio ----------
+
+  /** Musica senza impronta (da calcolare). */
+  pendingFingerprint(limit = 20): Track[] {
+    return (
+      this.db
+        .prepare("SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND fp_at IS NULL ORDER BY id LIMIT ?")
+        .all(limit) as Row[]
+    ).map(rowToTrack)
+  }
+
+  fingerprintStats(): { done: number; total: number } {
+    const r = this.db
+      .prepare(
+        "SELECT COUNT(*) AS total, SUM(CASE WHEN fp_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1"
+      )
+      .get() as Row
+    return { done: Number(r.done ?? 0), total: Number(r.total ?? 0) }
+  }
+
+  /** fp vuoto = file illeggibile (non si riprova finché il file non cambia). */
+  saveFingerprint(id: number, fp: Uint8Array | null): void {
+    if (fp && fp.length) this.db.prepare('INSERT OR REPLACE INTO fingerprints(track_id, fp) VALUES (?, ?)').run(id, fp)
+    else this.db.prepare('DELETE FROM fingerprints WHERE track_id = ?').run(id)
+    this.db.prepare("UPDATE tracks SET fp_at = datetime('now') WHERE id = ?").run(id)
+  }
+
+  /** Brani di musica con l'impronta (senza leggerla): per decidere cosa mandare al server. */
+  fingerprinted(): { track: Track; bytes: number }[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT t.*, length(f.fp) AS fp_bytes FROM tracks t JOIN fingerprints f ON f.track_id = t.id
+           WHERE t.kind = 'music' AND t.enabled = 1 AND t.fp_at IS NOT NULL`
+        )
+        .all() as Row[]
+    ).map((r) => ({ track: rowToTrack(r), bytes: Number(r.fp_bytes) }))
+  }
+
+  getFingerprint(id: number): Uint8Array | null {
+    const r = this.db.prepare('SELECT fp FROM fingerprints WHERE track_id = ?').get(id) as Row | undefined
+    return r ? (r.fp as Uint8Array) : null
+  }
+
+  // ---------- MusicBrainz ----------
+
+  /** Musica a cui manca qualche dato per il report SIAE e non ancora cercata su MusicBrainz. */
+  mbPending(limit = 20): Track[] {
+    return (
+      this.db
+        .prepare(`SELECT * FROM tracks WHERE ${MB_TODO} AND mb_checked_at IS NULL ORDER BY id LIMIT ?`)
+        .all(limit) as Row[]
+    ).map(rowToTrack)
+  }
+
+  mbStats(): { todo: number; checked: number; found: number } {
+    const r = this.db
+      .prepare(
+        `SELECT
+           SUM(CASE WHEN ${MB_TODO} AND mb_checked_at IS NULL THEN 1 ELSE 0 END) AS todo,
+           SUM(CASE WHEN mb_checked_at IS NOT NULL THEN 1 ELSE 0 END) AS checked,
+           SUM(CASE WHEN mb_recording_id != '' THEN 1 ELSE 0 END) AS found
+         FROM tracks WHERE kind = 'music' AND enabled = 1`
+      )
+      .get() as Row
+    return { todo: Number(r.todo ?? 0), checked: Number(r.checked ?? 0), found: Number(r.found ?? 0) }
+  }
+
+  /** Salva quello che ha trovato MusicBrainz, solo nei campi vuoti: i dati scritti a mano non si toccano. */
+  saveMb(
+    id: number,
+    recordingId: string,
+    fill: { composer?: string; publisher?: string; isrc?: string; iswc?: string }
+  ): void {
+    this.db
+      .prepare(
+        `UPDATE tracks SET mb_recording_id = ?, mb_checked_at = datetime('now'),
+           composer = CASE WHEN composer = '' THEN ? ELSE composer END,
+           publisher = CASE WHEN publisher = '' THEN ? ELSE publisher END,
+           isrc = CASE WHEN isrc = '' THEN ? ELSE isrc END,
+           iswc = CASE WHEN iswc = '' THEN ? ELSE iswc END
+         WHERE id = ?`
+      )
+      .run(recordingId, fill.composer ?? '', fill.publisher ?? '', fill.isrc ?? '', fill.iswc ?? '', id)
+  }
+
+  /** Rimette in coda per MusicBrainz un brano preciso (per esempio appena scaricato dal server). */
+  mbRequeue(id: number): void {
+    this.db.prepare('UPDATE tracks SET mb_checked_at = NULL WHERE id = ?').run(id)
+  }
+
+  /** Rimette in coda per MusicBrainz i brani già cercati ma ancora incompleti. */
+  mbRetry(): number {
+    return Number(this.db.prepare(`UPDATE tracks SET mb_checked_at = NULL WHERE ${MB_TODO}`).run().changes)
+  }
+
+  /** Musica attiva con dati mancanti per il report SIAE. */
+  incompleteMusic(limit = 500): { tracks: Track[]; total: number } {
+    const where = `kind = 'music' AND enabled = 1 AND (composer = '' OR publisher = '' OR (siae_code = '' AND iswc = '' AND isrc = ''))`
+    const total = Number((this.db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE ${where}`).get() as Row).n)
+    const tracks = (
+      this.db
+        .prepare(`SELECT * FROM tracks WHERE ${where} ORDER BY artist COLLATE NOCASE, title COLLATE NOCASE LIMIT ?`)
+        .all(limit) as Row[]
+    ).map(rowToTrack)
+    return { tracks, total }
   }
 
   /**

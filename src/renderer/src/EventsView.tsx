@@ -8,6 +8,7 @@ import {
   type ScheduledEvent,
   type Track
 } from '../../core/types'
+import type { PonteProgram } from '../../core/ponteClient'
 import { hhmm, KIND_LABEL } from './format'
 import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
@@ -57,6 +58,8 @@ function newAction(type: EventAction['type']): EventAction {
       return { type, profile: emptyProfile() }
     case 'command':
       return { type, command: '' }
+    case 'replay':
+      return { type, programId: '', title: '' }
     default:
       return { type } as EventAction
   }
@@ -111,6 +114,8 @@ function actionSummary(a: EventAction, tracks: Map<number, Track>): string {
       return a.profile ? `profilo "${a.profile.name || 'senza nome'}"` : 'torna alla rotazione normale'
     case 'command':
       return a.command
+    case 'replay':
+      return a.programId ? `ultima puntata di "${a.title || a.programId}"` : 'nessun programma scelto'
   }
 }
 
@@ -745,6 +750,8 @@ function ActionForm({
       return <div className="hint">Toglie dalla coda tutti i brani in attesa (quello in onda continua).</div>
     case 'stop':
       return <div className="hint">Sfuma tutto quello che è in onda e passa in manuale.</div>
+    case 'replay':
+      return <ReplayForm action={a} onChange={onChange} />
     case 'command':
       return (
         <label className="block">
@@ -852,4 +859,55 @@ function ActionForm({
       )
     }
   }
+}
+
+/** Replica: si sceglie il programma tra quelli del server; all'ora dell'evento va in onda la sua ultima puntata. */
+function ReplayForm({
+  action: a,
+  onChange
+}: {
+  action: Extract<EventAction, { type: 'replay' }>
+  onChange: (a: EventAction) => void
+}) {
+  const [programs, setPrograms] = useState<PonteProgram[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    window.radio
+      .ponteListPrograms()
+      .then(setPrograms)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+  }, [])
+  const known = programs?.some((p) => p.id === a.programId)
+  const chosen = programs?.find((p) => p.id === a.programId)
+  return (
+    <div className="form-grid">
+      <label>
+        <span>Programma</span>
+        <select
+          value={a.programId}
+          onChange={(e) => {
+            const p = programs?.find((x) => x.id === e.target.value)
+            onChange({ ...a, programId: e.target.value, title: p?.title ?? '' })
+          }}
+        >
+          <option value="">Scegli…</option>
+          {a.programId && !known && <option value={a.programId}>{a.title || a.programId}</option>}
+          {programs?.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title} ({p.episodes.length} {p.episodes.length === 1 ? 'puntata' : 'puntate'})
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="hint">
+        {error
+          ? `Elenco dei programmi non disponibile: ${error}`
+          : chosen
+            ? chosen.episodes[0]
+              ? `Adesso andrebbe in onda: ${chosen.episodes[0].title}. L'audio arriva in streaming dal server (serve internet).`
+              : 'Questo programma non ha ancora puntate pubblicate.'
+            : "All'ora dell'evento va in onda l'ultima puntata pubblicata del programma, in streaming dal server."}
+      </div>
+    </div>
+  )
 }

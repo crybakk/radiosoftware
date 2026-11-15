@@ -1,7 +1,10 @@
 /** Smista i messaggi tra la regia (una sola) e i pannelli remoti (quanti si vuole). */
-import type { FromPanel, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio } from './protocol.ts'
+import type { AutoState, FromPanel, GuestInfo, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio, VideoStatus } from './protocol.ts'
 import { can, sameSecret, type PublicUser } from './users.ts'
 import type { VoiceHub } from './voce.ts'
+import type { AutonomousPlayer } from './autonoma.ts'
+import type { Guests } from './ospiti.ts'
+import type { VideoLive } from './video.ts'
 
 export interface Peer {
   send(data: string): void
@@ -28,6 +31,15 @@ export class Relay {
   onStudioChange: (connected: boolean) => void = () => {}
   /** Microfono remoto (WebRTC); null se non attivo sul ponte. */
   voice: VoiceHub | null = null
+  /** Diretta autonoma dal server; null se non attiva sul ponte. */
+  auto: AutonomousPlayer | null = null
+  private autoState: (ToPanel & { t: 'autonoma' }) | null = null
+  /** Ospiti collegati con un link; null se il microfono remoto è spento. */
+  guests: Guests | null = null
+  private guestList: ToPanel & { t: 'ospiti' } = { t: 'ospiti', guests: [] }
+  /** Dirette video verso YouTube e Facebook; null se non attive sul ponte. */
+  video: VideoLive | null = null
+  private videoState: (ToPanel & { t: 'video' }) | null = null
 
   constructor(token: string) {
     this.token = token
@@ -129,6 +141,9 @@ export class Relay {
     this.sendTo(peer, { t: 'hello', user, studio: this.studio !== null, state: this.state })
     this.sendTo(peer, this.alarms)
     this.sendTo(peer, this.mic)
+    if (this.autoState) this.sendTo(peer, this.autoState)
+    if (this.guests) this.sendTo(peer, this.guestList)
+    if (this.videoState) this.sendTo(peer, this.videoState)
     return {
       message: (raw: string) => {
         let msg: FromPanel
@@ -152,6 +167,38 @@ export class Relay {
             ? voice.open(peer, now.name, String(msg.sdp), host).then((sdp) => reply(true, undefined, { sdp }))
             : voice.setMic(peer, msg.on === true).then(() => reply(true))
           done.catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
+          return
+        }
+        if (msg.t === 'guest') {
+          const guests = this.guests
+          if (!guests || typeof msg.cmd !== 'object' || msg.cmd === null) return reply(false, 'ospiti non attivi sul ponte')
+          if (!can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di gestire gli ospiti')
+          guests
+            .command(msg.cmd, now.name)
+            .then((data) => reply(true, undefined, data))
+            .catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
+          return
+        }
+        if (msg.t === 'video') {
+          const video = this.video
+          if (!video || typeof msg.cmd !== 'object' || msg.cmd === null) return reply(false, 'dirette video non attive sul ponte')
+          if (msg.cmd.type === 'config' && !can(now.role, 'utenti')) return reply(false, 'solo gli amministratori cambiano le chiavi delle dirette')
+          if (!can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare le dirette video')
+          try {
+            reply(true, undefined, video.run(msg.cmd, now.name))
+          } catch (e) {
+            reply(false, e instanceof Error ? e.message : String(e))
+          }
+          return
+        }
+        if (msg.t === 'auto') {
+          const auto = this.auto
+          if (!auto || typeof msg.cmd !== 'object' || msg.cmd === null) return reply(false, 'diretta autonoma non attiva sul ponte')
+          if (msg.cmd.type !== 'search' && !can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la diretta autonoma')
+          auto
+            .run(msg.cmd, now.name)
+            .then((data) => reply(true, undefined, data))
+            .catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
           return
         }
         if (msg.t !== 'cmd' || typeof msg.cmd !== 'object' || msg.cmd === null) return
@@ -192,6 +239,21 @@ export class Relay {
   setAlarms(alarms: { key: string; since: string; message: string }[]): void {
     this.alarms = { t: 'alarms', alarms }
     this.broadcast(this.alarms)
+  }
+
+  setGuests(guests: GuestInfo[]): void {
+    this.guestList = { t: 'ospiti', guests }
+    this.broadcast(this.guestList)
+  }
+
+  setVideo(video: VideoStatus): void {
+    this.videoState = { t: 'video', video }
+    this.broadcast(this.videoState)
+  }
+
+  setAuto(state: AutoState): void {
+    this.autoState = { t: 'autonoma', state }
+    this.broadcast(this.autoState)
   }
 
   setMic(mic: MicStatus): void {

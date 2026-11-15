@@ -1,7 +1,8 @@
 FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production TZ=Europe/Rome
-RUN apk add --no-cache tzdata
+# ffmpeg: dirette video verso YouTube e Facebook
+RUN apk add --no-cache tzdata ffmpeg
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY src ./src

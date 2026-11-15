@@ -225,7 +225,10 @@ export function voiceSockets(
 ): { sendVoice(pkt: Buffer): void; close(): void } {
   const out: Socket = createSocket('udp4')
   const rx: Socket = createSocket('udp4')
-  rx.on('message', (m) => onReturn(m))
+  rx.on('message', (m) => {
+    // solo RTP: i pacchetti RTCP (tipo 200-204) non vanno al browser
+    if (m.length >= 12 && m[0] >> 6 === 2 && !(m[1] >= 200 && m[1] <= 204)) onReturn(m)
+  })
   rx.on('error', (e) => console.error(`[microfono] ritorno: ${e.message}`))
   out.on('error', (e) => console.error(`[microfono] invio voce: ${e.message}`))
   rx.bind(returnPort)

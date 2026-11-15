@@ -1,6 +1,6 @@
-# Ponte di Radio Regia: da avviare sul server di AzuraCast (o su un altro server).
-#   cp .env.esempio .env   → compila i valori
-#   docker compose up -d
+# Server della radio (una sola VM): ponte, Icecast principale e HTTPS automatico.
+#   cp .env.esempio .env   → compila i valori (installa-server.sh lo fa da solo)
+#   ./riavvia.sh           → avvia o aggiorna
 name: radio-ponte
 
 services:
@@ -12,17 +12,35 @@ services:
     environment:
       TZ: Europe/Rome
       CONTROLLO_INTERNO: http://controllo:8091
-      RITORNO_VOCE: rtp://controllo:41040?pkt_size=1200
+      RITORNO_VOCE_HOST: controllo
+      ICECAST_HOST: icecast
     volumes:
       - ./liquidsoap:/cfg:ro
+      # libreria musicale del server: diretta autonoma e musica di riserva
+      - ./musica:/musica:ro
     ports:
       # SRT dalla regia (UDP): va aperta nel firewall del server
       - "${SRT_PORT:-9000}:${SRT_PORT:-9000}/udp"
       # dirette esterne (Icecast, TCP): va aperta nel firewall se si usa
       - "${ESTERNA_PORTA:-9010}:${ESTERNA_PORTA:-9010}/tcp"
-    extra_hosts:
-      # permette di raggiungere AzuraCast sullo stesso server con AZURACAST_HOST=host.docker.internal
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      - icecast
+
+  # Icecast principale: gli ascoltatori si collegano qui (https://DOMINIO/radio.mp3 tramite Caddy,
+  # oppure http://DOMINIO:8000/radio.mp3 per i lettori che non usano https)
+  icecast:
+    image: libretime/icecast:2.4.4
+    restart: unless-stopped
+    environment:
+      ICECAST_SOURCE_PASSWORD: ${ICECAST_PASSWORD_SORGENTE:?manca ICECAST_PASSWORD_SORGENTE nel file .env}
+      ICECAST_ADMIN_PASSWORD: ${ICECAST_PASSWORD_ADMIN:?manca ICECAST_PASSWORD_ADMIN nel file .env}
+      ICECAST_RELAY_PASSWORD: ${ICECAST_PASSWORD_ADMIN}
+      ICECAST_HOSTNAME: ${DOMINIO:-localhost}
+      ICECAST_MAX_CLIENTS: ${ICECAST_MAX_ASCOLTATORI:-1000}
+      ICECAST_MAX_SOURCES: "5"
+      ICECAST_LOCATION: ${NOME_RADIO:-Radio}
+    ports:
+      - "${ICECAST_PORTA:-8000}:8000/tcp"
 
   controllo:
     build: ./controllo
@@ -33,14 +51,41 @@ services:
       LIQUIDSOAP_INTERNO: http://liquidsoap:8092
       CARTELLA_DATI: /data
       # voce verso Liquidsoap e ritorno da Liquidsoap (solo rete interna)
-      VOCE_LIQUIDSOAP: liquidsoap:41030
-      RITORNO_VOCE_PORTA: "41040"
+      VOCE_LIQUIDSOAP_HOST: liquidsoap
+      # davanti c'è Caddy: l'indirizzo vero del browser arriva nell'intestazione X-Forwarded-For
+      PROXY_FIDATO: "si"
+      # porta interna, raggiunta solo da Caddy (che fa l'HTTPS)
+      CONTROLLO_PORTA: "9080"
+      CERTIFICATO_TLS: ""
+      CHIAVE_TLS: ""
     volumes:
       - dati:/data
+      - ./musica:/musica
     ports:
-      - "${CONTROLLO_PORTA:-9080}:${CONTROLLO_PORTA:-9080}/tcp"
-      # audio del microfono remoto (WebRTC): da inoltrare anche sul router
+      # audio del microfono remoto e degli ospiti (WebRTC): da inoltrare anche sul router
       - "${WEBRTC_PORTE:-40000-40049}:${WEBRTC_PORTE:-40000-40049}/udp"
+      # video da OBS per le dirette su YouTube e Facebook (SRT, UDP): da inoltrare sul router se si usa
+      - "${VIDEO_OBS_PORTA:-9020}:${VIDEO_OBS_PORTA:-9020}/udp"
+
+  # HTTPS automatico (Let's Encrypt) per pannello, regia e ascolto: porte 80 e 443
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      DOMINIO: ${DOMINIO:?manca DOMINIO nel file .env (es. radio.esempio.it)}
+      ICECAST_MOUNT: ${ICECAST_MOUNT:-/radio.mp3}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_dati:/data
+      - caddy_config:/config
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+    depends_on:
+      - controllo
+      - icecast
 
 volumes:
   dati:
+  caddy_dati:
+  caddy_config:
