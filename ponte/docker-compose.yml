@@ -12,7 +12,7 @@ services:
     environment:
       TZ: Europe/Rome
       CONTROLLO_INTERNO: http://controllo:8091
-      RITORNO_VOCE: rtp://controllo:41040?pkt_size=1200
+      RITORNO_VOCE_HOST: controllo
     volumes:
       - ./liquidsoap:/cfg:ro
       # libreria musicale del server, per la diretta autonoma
@@ -35,8 +35,7 @@ services:
       LIQUIDSOAP_INTERNO: http://liquidsoap:8092
       CARTELLA_DATI: /data
       # voce verso Liquidsoap e ritorno da Liquidsoap (solo rete interna)
-      VOCE_LIQUIDSOAP: liquidsoap:41030
-      RITORNO_VOCE_PORTA: "41040"
+      VOCE_LIQUIDSOAP_HOST: liquidsoap
     volumes:
       - dati:/data
       - ./musica:/musica

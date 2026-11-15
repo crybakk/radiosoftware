@@ -15,7 +15,8 @@
  *   GET  /                pagine del pannello
  *   POST /api/login, POST /api/logout, GET /api/io
  *   GET/POST /api/utenti, DELETE /api/utenti/<nome>   (solo amministratori)
- *   WS   /ws/pannello     stato della regia e comandi, microfono, diretta autonoma
+ *   WS   /ws/pannello     stato della regia e comandi, microfono, diretta autonoma, ospiti
+ *   GET  /ospite.html?t=<link>, WS /ws/ospite?t=<link>   pagina e canale degli ospiti (link creato dal pannello)
  *   PUT  /api/autonoma/carica?nome=<file>   carica un brano nella libreria del server (conduttori)
  *
  * Libreria del server copiata dalla regia (token): GET /api/libreria, PUT /api/libreria?id=regia/...,
@@ -38,6 +39,7 @@ import { Notifier } from './notifier.ts'
 import { Relay } from './relay.ts'
 import { can, ROLES, Users, type PublicUser, type Role } from './users.ts'
 import { VoiceHub, voiceSockets, weriftFactory } from './voce.ts'
+import { Guests } from './ospiti.ts'
 import { AUDIO_EXT, Library } from './libreria.ts'
 import { AutonomousPlayer } from './autonoma.ts'
 
@@ -95,7 +97,10 @@ setInterval(() => alarms.tick(), 2000)
 const relay = new Relay(TOKEN)
 relay.onStudioChange = (c) => console.log(`[regia] canale di controllo ${c ? 'collegato' : 'scollegato'}`)
 
-// ---------- microfono remoto (WebRTC) ----------
+await mkdir(DATA_DIR, { recursive: true })
+let guests: Guests | null = null
+
+// ---------- microfono remoto e ospiti (WebRTC) ----------
 
 function portRange(v: string): [number, number] {
   const m = /^(\d+)\s*-\s*(\d+)$/.exec(v.trim())
@@ -104,35 +109,52 @@ function portRange(v: string): [number, number] {
   return a > 0 && b >= a && b < 65536 ? [a, b] : [40000, 40049]
 }
 
-const setVoiceOnAir = (on: boolean): Promise<boolean> => lqPost('/voce', { on })
+// Posti audio in Liquidsoap: 0 = microfono del conduttore, 1-3 = ospiti.
+// Voce verso Liquidsoap sulla porta 41030+2n, ritorno da Liquidsoap sulla 41040+2n (rete interna;
+// porte pari perché RTP usa la successiva per RTCP).
+const SLOT_NAMES = ['voce', 'ospite1', 'ospite2', 'ospite3']
+const VOICE_HOST = env('VOCE_LIQUIDSOAP_HOST', 'liquidsoap')
+const setVoiceOnAir = (slot: string, on: boolean): Promise<boolean> => lqPost('/voce', { slot, on })
 
 if (env('MICROFONO_REMOTO', 'si') !== 'no') {
-  const [vHost, vPort] = env('VOCE_LIQUIDSOAP', 'liquidsoap:41030').split(':')
-  const sockets = voiceSockets({ host: vHost, port: Number(vPort) || 41030 }, num('RITORNO_VOCE_PORTA', 41040), (pkt) =>
-    voice.sendReturn(pkt)
-  )
-  const voice: VoiceHub = new VoiceHub({
-    factory: weriftFactory({
-      portRange: portRange(env('WEBRTC_PORTE', '40000-40049')),
-      stun: env('WEBRTC_STUN', 'stun:stun.l.google.com:19302'),
-      addresses: env('WEBRTC_INDIRIZZI')
-        .split(',')
-        .map((x) => x.trim())
-        .filter(Boolean)
-    }),
-    sendVoice: (pkt) => sockets.sendVoice(pkt),
-    setOnAir: setVoiceOnAir
+  const factory = weriftFactory({
+    portRange: portRange(env('WEBRTC_PORTE', '40000-40049')),
+    stun: env('WEBRTC_STUN', 'stun:stun.l.google.com:19302'),
+    addresses: env('WEBRTC_INDIRIZZI')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
   })
+  const slots = SLOT_NAMES.map((name, n) => {
+    const sockets = voiceSockets({ host: VOICE_HOST, port: 41030 + 2 * n }, 41040 + 2 * n, (pkt) => hub.sendReturn(pkt))
+    const hub: VoiceHub = new VoiceHub({
+      factory,
+      sendVoice: (pkt) => sockets.sendVoice(pkt),
+      setOnAir: (on) => setVoiceOnAir(name, on)
+    })
+    return hub
+  })
+  const voice = slots[0]
   voice.onChange = (m) => {
     console.log(`[microfono] ${m.user ? `${m.user}, ${m.onAir ? 'IN ONDA' : 'fuori onda'}` : 'chiuso'}`)
     relay.setMic(m)
   }
   relay.voice = voice
-  // all'avvio il microfono è chiuso: se Liquidsoap era rimasto con la voce aperta la togliamo
-  setTimeout(() => void setVoiceOnAir(false), 3000)
+  guests = new Guests({
+    file: join(DATA_DIR, 'inviti-ospiti.json'),
+    slots: slots.slice(1),
+    station: env('NOME_RADIO', 'Radio'),
+    listenUrl: env('ASCOLTO_URL')
+  })
+  guests.onChange = (list) => {
+    console.log(`[ospiti] ${list.map((g) => `${g.name} (${g.state}${g.onAir ? ', IN ONDA' : ''})`).join(', ') || 'nessuno'}`)
+    relay.setGuests(list)
+  }
+  relay.guests = guests
+  // all'avvio tutte le voci sono chiuse: se Liquidsoap era rimasto con una voce aperta la togliamo
+  setTimeout(() => SLOT_NAMES.forEach((n) => void setVoiceOnAir(n, false)), 3000)
 }
 
-await mkdir(DATA_DIR, { recursive: true })
 const users = new Users(join(DATA_DIR, 'utenti.json'), join(DATA_DIR, 'sessioni.json'))
 if (users.count() === 0) {
   const pw = env('PANNELLO_ADMIN_PASSWORD')
@@ -313,7 +335,8 @@ async function serveStatic(res: ServerResponse, path: string): Promise<boolean> 
     'Content-Type': MIME[extname(name)] ?? 'application/octet-stream',
     'Cache-Control': 'no-cache',
     'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy': "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; frame-ancestors 'none'"
+    // media-src https: per l'ascolto della radio nella sala d'attesa degli ospiti
+    'Content-Security-Policy': "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; media-src 'self' blob: https: http:; frame-ancestors 'none'"
   })
   res.end(data)
   return true
@@ -590,6 +613,16 @@ publicServer.on('upgrade', (req, socket, head) => {
     }
     const host = (req.headers.host ?? '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '')
     return wss.handleUpgrade(req, socket, head, (ws) => wire(ws, relay.attachPanel(ws, me, host || undefined)))
+  }
+  if (url.pathname === '/ws/ospite') {
+    const invite = guests?.validInvite(url.searchParams.get('t'))
+    if (!guests || !invite || !sameOrigin(req)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
+      return socket.destroy()
+    }
+    const g = guests
+    const host = (req.headers.host ?? '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '')
+    return wss.handleUpgrade(req, socket, head, (ws) => wire(ws, g.attach(ws, invite, host || undefined)))
   }
   socket.destroy()
 })

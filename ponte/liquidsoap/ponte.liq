@@ -35,7 +35,7 @@ esterna_password = env("ESTERNA_PASSWORD", "")
 
 microfono_attivo = env("MICROFONO_REMOTO", "si") != "no"
 ducking_db = float_of_string(default=-12., env("ABBASSAMENTO_MUSICA_DB", "-12"))
-ritorno_url = env("RITORNO_VOCE", "rtp://controllo:41040?pkt_size=1200")
+ritorno_host = env("RITORNO_VOCE_HOST", "controllo")
 
 # --- notifiche al servizio di controllo (non bloccanti) ---
 def notify(kind, detail) =
@@ -138,56 +138,89 @@ programma =
     [esterna, autonoma, programma]
   )
 
-# --- microfono remoto (voce del conduttore dal pannello, via il controllo) ---
-# La voce arriva in RTP (Opus) dal servizio di controllo. Quando è "in onda" la
-# musica si abbassa di ABBASSAMENTO_MUSICA_DB e la voce sale, con transizioni morbide.
-voce_in_onda = ref(false)
-g_voce = ref(0.)
+# --- voci dal pannello: microfono del conduttore e fino a 3 ospiti (via il controllo) ---
+# Ogni voce arriva in RTP (Opus) dal servizio di controllo, su una porta sua (41030, 41032, ...:
+# porte pari, perché RTP usa anche la porta successiva per RTCP). Quando almeno
+# una è "in onda" la musica si abbassa di ABBASSAMENTO_MUSICA_DB, con transizioni morbide.
+# Ognuno riceve in cuffia il programma e le altre voci in onda, ma non la propria (mix-minus).
+def voce_slot(nome, porta_ritorno) =
+  {nome=nome, porta_ritorno=porta_ritorno, in_onda=ref(false), g=ref(0.)}
+end
+voci = [
+  voce_slot("voce", 41040),
+  voce_slot("ospite1", 41042),
+  voce_slot("ospite2", 41044),
+  voce_slot("ospite3", 41046)
+]
 g_musica = ref(1.)
 abbassata = lin_of_dB(ducking_db)
 thread.run(
   every=0.02,
   fun () ->
     begin
-      obiettivo_voce = if voce_in_onda() then 1. else 0. end
-      obiettivo_musica = if voce_in_onda() then abbassata else 1. end
-      g_voce := g_voce() + (obiettivo_voce - g_voce()) * 0.15
+      qualcuna = list.exists(fun (v) -> v.in_onda(), voci)
+      list.iter(
+        fun (v) ->
+          begin
+            obiettivo = if v.in_onda() then 1. else 0. end
+            v.g := v.g() + (obiettivo - v.g()) * 0.15
+          end,
+        voci
+      )
+      obiettivo_musica = if qualcuna then abbassata else 1. end
       g_musica := g_musica() + (obiettivo_musica - g_musica()) * 0.15
     end
 )
 
 def con_voce(programma) =
-  voce =
-    input.ffmpeg(
-      id="voce",
-      self_sync=true,
-      max_buffer=0.5,
-      string_args=[("protocol_whitelist", "file,udp,rtp")],
-      format="sdp",
-      "/cfg/voce.sdp"
-    )
-  # orologio separato: se la voce non arriva il programma non si ferma
-  voce = buffer(id="buffer_voce", buffer=0.06, max=0.5, voce)
   musica = amplify({g_musica()}, programma)
+  ingressi =
+    list.map(
+      fun (v) ->
+        begin
+          s =
+            input.ffmpeg(
+              id=v.nome,
+              self_sync=true,
+              max_buffer=0.5,
+              string_args=[("protocol_whitelist", "file,udp,rtp")],
+              format="sdp",
+              "/cfg/#{v.nome}.sdp"
+            )
+          # orologio separato: se la voce non arriva il programma non si ferma
+          s = buffer(id="buffer_#{v.nome}", buffer=0.06, max=0.5, s)
+          (v.nome, amplify({v.g()}, s))
+        end,
+      voci
+    )
 
-  # ritorno in cuffia al conduttore: il programma (già abbassato) senza la sua voce
-  output.url(
-    id="ritorno_voce",
-    fallible=true,
-    url=ritorno_url,
-    %ffmpeg(
-      format = "rtp",
-      %audio(codec = "libopus", samplerate = 48000, channels = 2, b = "96k")
-    ),
-    mksafe(musica)
+  # ritorno in cuffia: il programma (già abbassato) e le altre voci, senza la propria
+  list.iter(
+    fun (v) ->
+      begin
+        altre = list.map(snd, list.filter(fun (x) -> fst(x) != v.nome, ingressi))
+        ignore(
+          output.url(
+            id="ritorno_#{v.nome}",
+            fallible=true,
+            url="rtp://#{ritorno_host}:#{v.porta_ritorno}?pkt_size=1200",
+            %ffmpeg(
+              format = "rtp",
+              %audio(codec = "libopus", samplerate = 48000, channels = 2, b = "96k")
+            ),
+            mksafe(add(normalize=false, list.cons(musica, altre)))
+          )
+        )
+      end,
+    voci
   )
 
-  # la voce si aggiunge solo quando c'è un programma (regia o esterna): senza,
+  # le voci si aggiungono solo quando c'è un programma (regia, esterna o autonoma): senza,
   # l'uscita verso AzuraCast resta ferma e AzuraCast passa alla sua AutoDJ
   switch(
     id="mixer_voce",
     track_sensitive=false,
-    [({source.is_ready(programma)}, add(normalize=false, [musica, amplify({g_voce()}, voce)]))]
+    [({source.is_ready(programma)}, add(normalize=false, list.cons(musica, list.map(snd, ingressi))))]
   )
 end
 
@@ -245,11 +278,17 @@ harbor.http.register.simple(port=8092, method="POST", "/metadata", set_metadata)
 
 def set_voce(req) =
   try
-    let json.parse (m : {on: bool}) = req.body()
-    voce_in_onda := m.on
-    stato_voce = if m.on then "IN ONDA" else "fuori onda" end
-    log.important("Microfono remoto: #{stato_voce}")
-    http.response(content_type="application/json", data="{\"ok\":true}")
+    let json.parse (m : {on: bool, slot: string?}) = req.body()
+    nome = m.slot ?? "voce"
+    trovate = list.filter(fun (v) -> v.nome == nome, voci)
+    if list.is_empty(trovate) then
+      http.response(status_code=404, content_type="application/json", data="{\"ok\":false}")
+    else
+      list.iter(fun (v) -> v.in_onda := m.on, trovate)
+      stato_voce = if m.on then "IN ONDA" else "fuori onda" end
+      log.important("Voce #{nome}: #{stato_voce}")
+      http.response(content_type="application/json", data="{\"ok\":true}")
+    end
   catch _ do
     http.response(status_code=400, content_type="application/json", data="{\"ok\":false}")
   end
@@ -300,7 +339,7 @@ harbor.http.register.simple(port=8092, method="POST", "/autonoma/salta", autonom
 def stato(_) =
   http.response(
     content_type="application/json",
-    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready(), voce=voce_in_onda(), autonoma=autonoma_attiva()})
+    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready(), voce=list.map(fun (v) -> (v.nome, v.in_onda()), voci), autonoma=autonoma_attiva()})
   )
 end
 harbor.http.register.simple(port=8092, method="GET", "/stato", stato)

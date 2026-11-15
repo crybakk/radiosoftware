@@ -115,6 +115,9 @@ function connect() {
     } else if (m.t === 'alarms') {
       $('alarms').hidden = !m.alarms.length
       $('alarms').textContent = m.alarms.map((a) => `⚠ ${a.message}`).join('  ·  ')
+    } else if (m.t === 'ospiti') {
+      guestList = m.guests
+      renderGuests()
     } else if (m.t === 'autonoma') {
       auto = m.state
       renderAuto()
@@ -180,6 +183,7 @@ function render() {
   renderCarts(ctl)
   renderMic()
   renderAuto()
+  renderGuests()
   if (state?.lastError) notice(state.lastError)
 }
 
@@ -419,6 +423,97 @@ $('mic-air').addEventListener('click', async () => {
   }
 })
 $('mic-return').addEventListener('input', () => ($('mic-ret').volume = Number($('mic-return').value)))
+
+// ---------- ospiti ----------
+
+let guestList = null
+const guestCmd = (cmd) => request({ t: 'guest', cmd })
+const guestAct = (cmd) => guestCmd(cmd).catch((e) => notice(e.message))
+
+function renderGuests() {
+  const card = $('guests-card')
+  card.hidden = !me || guestList === null
+  if (card.hidden) return
+  const ctl = canCommand()
+  $('guests-ctl').hidden = !ctl
+  const live = guestList.filter((g) => g.onAir).length
+  $('guests-count').textContent = guestList.length ? `${guestList.length} ${guestList.length === 1 ? 'collegato' : 'collegati'}${live ? ` · ${live} in onda` : ''}` : ''
+  $('guests-count').className = `mic-who ${live ? 'onair' : ''}`
+  const box = $('guests-list')
+  box.replaceChildren()
+  if (!guestList.length) box.append(el('p', 'hint', 'Nessun ospite collegato. Crea un link e mandalo all\'ospite.'))
+  for (const g of guestList) {
+    const row = el('div', 'g-row')
+    const name = el('div', 'g-name', g.name)
+    name.append(el('small', null, g.state === 'attesa' ? `in sala d'attesa da ${hhmm(g.since)}` : g.connected ? (g.onAir ? 'IN ONDA' : 'collegato, fuori onda') : 'si sta collegando…'))
+    row.append(name)
+    if (ctl) {
+      if (g.state === 'attesa') {
+        row.append(button('Fai entrare', '', () => guestAct({ type: 'admit', id: g.id }), 'primary small'), button('Rifiuta', '', () => guestAct({ type: 'reject', id: g.id }), 'small'))
+      } else {
+        const air = button(g.onAir ? '● IN ONDA' : 'Metti in onda', g.onAir ? 'Togli dall\'onda' : '', () => guestAct({ type: 'air', id: g.id, on: !g.onAir }), `small ${g.onAir ? 'live' : ''}`)
+        air.disabled = !g.connected
+        row.append(air, button('Chiudi', '', () => guestAct({ type: 'kick', id: g.id }), 'small ghost'))
+      }
+    }
+    box.append(row)
+  }
+}
+
+function inviteUrl(inv) {
+  return `${location.origin}/ospite.html?t=${encodeURIComponent(inv.token)}`
+}
+
+$('invite-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  try {
+    const inv = await guestCmd({ type: 'invite', label: $('invite-label').value.trim() })
+    $('invite-url').value = inviteUrl(inv)
+    $('invite-out').hidden = false
+    $('invite-share').hidden = !navigator.share
+    $('invite-label').value = ''
+    if (!$('invites-list').hidden) loadInvites()
+  } catch (err) {
+    notice(err.message)
+  }
+})
+$('invite-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('invite-url').value)
+    notice('Link copiato')
+  } catch {
+    $('invite-url').select()
+  }
+})
+$('invite-share').addEventListener('click', () => {
+  navigator.share({ title: 'Invito in radio', text: 'Apri questo link per collegarti in diretta:', url: $('invite-url').value }).catch(() => {})
+})
+
+async function loadInvites() {
+  const ul = $('invites-list')
+  try {
+    const list = await guestCmd({ type: 'invites' })
+    ul.replaceChildren()
+    if (!list.length) ul.append(el('li', 'hint', 'Nessun link attivo'))
+    for (const inv of list) {
+      const li = el('li')
+      const main = el('div', 't-main')
+      main.append(el('div', 't-title', inv.label || 'senza nome'), el('div', 't-artist', `di ${inv.by}, scade alle ${hhmm(inv.expiresAt)}`))
+      li.append(
+        main,
+        button('Copia', '', () => navigator.clipboard.writeText(inviteUrl(inv)).then(() => notice('Link copiato'), () => {}), 'small'),
+        button('Revoca', 'Il link smette di funzionare', () => guestCmd({ type: 'revoke', token: inv.token }).then(loadInvites, (e) => notice(e.message)), 'small')
+      )
+      ul.append(li)
+    }
+  } catch (err) {
+    ul.replaceChildren(el('li', 'error', err.message))
+  }
+}
+$('invites-show').addEventListener('click', () => {
+  $('invites-list').hidden = !$('invites-list').hidden
+  if (!$('invites-list').hidden) loadInvites()
+})
 
 // ---------- diretta autonoma ----------
 

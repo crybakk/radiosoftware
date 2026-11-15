@@ -61,6 +61,36 @@ export type AutoCommand =
   | { type: 'remove'; uid: string }
   | { type: 'search'; q: string }
 
+/** Ospiti collegati con un link. */
+export interface GuestInvite {
+  token: string
+  /** Nome scritto dal conduttore (es. "Mario, intervista delle 18"). */
+  label: string
+  by: string
+  createdAt: string
+  expiresAt: string
+}
+
+export interface GuestInfo {
+  id: string
+  name: string
+  label: string
+  state: 'attesa' | 'dentro'
+  onAir: boolean
+  /** Audio collegato (WebRTC). */
+  connected: boolean
+  since: string
+}
+
+export type GuestCommand =
+  | { type: 'invite'; label: string }
+  | { type: 'invites' }
+  | { type: 'revoke'; token: string }
+  | { type: 'admit'; id: string }
+  | { type: 'reject'; id: string }
+  | { type: 'kick'; id: string }
+  | { type: 'air'; id: string; on: boolean }
+
 /** Regia → ponte */
 export type FromStudio =
   | { t: 'auth'; token: string }
@@ -81,6 +111,8 @@ export type FromPanel =
   | { t: 'rtc-close' }
   /** Diretta autonoma. */
   | { t: 'auto'; id: string; cmd: AutoCommand }
+  /** Ospiti. */
+  | { t: 'guest'; id: string; cmd: GuestCommand }
 
 export interface MicStatus {
   /** Chi ha il microfono aperto (null = nessuno). */
@@ -97,3 +129,4 @@ export type ToPanel =
   | { t: 'alarms'; alarms: { key: string; since: string; message: string }[] }
   | { t: 'mic'; mic: MicStatus }
   | { t: 'autonoma'; state: AutoState }
+  | { t: 'ospiti'; guests: GuestInfo[] }

@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, fase 4 (microfono dal pannello e diretta autonoma dal server).
+**Ultimo aggiornamento:** 15/11/2026, fase 5 (ospiti collegati con un link).
 
 ## Indice
 
@@ -19,6 +19,7 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
 11. [Dirette esterne](#11-dirette-esterne)
 12. [Pannello remoto e utenti](#12-pannello-remoto-e-utenti)
     - [Microfono dal pannello](#microfono-dal-pannello)
+    - [Ospiti in diretta](#ospiti-in-diretta)
     - [Diretta autonoma dal server](#diretta-autonoma-dal-server)
     - [Libreria sul server](#libreria-sul-server)
 13. [Allarmi e notifiche](#13-allarmi-e-notifiche)
@@ -271,6 +272,25 @@ Cose utili da sapere:
   attiva la riduzione dell'eco e del rumore, ma la voce suona meno naturale;
 - **Ritorno**: volume del programma in cuffia.
 
+### Ospiti in diretta
+
+Puoi far parlare in diretta fino a **3 ospiti** collegati da casa, con il telefono o il computer, senza
+installare nulla. Serve il pannello in HTTPS, come per il microfono.
+
+1. Nel pannello, sezione **Ospiti**, scrivi per chi è il link (per esempio "Mario, intervista delle 18") e premi
+   **Crea link**. Premi **Copia** (o **Invia…** dal telefono) e mandalo all'ospite, per esempio su WhatsApp.
+   Il link vale 24 ore; da **Link attivi** puoi copiarlo di nuovo o **Revocarlo**.
+2. L'ospite apre il link, scrive il nome, prova il microfono (la barra deve muoversi) e preme
+   **Entra in sala d'attesa**. Se nel server è impostato `ASCOLTO_URL`, intanto sente la radio.
+3. Nel pannello compare l'ospite "in sala d'attesa": premi **Fai entrare** (o **Rifiuta**).
+4. Quando l'audio è collegato, premi **Metti in onda**: la musica si abbassa e l'ospite va in onda. Sulla sua pagina
+   compare **IN ONDA** in rosso. Premi di nuovo per toglierlo dall'onda, **Chiudi** per salutarlo.
+
+In cuffia ognuno sente la radio e le altre voci in onda (tu, gli altri ospiti), ma non la propria. Consiglia
+all'ospite di usare le **cuffie**: senza, deve togliere la spunta "Uso le cuffie" prima di entrare.
+Se l'ospite chiude la pagina o perde la connessione esce dall'onda da solo; riaprendo lo stesso link torna in
+sala d'attesa.
+
 ### Diretta autonoma dal server
 
 Serve quando vuoi andare in onda senza la regia, per esempio da fuori con il telefono: il ponte suona la musica
@@ -356,13 +376,14 @@ Il ponte tiene gli ultimi 14.
 | "la libreria del server è vuota" | fai la prima copia della selezione (sezione 12, Libreria sul server) o carica brani dal pannello |
 | "la selezione toglierebbe … brani dal server" | il disco o la cartella della musica della regia non è collegato: ricollegalo e riprova |
 | La regia non invia brani al server | fuori dalle ore di invio, limite del giorno raggiunto, oppure "Invia da solo" spento |
+| L'ospite dice "Link non valido o scaduto" | il link ha più di 24 ore o è stato revocato: creane uno nuovo |
+| L'ospite entra ma non si sente / "si sta collegando…" resta fermo | porte UDP 40000-40049 non inoltrate, oppure la rete dell'ospite blocca l'audio: prova con un'altra rete (per esempio dati del telefono) |
 | "Permesso del microfono negato dal browser" | nelle impostazioni del sito nel browser consenti il microfono, poi ricarica la pagina |
 
 ## 16. In arrivo
 
 Prossime fasi (l'ordine può cambiare):
 
-- ospiti collegati con un link, con sala d'attesa;
 - uscite verso Icecast esterni, Fluidstream, YouTube e Facebook;
 - analisi della libreria stile MusicBrainz, report SIAE nel formato del fac simile e riconoscimento dei brani in onda (anche nelle esterne);
 - registrazione della messa in onda e podcast, download automatico di notiziari, voce sintetica;
@@ -376,3 +397,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Pannello remoto dal browser, utenti con ruoli, HTTPS con il certificato di AzuraCast, `riavvia.sh` |
 | 15/11/2026 | Microfono dal pannello remoto: voce in onda con la musica che si abbassa, ritorno in cuffia; nuova porta UDP 40000-40049 |
 | 15/11/2026 | Diretta autonoma dal server (dal pannello), libreria sul server con selezione automatica, copia su disco USB e invio notturno; disco della VM a 300 GB |
+| 15/11/2026 | Ospiti in diretta con un link: sala d'attesa, fai entrare, in onda, fino a 3 insieme, ritorno in cuffia per tutti |

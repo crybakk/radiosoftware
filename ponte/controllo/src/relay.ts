@@ -1,8 +1,9 @@
 /** Smista i messaggi tra la regia (una sola) e i pannelli remoti (quanti si vuole). */
-import type { AutoState, FromPanel, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio } from './protocol.ts'
+import type { AutoState, FromPanel, GuestInfo, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio } from './protocol.ts'
 import { can, type PublicUser } from './users.ts'
 import type { VoiceHub } from './voce.ts'
 import type { AutonomousPlayer } from './autonoma.ts'
+import type { Guests } from './ospiti.ts'
 
 export interface Peer {
   send(data: string): void
@@ -32,6 +33,9 @@ export class Relay {
   /** Diretta autonoma dal server; null se non attiva sul ponte. */
   auto: AutonomousPlayer | null = null
   private autoState: (ToPanel & { t: 'autonoma' }) | null = null
+  /** Ospiti collegati con un link; null se il microfono remoto è spento. */
+  guests: Guests | null = null
+  private guestList: ToPanel & { t: 'ospiti' } = { t: 'ospiti', guests: [] }
 
   constructor(token: string) {
     this.token = token
@@ -117,6 +121,7 @@ export class Relay {
     this.sendTo(peer, this.alarms)
     this.sendTo(peer, this.mic)
     if (this.autoState) this.sendTo(peer, this.autoState)
+    if (this.guests) this.sendTo(peer, this.guestList)
     return {
       message: (raw: string) => {
         let msg: FromPanel
@@ -137,6 +142,16 @@ export class Relay {
             ? voice.open(peer, user.name, String(msg.sdp), host).then((sdp) => reply(true, undefined, { sdp }))
             : voice.setMic(peer, msg.on === true).then(() => reply(true))
           done.catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
+          return
+        }
+        if (msg.t === 'guest') {
+          const guests = this.guests
+          if (!guests || !msg.cmd) return reply(false, 'ospiti non attivi sul ponte')
+          if (!can(user.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di gestire gli ospiti')
+          guests
+            .command(msg.cmd, user.name)
+            .then((data) => reply(true, undefined, data))
+            .catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
           return
         }
         if (msg.t === 'auto') {
@@ -184,6 +199,11 @@ export class Relay {
   setAlarms(alarms: { key: string; since: string; message: string }[]): void {
     this.alarms = { t: 'alarms', alarms }
     this.broadcast(this.alarms)
+  }
+
+  setGuests(guests: GuestInfo[]): void {
+    this.guestList = { t: 'ospiti', guests }
+    this.broadcast(this.guestList)
   }
 
   setAuto(state: AutoState): void {
