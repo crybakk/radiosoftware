@@ -5,6 +5,8 @@ import type { PonteBackup, PonteState } from '../core/ponteClient'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { PonteStatus, StudioReport } from '../main/ponte'
 import type { ServerSyncStatus, ServerTrackRow } from '../main/serverSync'
+import type { MbStatus } from '../main/musicbrainz'
+import type { SiaeRow } from '../core/siae'
 import type { LibraryFolder, LogEntry, ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
 
 export interface LibraryStatus {
@@ -49,6 +51,16 @@ export interface RadioApi {
   logEnd(logId: number, at: string, playedSeconds: number): Promise<void>
   listLog(from: string, to: string): Promise<LogEntry[]>
   exportLogCsv(from: string, to: string): Promise<string | null>
+  /** Report SIAE del trimestre (q = 1..4), dopo aver scaricato i brani suonati dal server. */
+  siaeReport(year: number, q: number): Promise<{ rows: SiaeRow[]; serverError: string | null }>
+  exportSiaeCsv(year: number, q: number): Promise<string | null>
+  /** Musica a cui mancano autori, editore o un codice. */
+  incompleteMusic(): Promise<{ tracks: Track[]; total: number }>
+  mbStatus(): Promise<MbStatus>
+  mbStart(): Promise<void>
+  mbStop(): Promise<void>
+  mbRetry(): Promise<MbStatus>
+  onMbStatus(cb: (s: MbStatus) => void): () => void
 
   onLibraryStatus(cb: (s: LibraryStatus) => void): () => void
 

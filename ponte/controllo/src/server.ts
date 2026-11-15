@@ -7,6 +7,7 @@
  *   PUT  /api/backup      copia del database della regia
  *   GET  /api/backup      elenco copie;  GET /api/backup/<nome> scarica una copia
  *   GET  /api/stato       stato del ponte e allarmi attivi
+ *   GET  /api/registro?da=<ISO>&a=<ISO>   brani suonati dal server (diretta autonoma, riserva) per il report SIAE
  *   POST /api/test-notifica  invia una notifica di prova
  *   GET  /health          senza token, per i controlli automatici
  *   WS   /ws/regia        canale in tempo reale con la regia (autenticazione col token nel primo messaggio)
@@ -46,6 +47,7 @@ import { Guests } from './ospiti.ts'
 import { AUDIO_EXT, Library } from './libreria.ts'
 import { AutonomousPlayer } from './autonoma.ts'
 import { VideoLive } from './video.ts'
+import { PlayLog, type PlaySource } from './registro.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -205,6 +207,15 @@ auto.onActive = (on, by) => {
   void notifier.send(text)
 }
 relay.auto = auto
+
+// registro dei brani suonati dal server, per il report SIAE della regia
+const playLog = new PlayLog(join(DATA_DIR, 'registro-server.jsonl'))
+const logPlay = (source: PlaySource, file: string): void => {
+  const t = library.byPath(file)
+  if (!t) return console.log(`[registro] ${source}: brano non in libreria ${file}`)
+  playLog.add({ source, id: t.id, title: t.title, artist: t.artist, duration: t.duration })
+}
+auto.onPlay = (t) => playLog.add({ source: 'autonoma', id: t.id, title: t.title, artist: t.artist, duration: t.duration })
 // all'avvio la diretta autonoma è ferma: se Liquidsoap era rimasto acceso la spegniamo
 setTimeout(() => void lqPost('/autonoma', { on: false }), 3000)
 const rescan = (): void =>
@@ -628,6 +639,13 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         return json(res, 200, { ok: true })
       }
     }
+    if (req.method === 'GET' && url.pathname === '/api/registro') {
+      if (!authorized(req)) return json(res, 401, { error: 'token non valido' })
+      const from = new Date(url.searchParams.get('da') ?? '')
+      const to = new Date(url.searchParams.get('a') ?? '')
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return json(res, 400, { error: 'date non valide' })
+      return json(res, 200, playLog.list(from, to))
+    }
     if (req.method === 'GET' && url.pathname === '/api/stato') {
       const ls = await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
         .then((r) => r.json())
@@ -722,6 +740,7 @@ const internalServer = createServer(async (req, res) => {
       const kind = String(body.kind ?? '')
       console.log(`[evento] ${kind} ${body.detail ?? ''}`)
       if (kind === 'autonoma_brano') auto.onTrackStart(String(body.detail ?? ''))
+      else if (kind === 'riserva_brano') logPlay('riserva', String(body.detail ?? ''))
       else alarms.onEvent(kind, String(body.detail ?? ''))
       return json(res, 200, { ok: true })
     }

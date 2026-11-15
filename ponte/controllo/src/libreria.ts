@@ -84,6 +84,12 @@ export class Library {
     return this.tracks.get(id)
   }
 
+  /** Brano dal percorso completo del file (quello che usa Liquidsoap). */
+  byPath(file: string): ServerTrack | undefined {
+    const rel = relative(this.root, file).split(sep).join('/')
+    return rel.startsWith('..') ? undefined : this.tracks.get(rel)
+  }
+
   all(): ServerTrack[] {
     return [...this.tracks.values()]
   }

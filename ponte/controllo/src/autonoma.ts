@@ -37,6 +37,8 @@ export class AutonomousPlayer {
   onChange: (s: AutoState) => void = () => {}
   /** Avviata o fermata, e da chi. */
   onActive: (on: boolean, by: string) => void = () => {}
+  /** Un brano della diretta autonoma è andato in onda (per il registro). */
+  onPlay: (t: ServerTrack) => void = () => {}
   private readonly lib: Library
   private readonly lq: LiquidsoapAuto
   private readonly now: () => number
@@ -127,6 +129,7 @@ export class AutonomousPlayer {
     if (!t) return
     if (this.prepared?.id === t.id) this.prepared = null
     this.onAir = { ...t, startedAt: this.now() }
+    this.onPlay(t)
     this.history.push(t)
     if (this.history.length > RECENT_TRACKS) this.history.shift()
     this.clearTimer()

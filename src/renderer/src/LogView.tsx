@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { LogEntry } from '../../core/types'
 import { KIND_LABEL, mmss } from './format'
+import { SiaeSection } from './SiaeSection'
 
 function dayStart(s: string): Date {
   const [y, m, d] = s.split('-').map(Number)
@@ -9,6 +10,14 @@ function dayStart(s: string): Date {
 
 function isoDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  regia: 'Regia',
+  'flusso esterno': 'Flusso esterno',
+  autonoma: 'Diretta autonoma',
+  riserva: 'Riserva del server',
+  esterna: 'Esterna'
 }
 
 export function LogView() {
@@ -37,6 +46,7 @@ export function LogView() {
 
   return (
     <div className="log-view">
+      <SiaeSection />
       <section className="panel grow">
         <div className="section-title">Registro di trasmissione</div>
         <div className="row">
@@ -59,13 +69,13 @@ export function LogView() {
         </div>
         <div className="hint">
           {entries.length} passaggi, di cui {music.length} brani musicali.
-          {incomplete > 0 && ` ${incomplete} brani senza autori o codice SIAE: completali dalla scheda brano in Libreria.`}{' '}
-          Il report SIAE nel formato del fac simile arriva con la fase 7.
+          {incomplete > 0 && ` ${incomplete} brani senza autori o codice SIAE: completali dalla scheda brano in Libreria.`}
         </div>
         <table className="table">
           <thead>
             <tr>
               <th>Ora</th>
+              <th>Fonte</th>
               <th>Durata</th>
               <th>Tipo</th>
               <th>Titolo</th>
@@ -86,6 +96,7 @@ export function LogView() {
                     second: '2-digit'
                   })}
                 </td>
+                <td>{SOURCE_LABEL[e.source] ?? e.source}</td>
                 <td className="mono">{e.endedAt ? mmss(e.playedSeconds) : 'in onda'}</td>
                 <td>{KIND_LABEL[e.kind]}</td>
                 <td>{e.title}</td>
