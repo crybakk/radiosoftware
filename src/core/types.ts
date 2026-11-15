@@ -75,7 +75,7 @@ export interface Settings {
 export interface PonteSettings {
   /** Invio del programma al ponte acceso. */
   enabled: boolean
-  /** Indirizzo del server ponte (nome o IP), lo stesso di AzuraCast. */
+  /** Indirizzo del server ponte (nome o IP): il dominio della radio. */
   host: string
   srtPort: number
   /** Frase segreta SRT, uguale a SRT_PASSPHRASE del ponte. */
@@ -91,11 +91,11 @@ export interface PonteSettings {
   controlPort: number
   /** Token del servizio di controllo, uguale a CONTROLLO_TOKEN del ponte. */
   controlToken: string
-  /** Il servizio di controllo usa HTTPS (certificato di AzuraCast). */
+  /** Il servizio di controllo usa HTTPS (Caddy, porta 443). */
   controlHttps: boolean
   /** Permette di comandare la regia dal pannello remoto. */
   remoteControl: boolean
-  /** Invia artista e titolo dei brani ad AzuraCast. */
+  /** Invia artista e titolo dei brani agli Icecast. */
   sendMetadata: boolean
   /** Ora del backup automatico giornaliero (0-23, -1 = mai). */
   backupHour: number
@@ -119,9 +119,9 @@ export const DEFAULT_PONTE: PonteSettings = {
   bitrateKbps: 128,
   source: 'programma',
   inputDeviceId: '',
-  controlPort: 9080,
+  controlPort: 443,
   controlToken: '',
-  controlHttps: false,
+  controlHttps: true,
   remoteControl: true,
   sendMetadata: true,
   backupHour: 4,

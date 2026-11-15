@@ -1,6 +1,6 @@
 # Radio Regia
 
-Software di regia radiofonica per webradio: playout automatico, diretta remota con microfono e ospiti, controllo del player da remoto anche con il PC di regia dietro NAT 4G, streaming verso AzuraCast e servizi terzi.
+Software di regia radiofonica per webradio: playout automatico, diretta remota con microfono e ospiti, controllo del player da remoto anche con il PC di regia dietro NAT 4G, streaming con Icecast proprio, Icecast secondario, YouTube e Facebook.
 
 **Guida d'uso:** [docs/GUIDA.md](docs/GUIDA.md) (aggiornata a ogni nuova funzione).
 
@@ -20,16 +20,26 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 
 **Fase 2 – ponte e collegamento** (in prova):
 
-- Ponte sul server di AzuraCast (Docker): riceve il programma dalla regia via SRT, cifrato e tollerante ai buchi del 4G, lo passa nel processore audio e lo manda ad AzuraCast come DJ. Se la regia cade, AzuraCast torna alla sua AutoDJ.
-- Allarmi via Telegram e/o email: regia scollegata o muta, silenzio, collegamento instabile, errori verso AzuraCast.
-- Regia: scheda Collegamento con stato, riconnessione automatica, titoli in onda ad AzuraCast, backup giornaliero del database sul ponte e ripristino.
+- Ponte sul server (Docker): riceve il programma dalla regia via SRT, cifrato e tollerante ai buchi del 4G, lo passa nel processore audio e lo manda in onda (dalla fase 6 all'Icecast principale; prima ad AzuraCast).
+- Allarmi via Telegram e/o email: regia scollegata o muta, silenzio, collegamento instabile, errori verso le uscite.
+- Regia: scheda Collegamento con stato, riconnessione automatica, titoli in onda, backup giornaliero del database sul ponte e ripristino.
 - Guida di installazione: [ponte/README.md](ponte/README.md).
 
 **Fase 3 – controllo remoto** (in prova):
 
 - Pannello web servito dal ponte, per telefono, tablet e computer: in onda, PLAY/AVANTI/STOP, automatico/manuale, coda, ricerca, jingle.
 - La regia apre lei il canale verso il ponte (funziona dietro il NAT del 4G) e si ricollega da sola.
-- Utenti con ruoli (amministratore, conduttore, ospite), accesso con password, HTTPS con il certificato di AzuraCast.
+- Utenti con ruoli (amministratore, conduttore, ospite), accesso con password, HTTPS (dalla fase 6 con Caddy).
+
+**Fasi 4 e 5 – microfono, diretta autonoma, ospiti** (in prova):
+
+- Microfono dal pannello (WebRTC) con ritorno in cuffia; diretta autonoma con la libreria del server; fino a 3 ospiti collegati con un link.
+
+**Fase 6 – uscite e server senza AzuraCast** (in prova):
+
+- Un solo server: ponte, Icecast principale e Caddy (HTTPS automatico). AzuraCast non serve più.
+- Icecast secondario esterno con lo stesso segnale; musica di riserva dalla libreria quando nessuno è in diretta.
+- Dirette video su YouTube e Facebook dal pannello: logo fisso o video da OBS (massimo 720p, senza ricodifica).
 
 ## Installazione su Windows
 

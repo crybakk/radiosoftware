@@ -2,6 +2,13 @@
 
 Stato: **bozza da approvare** (14/11/2026). Nulla qui è definitivo finché non viene confermato.
 
+> **Aggiornamento 15/11/2026 (fase 6):** AzuraCast è stato tolto. Il server è una sola VM con il ponte,
+> un Icecast principale e Caddy (HTTPS automatico); il ponte manda lo stesso segnale anche a un Icecast
+> secondario esterno e, quando servono, a YouTube e Facebook (logo fisso o video da OBS, massimo 720p).
+> Quando nessuno è in diretta il ponte suona la musica di riserva dalla libreria del server. FluidStream è
+> rimandato. Dove qui sotto si parla di AzuraCast e della sua AutoDJ, vale quanto scritto in questo riquadro
+> e in [ponte/README.md](../ponte/README.md).
+
 ## 1. Obiettivi
 
 - Playout automatico H24 sul PC di regia (playlist, rotazioni, jingle, dissolvenze), simile a RadioDJ.

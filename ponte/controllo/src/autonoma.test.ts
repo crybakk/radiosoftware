@@ -103,4 +103,17 @@ describe('diretta autonoma', () => {
     await expect(u.p.run({ type: 'start' })).rejects.toThrow(/non risponde/)
     expect(u.p.state().active).toBe(false)
   })
+
+  it('riserva del ponte: brani a caso senza ripetere subito lo stesso artista', async () => {
+    const lib = new Library(dir, join(dir, '.indice-riserva.json'))
+    await lib.scan()
+    const p = new AutonomousPlayer(lib, { setActive: async () => true, push: async () => true, skip: async () => true })
+    const a = p.nextReserve()
+    const b = p.nextReserve()
+    expect(a).toBeTruthy()
+    expect(b).toBeTruthy()
+    const artist = (u: string) => (u.includes('/c.mp3') ? 'Mina' : u.includes('Nomade') ? 'Nomade' : 'Vasco')
+    // con più artisti in libreria, due brani di fila sono di artisti diversi
+    expect(artist(a!)).not.toBe(artist(b!))
+  })
 })

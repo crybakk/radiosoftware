@@ -4,7 +4,7 @@
  * riceve le notifiche tramite il callback `notify`.
  */
 
-export type AlarmKey = 'silenzio' | 'studio_scollegato' | 'regia_muta' | 'collegamento_instabile' | 'azuracast'
+export type AlarmKey = 'silenzio' | 'studio_scollegato' | 'regia_muta' | 'collegamento_instabile' | 'icecast_principale' | 'icecast_esterno'
 
 export interface AlarmConfig {
   /** Secondi di regia scollegata dal ponte prima di avvisare. */
@@ -26,7 +26,7 @@ export const DEFAULT_ALARM_CONFIG: AlarmConfig = { disconnectedSeconds: 30, hear
 const MESSAGES: Record<AlarmKey, [string, string]> = {
   silenzio: ['🔇 Silenzio in onda: dal ponte non arriva audio.', '🔊 Audio ripreso.'],
   studio_scollegato: [
-    '📡 La regia è scollegata dal ponte: AzuraCast è passato alla sua AutoDJ di riserva.',
+    '📡 La regia è scollegata dal ponte: in onda va la musica di riserva del ponte.',
     '✅ La regia è di nuovo collegata al ponte.'
   ],
   regia_muta: [
@@ -37,7 +37,8 @@ const MESSAGES: Record<AlarmKey, [string, string]> = {
     '⚠️ Collegamento instabile: la regia si è riconnessa molte volte negli ultimi 10 minuti.',
     '✅ Il collegamento della regia è tornato stabile.'
   ],
-  azuracast: ['❌ Il ponte non riesce a mandare il segnale ad AzuraCast.', '✅ Il ponte trasmette di nuovo ad AzuraCast.']
+  icecast_principale: ["❌ Il ponte non riesce a mandare il segnale all'Icecast principale.", "✅ Il ponte trasmette di nuovo all'Icecast principale."],
+  icecast_esterno: ["❌ Il ponte non riesce a mandare il segnale all'Icecast secondario (esterno).", "✅ Il ponte trasmette di nuovo all'Icecast secondario (esterno)."]
 }
 
 export class Alarms {
@@ -48,7 +49,7 @@ export class Alarms {
   private disconnectedAt: number | null = null
   private lastHeartbeat: number | null = null
   private reconnects: number[] = []
-  private lastAzuraError: string | null = null
+  private lastIcecastError: string | null = null
   private config: AlarmConfig
   private notify: (text: string, alarm: AlarmKey | 'esterna', open: boolean) => void
   private now: () => number
@@ -113,7 +114,7 @@ export class Alarms {
             ? '🏠 Diretta esterna terminata: è tornata in onda la diretta autonoma.'
             : this.studioConnected
             ? '🏠 Diretta esterna terminata: è tornata in onda la regia.'
-            : '🏠 Diretta esterna terminata. La regia non è collegata: AzuraCast passa alla sua AutoDJ di riserva.',
+            : '🏠 Diretta esterna terminata. La regia non è collegata: in onda va la musica di riserva del ponte.',
           'esterna',
           false
         )
@@ -125,13 +126,20 @@ export class Alarms {
       case 'audio_ripreso':
         this.close('silenzio')
         break
-      case 'azuracast_errore':
-        this.lastAzuraError = detail
-        if (this.onAirSource()) this.open('azuracast', detail)
+      // il ponte ha sempre segnale (c'è la riserva): ogni errore verso un Icecast è un allarme
+      case 'icecast_principale_errore':
+        this.lastIcecastError = detail
+        this.open('icecast_principale', detail)
         break
-      case 'azuracast_collegato':
-        this.lastAzuraError = null
-        this.close('azuracast')
+      case 'icecast_principale_collegato':
+        this.lastIcecastError = null
+        this.close('icecast_principale')
+        break
+      case 'icecast_esterno_errore':
+        this.open('icecast_esterno', detail)
+        break
+      case 'icecast_esterno_collegato':
+        this.close('icecast_esterno')
         break
     }
   }
@@ -163,7 +171,7 @@ export class Alarms {
       externalConnected: this.externalConnected,
       lastHeartbeat: this.lastHeartbeat ? new Date(this.lastHeartbeat).toISOString() : null,
       reconnectsLast10Min: this.reconnects.length,
-      lastAzuracastError: this.lastAzuraError,
+      lastIcecastError: this.lastIcecastError,
       alarms: [...this.active.values()]
     }
   }

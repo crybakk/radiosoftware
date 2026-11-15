@@ -3,7 +3,7 @@
  *
  * Porta pubblica (CONTROLLO_PORTA, predefinita 9080), protetta da token:
  *   POST /api/heartbeat   segnali di vita e stato dalla regia
- *   POST /api/metadata    titolo/artista in onda → Liquidsoap → AzuraCast
+ *   POST /api/metadata    titolo/artista in onda → Liquidsoap → Icecast
  *   PUT  /api/backup      copia del database della regia
  *   GET  /api/backup      elenco copie;  GET /api/backup/<nome> scarica una copia
  *   GET  /api/stato       stato del ponte e allarmi attivi
@@ -18,15 +18,18 @@
  *   WS   /ws/pannello     stato della regia e comandi, microfono, diretta autonoma, ospiti
  *   GET  /ospite.html?t=<link>, WS /ws/ospite?t=<link>   pagina e canale degli ospiti (link creato dal pannello)
  *   PUT  /api/autonoma/carica?nome=<file>   carica un brano nella libreria del server (conduttori)
+ *   GET/PUT /api/video/logo   immagine delle dirette video su YouTube e Facebook (conduttori)
  *
  * Libreria del server copiata dalla regia (token): GET /api/libreria, PUT /api/libreria?id=regia/...,
  *   DELETE /api/libreria?id=regia/..., POST /api/libreria/dati (titoli e volumi corretti)
  *
- * Con CERTIFICATO_TLS e CHIAVE_TLS (per esempio quelli di AzuraCast) la porta pubblica usa HTTPS.
- * Porta interna 8091 (solo rete Docker): POST /internal/event da Liquidsoap.
+ * Di solito davanti c'è Caddy, che fa l'HTTPS (porta 443). Senza Caddy, con CERTIFICATO_TLS e CHIAVE_TLS
+ * la porta pubblica usa HTTPS da sola.
+ * Porta interna 8091 (solo rete Docker): POST /internal/event da Liquidsoap, GET /internal/riserva
+ * (brano a caso per la riserva del ponte).
  */
 import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs'
-import { mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import { dirname, extname, join } from 'node:path'
@@ -42,6 +45,7 @@ import { VoiceHub, voiceSockets, weriftFactory } from './voce.ts'
 import { Guests } from './ospiti.ts'
 import { AUDIO_EXT, Library } from './libreria.ts'
 import { AutonomousPlayer } from './autonoma.ts'
+import { VideoLive } from './video.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -144,7 +148,7 @@ if (env('MICROFONO_REMOTO', 'si') !== 'no') {
     file: join(DATA_DIR, 'inviti-ospiti.json'),
     slots: slots.slice(1),
     station: env('NOME_RADIO', 'Radio'),
-    listenUrl: env('ASCOLTO_URL')
+    listenUrl: env('ASCOLTO_URL') || (env('DOMINIO') ? `https://${env('DOMINIO')}${env('ICECAST_MOUNT', '/radio.mp3')}` : '')
   })
   guests.onChange = (list) => {
     console.log(`[ospiti] ${list.map((g) => `${g.name} (${g.state}${g.onAir ? ', IN ONDA' : ''})`).join(', ') || 'nessuno'}`)
@@ -214,6 +218,55 @@ const rescan = (): void =>
 rescan()
 setInterval(rescan, 30 * 60_000)
 
+// ---------- dirette video (YouTube, Facebook) ----------
+
+const LOGO_FILES = { png: join(DATA_DIR, 'logo-video.png'), jpg: join(DATA_DIR, 'logo-video.jpg') }
+const MAX_LOGO_BYTES = 5 * 1024 * 1024
+const logoFile = (): string | null => (existsSync(LOGO_FILES.png) ? LOGO_FILES.png : existsSync(LOGO_FILES.jpg) ? LOGO_FILES.jpg : null)
+let video: VideoLive | null = null
+if (env('DIRETTE_VIDEO', 'si') !== 'no') {
+  video = new VideoLive({
+    file: join(DATA_DIR, 'dirette-video.json'),
+    logo: logoFile,
+    audioUrl: env('VIDEO_AUDIO_URL', 'http://liquidsoap:8093/programma'),
+    obsPort: num('VIDEO_OBS_PORTA', 9020),
+    obsPassphrase: env('VIDEO_OBS_PASSPHRASE')
+  })
+  const v = video
+  let last = ''
+  v.onChange = (st) => {
+    const line = `${st.state}${st.error ? `: ${st.error}` : ''}`
+    if (line !== last) console.log(`[video] ${line}`)
+    last = line
+    relay.setVideo(st)
+  }
+  v.onAlert = (text) => void notifier.send(text)
+  v.onLog = (line) => console.log(`[video] ffmpeg: ${line}`)
+  relay.video = v
+  relay.setVideo(v.status())
+}
+
+async function saveLogo(req: IncomingMessage): Promise<void> {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const c of req as AsyncIterable<Buffer>) {
+    size += c.length
+    if (size > MAX_LOGO_BYTES) throw new Error('immagine troppo grande (massimo 5 MB)')
+    chunks.push(c)
+  }
+  const data = Buffer.concat(chunks)
+  const kind = data.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+    ? 'png'
+    : data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff
+      ? 'jpg'
+      : null
+  if (!kind) throw new Error("l'immagine deve essere PNG o JPEG")
+  const file = LOGO_FILES[kind]
+  await writeFile(`${file}.tmp`, data)
+  await rename(`${file}.tmp`, file)
+  await rm(kind === 'png' ? LOGO_FILES.jpg : LOGO_FILES.png, { force: true })
+}
+
 /** Nome di file sicuro per i brani caricati dal pannello. */
 function safeName(name: string): string | null {
   const base = name.split(/[\\/]/).pop() ?? ''
@@ -256,6 +309,16 @@ async function saveUpload(req: IncomingMessage, file: string): Promise<string> {
 }
 
 // ---------- utilità HTTP ----------
+
+/** Con Caddy davanti (PROXY_FIDATO=si) l'indirizzo vero del browser è l'ultimo di X-Forwarded-For. */
+const TRUST_PROXY = env('PROXY_FIDATO', 'no') === 'si'
+function clientIp(req: IncomingMessage): string {
+  const fwd = TRUST_PROXY ? String(req.headers['x-forwarded-for'] ?? '').split(',').pop()?.trim() : ''
+  return fwd || req.socket.remoteAddress || ''
+}
+function viaHttps(req: IncomingMessage): boolean {
+  return TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https'
+}
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const data = JSON.stringify(body)
@@ -409,7 +472,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     // --- pannello remoto (sessione) ---
     if (req.method === 'POST' && url.pathname === '/api/login') {
       if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
-      const ip = req.socket.remoteAddress ?? ''
+      const ip = clientIp(req)
       if (tooManyAttempts(ip)) return json(res, 429, { error: 'Troppi tentativi: riprova tra un minuto' })
       const body = await readJson(req, 4096)
       const s = users.login(String(body.name ?? '').trim(), String(body.password ?? ''))
@@ -419,7 +482,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       }
       res.setHeader(
         'Set-Cookie',
-        `sessione=${s.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${30 * 86400}${tls ? '; Secure' : ''}`
+        `sessione=${s.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${30 * 86400}${tls || viaHttps(req) ? '; Secure' : ''}`
       )
       return json(res, 200, { user: s.user })
     }
@@ -442,6 +505,24 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       relay.setAuto(auto.state())
       console.log(`[autonoma] ${me.name} ha caricato ${t.id}`)
       return json(res, 200, { track: { id: t.id, title: t.title, artist: t.artist, duration: t.duration } })
+    }
+    if (url.pathname === '/api/video/logo') {
+      const me = sessionUser(req)
+      if (!me) return json(res, 401, { error: 'accesso richiesto' })
+      if (req.method === 'GET') {
+        const f = logoFile()
+        if (!f) return json(res, 404, { error: 'nessun logo' })
+        res.writeHead(200, { 'Content-Type': f.endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'no-store' })
+        return void createReadStream(f).pipe(res)
+      }
+      if (req.method === 'PUT') {
+        if (!can(me.role, 'comandare')) return json(res, 403, { error: 'il tuo ruolo non permette di cambiare il logo' })
+        if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+        await saveLogo(req)
+        video?.logoChanged()
+        console.log(`[video] ${me.name} ha caricato il logo`)
+        return json(res, 200, { ok: true })
+      }
     }
     if (url.pathname === '/api/io' || url.pathname.startsWith('/api/utenti')) {
       const me = sessionUser(req)
@@ -574,7 +655,7 @@ const publicServer = certs
   : createServer((req, res) => void handlePublic(req, res))
 
 if (tls) {
-  // il certificato di AzuraCast si rinnova da solo: lo ricarichiamo ogni 12 ore
+  // il certificato può essere rinnovato da fuori: lo ricarichiamo ogni 12 ore
   setInterval(() => {
     const c = loadCert()
     if (c) (publicServer as ReturnType<typeof createHttpsServer>).setSecureContext(c)
@@ -631,6 +712,11 @@ publicServer.on('upgrade', (req, socket, head) => {
 
 const internalServer = createServer(async (req, res) => {
   try {
+    if (req.method === 'GET' && req.url === '/internal/riserva') {
+      const uri = auto.nextReserve()
+      res.writeHead(uri ? 200 : 404, { 'Content-Type': 'text/plain; charset=utf-8' })
+      return void res.end(uri ?? '')
+    }
     if (req.method === 'POST' && req.url === '/internal/event') {
       const body = await readJson(req)
       const kind = String(body.kind ?? '')
@@ -649,6 +735,7 @@ publicServer.listen(PUBLIC_PORT, () => console.log(`Controllo in ascolto sulla p
 internalServer.listen(INTERNAL_PORT, () => console.log(`Eventi interni sulla porta ${INTERNAL_PORT}`))
 
 const shutdown = (): void => {
+  video?.stop()
   publicServer.close()
   internalServer.close()
   process.exit(0)

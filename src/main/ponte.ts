@@ -163,7 +163,7 @@ export class PonteService {
     this.remote.sendState({ ...state, uplink: this.uplink.getStatus().state })
   }
 
-  /** Un brano è andato in onda: titolo ad AzuraCast (non per jingle e spot). */
+  /** Un brano è andato in onda: titolo agli Icecast (non per jingle e spot). */
   onTrackStart(track: Track): void {
     const c = this.client()
     if (!c || !this.settings?.sendMetadata || !this.settings.enabled) return
