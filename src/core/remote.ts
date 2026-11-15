@@ -1,6 +1,7 @@
 /** Controllo remoto dal lato regia: collegamento al ponte, stato da inviare, esecuzione dei comandi. */
 import type { FromStudio, RemoteCommand, RemoteState, RemoteTrack, ToStudio } from '../../ponte/controllo/src/protocol.ts'
 import type { PlayoutEngine, PlayoutSnapshot } from './playout'
+import { ponteControlBase } from './ponteClient'
 import type { Track } from './types'
 
 export type { RemoteCommand, RemoteState }
@@ -85,6 +86,17 @@ export interface RemoteLinkStatus {
 
 type WsCtor = new (url: string) => WebSocket
 
+export interface RemoteLinkOptions {
+  /**
+   * Dopo il primo ping del ponte: se per tanto tempo non arriva nulla il collegamento è morto
+   * (il 4G a volte lo lascia "aperto" senza che passi niente) e lo riapriamo. Millisecondi.
+   */
+  silenceMs?: number
+}
+
+/** Il ponte manda un ping ogni 15 s: senza notizie per 40 s il collegamento è considerato caduto. */
+const SILENCE_MS = 40_000
+
 /**
  * Canale WebSocket dalla regia al ponte. È la regia ad aprirlo (funziona anche dietro il NAT del 4G)
  * e lo riapre da sola se cade.
@@ -103,15 +115,21 @@ export class RemoteLink {
   private onCommand: (cmd: RemoteCommand, by: string) => Promise<unknown>
   private onStatus: (s: RemoteLinkStatus) => void
   private Ws: WsCtor
+  private silenceMs: number
+  private watchdog: ReturnType<typeof setInterval> | null = null
+  /** I comandi (tranne la ricerca) vengono eseguiti uno alla volta, nell'ordine di arrivo. */
+  private queue: Promise<unknown> = Promise.resolve()
 
   constructor(
     onCommand: (cmd: RemoteCommand, by: string) => Promise<unknown>,
     onStatus: (s: RemoteLinkStatus) => void,
-    Ws: WsCtor = globalThis.WebSocket as unknown as WsCtor
+    Ws: WsCtor = globalThis.WebSocket as unknown as WsCtor,
+    options: RemoteLinkOptions = {}
   ) {
     this.onCommand = onCommand
     this.onStatus = onStatus
     this.Ws = Ws
+    this.silenceMs = options.silenceMs ?? SILENCE_MS
   }
 
   getStatus(): RemoteLinkStatus {
@@ -137,6 +155,7 @@ export class RemoteLink {
     this.wanted = false
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
+    this.stopWatchdog()
     const ws = this.ws
     this.ws = null
     if (ws) {
@@ -158,29 +177,45 @@ export class RemoteLink {
     }
     this.ws = ws
     let authed = false
+    // segnale di vita: si controlla solo dopo il primo ping (un ponte vecchio non li manda)
+    let pinged = false
+    let lastSeen = Date.now()
     ws.onopen = () => ws.send(JSON.stringify({ t: 'auth', token: this.token } satisfies FromStudio))
     ws.onmessage = (ev: MessageEvent) => {
+      // messaggi in ritardo da un collegamento già abbandonato
+      if (this.ws !== ws) return
+      lastSeen = Date.now()
       let msg: ToStudio
       try {
         msg = JSON.parse(String(ev.data)) as ToStudio
       } catch {
         return
       }
-      if (msg.t === 'auth-ok') {
+      if (!msg || typeof msg !== 'object') return
+      if (msg.t === 'ping') {
+        if (!pinged) {
+          pinged = true
+          this.startWatchdog(ws, () => Date.now() - lastSeen > this.silenceMs)
+        }
+      } else if (msg.t === 'auth-ok') {
         authed = true
         this.attempt = 0
         this.set('collegato', 'Pannello remoto collegato al ponte')
         if (this.pendingState) this.flushState()
       } else if (msg.t === 'cmd') {
-        this.onCommand(msg.cmd, msg.by).then(
-          (data) => this.send({ t: 'reply', id: msg.id, ok: true, data: data ?? undefined }),
-          (e: unknown) => this.send({ t: 'reply', id: msg.id, ok: false, error: e instanceof Error ? e.message : String(e) })
+        const { id, cmd, by } = msg
+        // la ricerca non tocca la messa in onda: può andare subito; il resto rispetta l'ordine
+        const run = cmd?.type === 'search' ? this.onCommand(cmd, by) : this.enqueue(() => this.onCommand(cmd, by))
+        run.then(
+          (data) => this.send({ t: 'reply', id, ok: true, data: data ?? undefined }),
+          (e: unknown) => this.send({ t: 'reply', id, ok: false, error: e instanceof Error ? e.message : String(e) })
         )
       }
     }
     const down = (code: number): void => {
       if (this.ws !== ws) return
       this.ws = null
+      this.stopWatchdog()
       const reason = code === 4003 ? 'token del ponte errato' : authed ? 'collegamento interrotto' : 'il ponte non risponde'
       this.retry(reason)
     }
@@ -191,6 +226,36 @@ export class RemoteLink {
         if (ws.readyState !== 1) down(0)
       }, 500)
     }
+  }
+
+  private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn)
+    this.queue = run.catch(() => {})
+    return run
+  }
+
+  private startWatchdog(ws: WebSocket, silent: () => boolean): void {
+    this.stopWatchdog()
+    const every = Math.max(10, Math.min(5000, Math.floor(this.silenceMs / 4)))
+    this.watchdog = setInterval(() => {
+      if (this.ws !== ws || !silent()) return
+      // nessun segno di vita: chiudiamo e passiamo per la solita riconnessione
+      this.stopWatchdog()
+      ws.onclose = null
+      ws.onerror = null
+      try {
+        ws.close()
+      } catch {
+        // già chiuso
+      }
+      this.ws = null
+      this.retry('il ponte non dà più segni di vita')
+    }, every)
+  }
+
+  private stopWatchdog(): void {
+    if (this.watchdog) clearInterval(this.watchdog)
+    this.watchdog = null
   }
 
   private retry(message: string): void {
@@ -228,7 +293,5 @@ export class RemoteLink {
 
 /** Indirizzo del canale: ws:// o wss:// a seconda di come è raggiungibile il ponte. */
 export function remoteUrl(host: string, port: number, https: boolean): string {
-  const h = host.trim().replace(/\/+$/, '')
-  if (/^https?:\/\//i.test(h)) return `${h.replace(/^http/i, 'ws')}/ws/regia`
-  return `${https ? 'wss' : 'ws'}://${h}:${port}/ws/regia`
+  return `${ponteControlBase(host, port, https).replace(/^http/i, 'ws')}/ws/regia`
 }

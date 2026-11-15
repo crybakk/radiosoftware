@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
 import { ConnectionView, uplinkClass } from './ConnectionView'
 import { EventsView } from './EventsView'
 import { hhmmss } from './format'
@@ -70,16 +70,45 @@ export function App() {
       <RestoredBanner />
       {radio.snapshot.lastError && <div className="banner warn">{radio.snapshot.lastError}</div>}
       <main>
-        {tab === 'onair' && <OnAirView radio={radio} />}
-        {tab === 'library' && <LibraryView radio={radio} />}
-        {tab === 'events' && <EventsView radio={radio} />}
-        {tab === 'log' && <LogView />}
-        {tab === 'stats' && <StatsView />}
-        {tab === 'link' && <ConnectionView radio={radio} />}
-        {tab === 'settings' && <SettingsView radio={radio} />}
+        {/* sotto useRadio: un errore in una scheda non smonta App e non ferma la messa in onda */}
+        <ViewErrorBoundary key={tab}>
+          {tab === 'onair' && <OnAirView radio={radio} />}
+          {tab === 'library' && <LibraryView radio={radio} />}
+          {tab === 'events' && <EventsView radio={radio} />}
+          {tab === 'log' && <LogView />}
+          {tab === 'stats' && <StatsView />}
+          {tab === 'link' && <ConnectionView radio={radio} />}
+          {tab === 'settings' && <SettingsView radio={radio} />}
+        </ViewErrorBoundary>
       </main>
     </div>
   )
+}
+
+/** Isola gli errori di una scheda: mostra un avviso al posto della scheda invece di smontare tutta l'app. */
+class ViewErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error('Errore nella scheda', error, info.componentStack)
+  }
+
+  render(): ReactNode {
+    if (!this.state.error) return this.props.children
+    return (
+      <div className="banner error">
+        Questa scheda ha avuto un problema e non può essere mostrata ({this.state.error.message}). La messa in onda
+        continua.{' '}
+        <button className="small" onClick={() => this.setState({ error: null })}>
+          Riprova
+        </button>
+      </div>
+    )
+  }
 }
 
 function RestoredBanner() {

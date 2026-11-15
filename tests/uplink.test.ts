@@ -76,6 +76,8 @@ describe('collegamento reale con un ricevitore SRT', () => {
     rx.kill('SIGKILL')
     const off = await waitFor(up, (s) => s.state === 'riconnessione', 20000)
     expect(off.retryIn).toBeGreaterThan(0)
+    // l'interfaccia calcola il conto alla rovescia da qui
+    expect(Date.parse(off.retryAt!)).toBeGreaterThan(Date.now())
     up.stop()
     expect(up.getStatus().state).toBe('spento')
   }, 45000)

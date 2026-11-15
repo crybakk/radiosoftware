@@ -26,7 +26,8 @@ protocol.registerSchemesAsPrivileged([
 if (process.env.RADIO_DATA_DIR) app.setPath('userData', process.env.RADIO_DATA_DIR)
 
 // Un'unica istanza: due regie aperte sullo stesso database sarebbero un disastro in onda.
-if (!app.requestSingleInstanceLock()) app.quit()
+const primary = app.requestSingleInstanceLock()
+if (!primary) app.quit()
 
 function ffmpegPath(): string | null {
   const p = ffmpegStatic as unknown as string | null
@@ -69,7 +70,13 @@ app.on('second-instance', () => {
   }
 })
 
-app.whenReady().then(() => {
+/** Data locale (ora italiana del computer) in formato AAAA-MM-GG, per i nomi dei file. */
+function localDay(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// solo la prima istanza apre database, ponte e finestra
+if (primary) app.whenReady().then(() => {
   let restoredFrom: string | null = null
   try {
     restoredFrom = applyPendingRestore(app.getPath('userData'))
@@ -269,7 +276,8 @@ app.whenReady().then(() => {
     const entries = db.listLog(new Date(from), new Date(to))
     const res = await dialog.showSaveDialog(win!, {
       title: 'Esporta registro di trasmissione',
-      defaultPath: `registro_${from.slice(0, 10)}_${to.slice(0, 10)}.csv`,
+      // «to» è la mezzanotte (esclusa) del giorno dopo l'ultimo scelto
+      defaultPath: `registro_${localDay(new Date(from))}_${localDay(new Date(new Date(to).getTime() - 1))}.csv`,
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     })
     if (res.canceled || !res.filePath) return null

@@ -76,22 +76,44 @@ export function parseDuration(stderr: string): number {
   return d ? Number(d[1]) * 3600 + Number(d[2]) * 60 + Number(d[3]) : 0
 }
 
+/** Tempo massimo predefinito per l'analisi di un file. */
+export const ANALYSIS_TIMEOUT_MS = 60_000
+
 /**
  * Analizza un file con ffmpeg: loudness EBU R128, inizio/fine dell'audio, punto di mix.
- * Una sola lettura del file.
+ * Una sola lettura del file. ffmpeg viene terminato se `signal` viene annullato o dopo `timeoutMs`
+ * (per esempio un file su una cartella di rete che non risponde più).
  */
-export function analyzeFile(ffmpegPath: string, file: string, signal?: AbortSignal): Promise<AnalysisResult> {
+export function analyzeFile(
+  ffmpegPath: string,
+  file: string,
+  signal?: AbortSignal,
+  timeoutMs = ANALYSIS_TIMEOUT_MS
+): Promise<AnalysisResult> {
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(
       ffmpegPath,
       ['-hide_banner', '-nostdin', '-loglevel', 'verbose', '-i', file, '-vn', '-af', 'ebur128', '-f', 'null', '-'],
-      { windowsHide: true, signal }
+      { windowsHide: true, signal, killSignal: 'SIGKILL' }
     )
     let stderr = ''
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      proc.kill('SIGKILL')
+    }, timeoutMs)
     proc.stderr.setEncoding('utf8')
     proc.stderr.on('data', (d: string) => (stderr += d))
-    proc.on('error', reject)
+    proc.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
     proc.on('close', (code) => {
+      clearTimeout(timer)
+      if (timedOut) {
+        reject(new Error(`ffmpeg non ha finito l'analisi entro ${Math.round(timeoutMs / 1000)} secondi`))
+        return
+      }
       if (code !== 0) {
         reject(new Error(`ffmpeg ha restituito ${code}: ${stderr.slice(-300)}`))
         return

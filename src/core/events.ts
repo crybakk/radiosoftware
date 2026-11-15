@@ -22,12 +22,20 @@ export function occurrencesOnDay(ev: ScheduledEvent, day: Date): Date[] {
   const [hPart, mPart] = ev.time.split(':')
   const minute = Number(mPart)
   const out: Date[] = []
+  // Con il passaggio all'ora legale un orario inesistente (es. 02:30) diventa
+  // quello dell'ora dopo: si tiene una sola occorrenza per istante.
+  const seen = new Set<number>()
+  const add = (at: Date): void => {
+    if (seen.has(at.getTime())) return
+    seen.add(at.getTime())
+    out.push(at)
+  }
 
   if (hPart === '*') {
     for (let h = 0; h < 24; h++) {
       const at = new Date(base)
       at.setHours(h, minute, 0, 0)
-      out.push(at)
+      add(at)
     }
     return out
   }
@@ -40,7 +48,7 @@ export function occurrencesOnDay(ev: ScheduledEvent, day: Date): Date[] {
     if (u) until.setHours(u[0], u[1], 0, 0)
     else until.setHours(23, 59, 59, 999)
     for (let at = new Date(start); at <= until && at.getDate() === base.getDate(); ) {
-      out.push(new Date(at))
+      add(new Date(at))
       at = new Date(at.getTime() + ev.repeatMinutes * 60_000)
     }
     return out
@@ -60,9 +68,13 @@ export function dueEvents(events: ScheduledEvent[], from: Date, to: Date): { eve
   for (const d of [start, to]) days.set(d.toDateString(), d)
   const out: { event: ScheduledEvent; at: Date }[] = []
   for (const ev of events) {
+    const seen = new Set<number>()
     for (const d of days.values()) {
       for (const at of occurrencesOnDay(ev, d)) {
-        if (at > start && at <= to) out.push({ event: ev, at })
+        if (at > start && at <= to && !seen.has(at.getTime())) {
+          seen.add(at.getTime())
+          out.push({ event: ev, at })
+        }
       }
     }
   }

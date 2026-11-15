@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { PonteBackup, PonteState } from '../../core/ponteClient'
+import { ponteControlBase, ponteHostProblem, type PonteBackup, type PonteState } from '../../core/ponteClient'
 import type { PonteSettings } from '../../core/types'
 import { hhmm } from './format'
 import { listInputDevices } from './uplinkCapture'
@@ -31,8 +31,13 @@ function since(iso: string | null): string {
 }
 
 function panelUrl(p: PonteSettings): string {
-  const h = p.host.trim().replace(/\/+$/, '')
-  return /^https?:\/\//i.test(h) ? h : `${p.controlHttps ? 'https' : 'http'}://${h}:${p.controlPort}`
+  return ponteControlBase(p.host, p.controlPort, p.controlHttps)
+}
+
+/** Secondi che mancano alla prossima riconnessione, ricalcolati a ogni secondo. */
+function secondsTo(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000))
 }
 
 function sizeMb(bytes: number): string {
@@ -81,6 +86,11 @@ export function ConnectionView({ radio }: { radio: Radio }) {
 
   const save = async (patch: Partial<PonteSettings> = {}): Promise<void> => {
     const p = { ...draft, ...patch }
+    const hostProblem = ponteHostProblem(p.host)
+    if (hostProblem) {
+      setMsg({ kind: 'error', text: hostProblem })
+      return
+    }
     if (p.passphrase && (p.passphrase.length < 10 || p.passphrase.length > 79)) {
       setMsg({ kind: 'error', text: 'La frase segreta deve avere da 10 a 79 caratteri' })
       return
@@ -109,7 +119,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           <strong>{up ? STATE_LABEL[up.state] : '…'}</strong>
           <span>{up?.message}</span>
           {up?.state === 'collegato' && <span className="info-line">{since(up.connectedSince)} · {up.kbps} kbit/s</span>}
-          {up?.retryIn != null && <span className="info-line">nuovo tentativo tra {up.retryIn} s</span>}
+          {up?.retryAt != null && <span className="info-line">nuovo tentativo tra {secondsTo(up.retryAt)} s</span>}
           {!!up?.reconnects && <span className="info-line">riconnessioni: {up.reconnects}</span>}
         </div>
         {radio.captureError && <div className="banner error inline-banner">{radio.captureError}</div>}

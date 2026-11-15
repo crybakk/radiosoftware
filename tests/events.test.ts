@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { dueEvents, nextOccurrences, occurrencesOnDay } from '../src/core/events'
+import { validateEvent } from '../src/core/db'
 import type { ScheduledEvent } from '../src/core/types'
 
 const ev = (p: Partial<ScheduledEvent>): ScheduledEvent => ({
@@ -48,5 +49,12 @@ describe('eventi a orario', () => {
   it('elenca le prossime occorrenze', () => {
     const list = nextOccurrences([ev({ time: '10:00' }), ev({ id: 2, time: '*:30' })], new Date(2026, 10, 16, 9, 0), 3)
     expect(list.map((o) => `${o.at.getHours()}:${o.at.getMinutes()}`)).toEqual(['9:30', '10:0', '10:30'])
+  })
+  it('"ogni N minuti" con orario di fine non successivo alla partenza viene rifiutato', () => {
+    // le ripetizioni non passano la mezzanotte: 22:00 -> 02:00 non scatterebbe mai
+    expect(() => validateEvent(ev({ time: '22:00', repeatMinutes: 30, untilTime: '02:00' }))).toThrow(/mezzanotte/)
+    expect(() => validateEvent(ev({ time: '10:00', repeatMinutes: 30, untilTime: '10:00' }))).toThrow(/dopo quello di partenza/)
+    expect(() => validateEvent(ev({ time: '10:00', repeatMinutes: 30, untilTime: '11:00' }))).not.toThrow()
+    expect(() => validateEvent(ev({ time: '22:00', repeatMinutes: 30, untilTime: null }))).not.toThrow()
   })
 })

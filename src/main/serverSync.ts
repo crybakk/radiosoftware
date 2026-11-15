@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { catalogParts, withCounter } from '../core/catalog'
-import { readFileInfo } from '../core/scanner'
+import { NotAudioError, readFileInfo } from '../core/scanner'
 import type { RadioDb } from '../core/db'
 import { PonteError, type LibraryMeta, type PonteClient, type UploadedTrack } from '../core/ponteClient'
 import { exclusionReason, gainFor, onServer, planSync, serverId, type SyncItem } from '../core/serverLibrary'
@@ -352,7 +352,15 @@ export class ServerLibrarySync {
         this.addBudget(u.size)
       }
       // nella libreria della regia, con i dati del server se il file non ha i tag
-      const info = await readFileInfo(target, 'music')
+      let info: Awaited<ReturnType<typeof readFileInfo>>
+      try {
+        info = await readFileInfo(target, 'music')
+      } catch (e) {
+        // file rovinato o non audio: si salta senza fermare gli altri
+        if (!(e instanceof NotAudioError)) throw e
+        this.emit({ progress: `file non audio dal server, saltato: ${u.artist} - ${u.title}` })
+        continue
+      }
       if (!info.title || info.title === name.replace(/\.[^.]+$/, '')) info.title = u.title || info.title
       if (!info.artist) info.artist = u.artist
       const st = await stat(target)

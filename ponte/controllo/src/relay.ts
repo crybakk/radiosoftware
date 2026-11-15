@@ -1,6 +1,6 @@
 /** Smista i messaggi tra la regia (una sola) e i pannelli remoti (quanti si vuole). */
 import type { AutoState, FromPanel, GuestInfo, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio, VideoStatus } from './protocol.ts'
-import { can, type PublicUser } from './users.ts'
+import { can, sameSecret, type PublicUser } from './users.ts'
 import type { VoiceHub } from './voce.ts'
 import type { AutonomousPlayer } from './autonoma.ts'
 import type { Guests } from './ospiti.ts'
@@ -69,8 +69,10 @@ export class Relay {
         } catch {
           return
         }
+        // JSON valido ma non un oggetto (null, numeri, liste…): lo ignoriamo
+        if (typeof msg !== 'object' || msg === null || Array.isArray(msg)) return
         if (!authed) {
-          if (msg.t !== 'auth' || msg.token !== this.token) {
+          if (msg.t !== 'auth' || typeof msg.token !== 'string' || !sameSecret(msg.token, this.token)) {
             peer.close(4003, 'token non valido')
             return
           }
@@ -89,6 +91,7 @@ export class Relay {
           this.state = msg.state
           this.broadcast({ t: 'state', state: msg.state })
         } else if (msg.t === 'reply') {
+          if (typeof msg.id !== 'string') return
           const p = this.pending.get(msg.id)
           if (!p) return
           clearTimeout(p.timer)
@@ -116,10 +119,24 @@ export class Relay {
     this.studio?.send(JSON.stringify(m))
   }
 
+  /** Segnale di vita a livello di applicazione verso la regia collegata. */
+  pingStudio(): void {
+    this.sendStudio({ t: 'ping' })
+  }
+
   // ---------- pannelli ----------
 
-  /** host = nome con cui il browser ha aperto il pannello (serve al microfono). */
-  attachPanel(peer: Peer, user: PublicUser, host?: string): { message: (raw: string) => void; close: () => void } {
+  /**
+   * Nuovo pannello. `host` = nome con cui il browser ha aperto il pannello (serve al microfono).
+   * `current` (facoltativo) restituisce l'utente aggiornato della sessione:
+   * a ogni comando si ricontrolla il ruolo, e senza sessione valida la connessione si chiude.
+   */
+  attachPanel(
+    peer: Peer,
+    user: PublicUser,
+    host?: string,
+    current?: () => PublicUser | null
+  ): { message: (raw: string) => void; close: () => void } {
     this.panels.set(peer, user)
     this.sendTo(peer, { t: 'hello', user, studio: this.studio !== null, state: this.state })
     this.sendTo(peer, this.alarms)
@@ -135,37 +152,40 @@ export class Relay {
         } catch {
           return
         }
+        if (typeof msg !== 'object' || msg === null || Array.isArray(msg)) return
         if (msg.t === 'rtc-close') return this.voice?.close(peer)
         if (typeof msg.id !== 'string') return
         const reply = (ok: boolean, error?: string, data?: unknown): void =>
           this.sendTo(peer, { t: 'reply', id: msg.id, ok, error, data })
+        const now = current ? current() : user
+        if (!now) return peer.close(4003, 'sessione chiusa')
         if (msg.t === 'rtc-offer' || msg.t === 'mic') {
-          if (!can(user.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di andare in onda')
+          if (!can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di andare in onda')
           const voice = this.voice
           if (!voice) return reply(false, 'microfono remoto non attivo sul ponte')
           const done = msg.t === 'rtc-offer'
-            ? voice.open(peer, user.name, String(msg.sdp), host).then((sdp) => reply(true, undefined, { sdp }))
+            ? voice.open(peer, now.name, String(msg.sdp), host).then((sdp) => reply(true, undefined, { sdp }))
             : voice.setMic(peer, msg.on === true).then(() => reply(true))
           done.catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
           return
         }
         if (msg.t === 'guest') {
           const guests = this.guests
-          if (!guests || !msg.cmd) return reply(false, 'ospiti non attivi sul ponte')
-          if (!can(user.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di gestire gli ospiti')
+          if (!guests || typeof msg.cmd !== 'object' || msg.cmd === null) return reply(false, 'ospiti non attivi sul ponte')
+          if (!can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di gestire gli ospiti')
           guests
-            .command(msg.cmd, user.name)
+            .command(msg.cmd, now.name)
             .then((data) => reply(true, undefined, data))
             .catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
           return
         }
         if (msg.t === 'video') {
           const video = this.video
-          if (!video || !msg.cmd) return reply(false, 'dirette video non attive sul ponte')
-          if (msg.cmd.type === 'config' && !can(user.role, 'utenti')) return reply(false, 'solo gli amministratori cambiano le chiavi delle dirette')
-          if (!can(user.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare le dirette video')
+          if (!video || typeof msg.cmd !== 'object' || msg.cmd === null) return reply(false, 'dirette video non attive sul ponte')
+          if (msg.cmd.type === 'config' && !can(now.role, 'utenti')) return reply(false, 'solo gli amministratori cambiano le chiavi delle dirette')
+          if (!can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare le dirette video')
           try {
-            reply(true, undefined, video.run(msg.cmd, user.name))
+            reply(true, undefined, video.run(msg.cmd, now.name))
           } catch (e) {
             reply(false, e instanceof Error ? e.message : String(e))
           }
@@ -173,17 +193,17 @@ export class Relay {
         }
         if (msg.t === 'auto') {
           const auto = this.auto
-          if (!auto || !msg.cmd) return reply(false, 'diretta autonoma non attiva sul ponte')
-          if (msg.cmd.type !== 'search' && !can(user.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la diretta autonoma')
+          if (!auto || typeof msg.cmd !== 'object' || msg.cmd === null) return reply(false, 'diretta autonoma non attiva sul ponte')
+          if (msg.cmd.type !== 'search' && !can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la diretta autonoma')
           auto
-            .run(msg.cmd, user.name)
+            .run(msg.cmd, now.name)
             .then((data) => reply(true, undefined, data))
             .catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
           return
         }
-        if (msg.t !== 'cmd' || !msg.cmd) return
+        if (msg.t !== 'cmd' || typeof msg.cmd !== 'object' || msg.cmd === null) return
         // la ricerca è una lettura: la può fare anche chi non comanda
-        if (msg.cmd.type !== 'search' && !can(user.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la regia')
+        if (msg.cmd.type !== 'search' && !can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la regia')
         if (!this.studio) return reply(false, 'regia scollegata')
         const id = `c${++this.seq}`
         this.pending.set(id, {
@@ -194,7 +214,7 @@ export class Relay {
             reply(false, 'la regia non ha risposto')
           }, REPLY_TIMEOUT_MS)
         })
-        this.sendStudio({ t: 'cmd', id, cmd: msg.cmd, by: user.name })
+        this.sendStudio({ t: 'cmd', id, cmd: msg.cmd, by: now.name })
       },
       close: () => {
         this.panels.delete(peer)
@@ -208,9 +228,12 @@ export class Relay {
     }
   }
 
-  /** Chiude le connessioni di un utente (eliminato o con password cambiata). */
-  kick(name: string): void {
-    for (const [peer, u] of this.panels) if (u.name.toLowerCase() === name.toLowerCase()) peer.close(4003, 'sessione chiusa')
+  /**
+   * Chiude le connessioni di un utente (eliminato o con password cambiata: 4003, il pannello torna all'accesso).
+   * Con un altro codice (per esempio 4002 dopo un cambio di ruolo) il pannello si ricollega da solo.
+   */
+  kick(name: string, code = 4003, reason = 'sessione chiusa'): void {
+    for (const [peer, u] of this.panels) if (u.name.toLowerCase() === name.toLowerCase()) peer.close(code, reason)
   }
 
   setAlarms(alarms: { key: string; since: string; message: string }[]): void {

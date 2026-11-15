@@ -1,6 +1,9 @@
 /** Utenti del pannello remoto, ruoli e sessioni. Tutto salvato in file JSON nella cartella dati. */
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { promisify } from 'node:util'
+
+const scryptAsync = promisify(scrypt) as (password: string, salt: string, keylen: number) => Promise<Buffer>
 
 export type Role = 'amministratore' | 'conduttore' | 'ospite'
 export const ROLES: Role[] = ['amministratore', 'conduttore', 'ospite']
@@ -28,12 +31,49 @@ function hashPassword(password: string, salt: string): string {
   return scryptSync(password, salt, 32).toString('hex')
 }
 
-function readJson<T>(path: string, fallback: T): T {
+/** Stesso formato di hashPassword, ma senza bloccare il server durante il calcolo. */
+async function hashPasswordAsync(password: string, salt: string): Promise<string> {
+  return (await scryptAsync(password, salt, 32)).toString('hex')
+}
+
+/** Confronto di due segreti in tempo costante (anche con lunghezze diverse). */
+export function sameSecret(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a).digest()
+  const hb = createHash('sha256').update(b).digest()
+  return timingSafeEqual(ha, hb)
+}
+
+function readJson(path: string): unknown {
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as T
+    return JSON.parse(readFileSync(path, 'utf8'))
   } catch {
-    return fallback
+    return undefined
   }
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** Utenti letti dal file: si tengono solo le voci ben formate. */
+function loadUsers(data: unknown): User[] {
+  if (!Array.isArray(data)) return []
+  return data.filter(
+    (u): u is User =>
+      isObject(u) &&
+      typeof u.name === 'string' &&
+      typeof u.hash === 'string' &&
+      typeof u.salt === 'string' &&
+      ROLES.includes(u.role as Role)
+  )
+}
+
+/** Sessioni lette dal file, in una Map (niente sorprese con chiavi come "constructor"). */
+function loadSessions(data: unknown): Map<string, Session> {
+  const out = new Map<string, Session>()
+  if (!isObject(data)) return out
+  for (const [k, s] of Object.entries(data)) {
+    if (isObject(s) && typeof s.user === 'string' && typeof s.expires === 'number') out.set(k, { user: s.user, expires: s.expires })
+  }
+  return out
 }
 
 function writeJson(path: string, data: unknown): void {
@@ -48,7 +88,7 @@ export function validName(name: string): boolean {
 
 export class Users {
   private users: User[]
-  private sessions: Record<string, Session>
+  private sessions: Map<string, Session>
   private usersFile: string
   private sessionsFile: string
   private now: () => number
@@ -57,8 +97,8 @@ export class Users {
     this.usersFile = usersFile
     this.sessionsFile = sessionsFile
     this.now = now
-    this.users = readJson<User[]>(usersFile, [])
-    this.sessions = readJson<Record<string, Session>>(sessionsFile, {})
+    this.users = loadUsers(readJson(usersFile))
+    this.sessions = loadSessions(readJson(sessionsFile))
   }
 
   count(): number {
@@ -111,48 +151,54 @@ export class Users {
   }
 
   /** Controlla nome e password; se vanno bene apre una sessione e ne restituisce il codice. */
-  login(name: string, password: string): { token: string; user: PublicUser } | null {
+  async login(name: string, password: string): Promise<{ token: string; user: PublicUser } | null> {
     const u = this.users.find((x) => x.name.toLowerCase() === name.toLowerCase())
     // anche con un nome inesistente facciamo il calcolo, per non far capire quali nomi esistono
     const salt = u?.salt ?? 'x'
-    const got = Buffer.from(hashPassword(password, salt), 'hex')
-    const want = Buffer.from(u?.hash ?? '0'.repeat(64), 'hex')
+    const hash = u?.hash ?? '0'.repeat(64)
+    const got = Buffer.from(await hashPasswordAsync(password, salt), 'hex')
+    const want = Buffer.from(hash, 'hex')
     if (!u || got.length !== want.length || !timingSafeEqual(got, want)) return null
+    // durante il calcolo l'utente può essere stato eliminato o aver cambiato password
+    if (!this.users.includes(u) || u.hash !== hash) return null
     const token = randomBytes(32).toString('hex')
     this.purge()
-    this.sessions[token] = { user: u.name, expires: this.now() + SESSION_DAYS * 86_400_000 }
-    writeJson(this.sessionsFile, this.sessions)
+    this.sessions.set(token, { user: u.name, expires: this.now() + SESSION_DAYS * 86_400_000 })
+    this.writeSessions()
     return { token, user: { name: u.name, role: u.role } }
   }
 
   logout(token: string): void {
-    if (!this.sessions[token]) return
-    delete this.sessions[token]
-    writeJson(this.sessionsFile, this.sessions)
+    if (!this.sessions.delete(token)) return
+    this.writeSessions()
   }
 
   /** Utente della sessione, se valida. */
   session(token: string | undefined): PublicUser | null {
-    if (!token) return null
-    const s = this.sessions[token]
+    if (typeof token !== 'string' || !token) return null
+    const s = this.sessions.get(token)
     if (!s || s.expires < this.now()) return null
     return this.get(s.user)
   }
 
+  private writeSessions(): void {
+    writeJson(this.sessionsFile, Object.fromEntries(this.sessions))
+  }
+
   private dropSessions(name: string): void {
     let changed = false
-    for (const [t, s] of Object.entries(this.sessions)) {
+    for (const [t, s] of this.sessions) {
       if (s.user.toLowerCase() === name.toLowerCase()) {
-        delete this.sessions[t]
+        this.sessions.delete(t)
         changed = true
       }
     }
-    if (changed) writeJson(this.sessionsFile, this.sessions)
+    if (changed) this.writeSessions()
   }
 
   private purge(): void {
     const t = this.now()
-    for (const [k, s] of Object.entries(this.sessions)) if (s.expires < t) delete this.sessions[k]
+    for (const [k, s] of this.sessions) if (s.expires < t) this.sessions.delete(k)
   }
 }
 
