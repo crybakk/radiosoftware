@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
 import { spawn } from 'node:child_process'
-import { expandEvent } from '../core/eventActions'
+import { expandEvent, newsTrack } from '../core/eventActions'
+import { NewsFetcher, type NewsSource } from '../core/news'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ffmpegStatic from 'ffmpeg-static'
@@ -88,6 +89,13 @@ if (primary) app.whenReady().then(() => {
   const library = new LibraryService(db, ffmpegPath())
   const rotation = new RotationService(db)
   const ponte = new PonteService(db, app.getPath('userData'), ffmpegPath())
+  // notiziari: scaricati al momento, uno per fonte (l'ultimo)
+  const newsDir = join(app.getPath('userData'), 'notiziari')
+  const news = new NewsFetcher(newsDir)
+  const newsForAir = async (src: NewsSource): Promise<{ track: Track | null; note: string }> => {
+    const r = await news.forAir(src)
+    return { track: r.item ? newsTrack(src.name, r.item) : null, note: r.note }
+  }
   ponte.applySettings(db.getSettings().ponte)
   const serverSync = new ServerLibrarySync(db, app.getPath('userData'), () => ponte.client(), (st) =>
     win?.webContents.send('serverSyncStatus', st)
@@ -152,6 +160,15 @@ if (primary) app.whenReady().then(() => {
       } catch {
         return new Response('Flusso non raggiungibile', { status: 502 })
       }
+    }
+    if (url.host === 'file') {
+      // notiziari scaricati e file scelti al loro posto: solo quelli, non file qualsiasi
+      const path = decodeURIComponent(url.pathname.replace(/^\//, ''))
+      const allowed = path.startsWith(newsDir) || db.getSettings().news.some((n) => n.fallbackFile && n.fallbackFile === path)
+      if (!allowed) return new Response('File non permesso', { status: 403 })
+      const res = serveFile(path, request)
+      res.headers.set('Access-Control-Allow-Origin', '*')
+      return res
     }
     const id = Number(new URL(request.url).pathname.replace(/^\//, ''))
     const track = Number.isFinite(id) ? db.getTrack(id) : null
@@ -219,12 +236,17 @@ if (primary) app.whenReady().then(() => {
     // per i brani della libreria usiamo i dati aggiornati del database (autori, codici SIAE)
     const t = track.id > 0 ? (db.getTrack(track.id) ?? track) : track
     ponte.onTrackStart(t)
-    return db.logStart(t, new Date(at), track.id > 0 ? 'regia' : 'flusso esterno')
+    return db.logStart(t, new Date(at), track.id > 0 ? 'regia' : track.kind === 'news' ? 'notiziario' : 'flusso esterno')
   })
   handle('expandEvent', (event: ScheduledEvent) =>
     expandEvent(db, event, {
       now: () => new Date(),
       replay: (programId) => ponte.replayTrack(programId),
+      news: async (sourceId) => {
+        const src = db.getSettings().news.find((n) => n.id === sourceId)
+        if (!src) return { track: null, note: 'fonte non trovata (tolta dalle impostazioni?)' }
+        return newsForAir(src)
+      },
       runCommand: (command) => {
         const child = spawn(command, { shell: true, detached: true, windowsHide: true, stdio: 'ignore' })
         child.on('error', () => {})
@@ -233,11 +255,17 @@ if (primary) app.whenReady().then(() => {
     })
   )
   handle('listGenres', () => db.listGenres())
-  handle('choosePath', async (kind: 'playlist' | 'folder') => {
+  handle('newsTest', (src: NewsSource) => newsForAir(src))
+  handle('choosePath', async (kind: 'playlist' | 'folder' | 'audio') => {
     const res = await dialog.showOpenDialog(win!, {
-      title: kind === 'folder' ? 'Scegli una cartella' : 'Scegli una playlist',
+      title: kind === 'folder' ? 'Scegli una cartella' : kind === 'audio' ? 'Scegli un file audio' : 'Scegli una playlist',
       properties: kind === 'folder' ? ['openDirectory'] : ['openFile'],
-      filters: kind === 'folder' ? undefined : [{ name: 'Playlist', extensions: ['m3u', 'm3u8', 'pls'] }]
+      filters:
+        kind === 'folder'
+          ? undefined
+          : kind === 'audio'
+            ? [{ name: 'Audio', extensions: ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg', 'opus'] }]
+            : [{ name: 'Playlist', extensions: ['m3u', 'm3u8', 'pls'] }]
     })
     return res.canceled ? null : (res.filePaths[0] ?? null)
   })

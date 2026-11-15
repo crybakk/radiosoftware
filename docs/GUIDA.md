@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, bot Telegram della radio (brani sconosciuti da etichettare e menu con stato, ascoltatori e puntate).
+**Ultimo aggiornamento:** 15/11/2026, notiziari scaricati in automatico (regia), dopo il bot Telegram della radio.
 
 ## Indice
 
@@ -16,6 +16,7 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
 7. [Registro di trasmissione](#7-registro-di-trasmissione)
     - [Report SIAE trimestrale](#report-siae-trimestrale)
 8. [Impostazioni](#8-impostazioni)
+    - [Notiziari](#notiziari)
 9. [Il server: VM su Proxmox](#9-il-server-vm-su-proxmox)
     - [Ascolto e Icecast secondario](#ascolto-e-icecast-secondario)
 10. [Collegare la regia al ponte](#10-collegare-la-regia-al-ponte)
@@ -159,6 +160,7 @@ Scheda **Eventi** → **+ Nuovo evento**. Un evento esegue in ordine una serie d
 | Regole di rotazione | da quel momento la rotazione usa solo certi generi o anni (es. "dalle 22 musica tranquilla"); "Torna alla rotazione normale" la riporta come prima |
 | Comando esterno | avvia un programma o uno script sul PC |
 | Replica di un programma | l'ultima puntata pubblicata del programma scelto, in streaming dal server (sezione 12, Repliche) |
+| Notiziario | l'ultima edizione di una fonte dei notiziari, scaricata in quel momento (sezione 8, [Notiziari](#notiziari)) |
 
 Con **▶ Prova** esegui subito un evento per vedere come va. **Duplica** crea una copia da modificare.
 In alto vedi i prossimi eventi in programma e, se attivo, il profilo di rotazione in uso.
@@ -203,6 +205,31 @@ solo i brani del server scaricati finora. Riprova quando il ponte è collegato.
 | Brani in coda in automatico | quanti brani preparare in anticipo |
 
 Ricordati di premere **Salva**.
+
+### Notiziari
+
+Per mandare in onda un notiziario preso da internet (per esempio il podcast di un GR) senza scaricarlo a mano.
+Solo in regia: il server non manda notiziari.
+
+1. **Impostazioni** → **Notiziari** → **Aggiungi fonte**:
+    - **Nome**: come compare nel registro e negli eventi (es. "GR nazionale");
+    - **Link**: il feed del podcast (RSS, si prende sempre l'ultima puntata) oppure il link diretto a un file
+      audio che viene aggiornato a ogni edizione;
+    - **Età massima (minuti)**: se l'ultima edizione è più vecchia è considerata "vecchia" (0 = nessun limite).
+      Per il feed conta la data della puntata, per il link diretto la data del file sul sito;
+    - **Se è vecchio o non si scarica**: **Saltalo**, **Manda l'ultimo scaricato** (anche se vecchio) oppure
+      **Manda un file a scelta** (es. un jingle o un messaggio registrato).
+2. **Prova** scarica come farebbe all'ora dell'evento e dice cosa andrebbe in onda; **🎧 Ascolta in preascolto**
+   lo fa sentire sull'uscita del preascolto. Poi **Salva**.
+3. Scheda **Eventi**: crea un evento (es. **Ogni ora**, minuto 00, **Dopo il brano**) con l'azione **Notiziario**
+   e scegli la fonte.
+
+All'ora dell'evento la regia scarica l'ultima edizione e la mette subito dopo il brano in onda (o come hai scelto
+nell'evento). Scarica solo se l'edizione è cambiata dall'ultima volta, per consumare pochi dati con il 4G.
+Nel registro il notiziario compare con fonte **notiziario** e tipo Notiziario, quindi non va nel report SIAE.
+Se viene saltato, il motivo compare nella striscia gialla degli avvisi in alto.
+
+Prima di ritrasmettere notiziari di altri, assicurati di avere il loro permesso.
 
 ## 9. Il server: VM su Proxmox
 
@@ -673,6 +700,8 @@ Il ponte tiene gli ultimi 14.
 | Un programma non si registra | controlla che "Registra da solo" sia acceso e le fasce (giorni e orari); l'ora è quella italiana del server |
 | L'app non trova le puntate | il nome breve della stazione in Programmi → Impostazioni è diverso da quello che usa l'app; oppure il programma è nascosto |
 | "replica … non disponibile" nella regia | il programma non ha puntate pubblicate, è nascosto, oppure la regia non raggiunge il ponte |
+| Il notiziario viene sempre saltato "perché vecchio" | il feed aggiorna la puntata in ritardo: aumenta l'**Età massima** o scegli **Manda l'ultimo scaricato** |
+| "nel feed non c'è nessun file audio" | il link non è il feed del podcast (è la pagina web): cerca il link RSS del podcast |
 | Nel report mancano i brani della notte | il ponte non era raggiungibile quando hai aperto il report: premi **Aggiorna** con il ponte collegato |
 
 ## 16. In arrivo
@@ -680,7 +709,7 @@ Il ponte tiene gli ultimi 14.
 Prossime fasi (l'ordine può cambiare):
 
 - FluidStream, se un giorno servirà;
-- download automatico di notiziari, voce sintetica;
+- voce sintetica (gratuita, senza internet) per annunci con ora, brano e programma, anche sul server;
 - rotazioni generate dall'AI a partire da una descrizione del palinsesto.
 
 ## 17. Modifiche alla guida
@@ -700,3 +729,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Statistiche degli ascoltatori nel pannello e nella regia (scheda Ascoltatori): adesso, picco, media, ore di ascolto, grafici del giorno e della settimana, per ora e per programma; storico di un anno |
 | 15/11/2026 | Installazione su Proxmox passo passo: chiave SSH dal PC, copia del programma con lo ZIP, VM in DHCP; prove del server nuovo con AzuraCast ancora acceso (altro nome e porta 9443) |
 | 15/11/2026 | Bot Telegram della radio: audio dei brani sconosciuti da etichettare rispondendo nella chat, "Non è musica", menu in sola lettura con stato, ascoltatori, puntate e brani etichettati |
+| 15/11/2026 | Notiziari scaricati in automatico: fonti in Impostazioni (feed di un podcast o link diretto), età massima, cosa fare se manca; azione **Notiziario** negli eventi |
