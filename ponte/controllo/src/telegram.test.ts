@@ -140,4 +140,28 @@ describe('bot Telegram', () => {
     await bot.handle(press('sez:x'))
     expect(calls.at(-1)!.body.text).toBe('X: non disponibile (giù)')
   })
+
+  it('il token non finisce nel log quando la rete dà errore', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tg-'))
+    const logs: string[] = []
+    const token = '123456:SEGRETO'
+    const bot = new LabelBot({
+      token,
+      chatId: '-100',
+      stateFile: join(dir, 'stato.json'),
+      stationName: 'Radio Test',
+      get: () => undefined,
+      pending: () => [],
+      clipFile: () => null,
+      label: () => {},
+      discard: () => {},
+      fetch: async (url) => {
+        throw new TypeError(`fetch failed: ${url}`)
+      },
+      log: (s) => logs.push(s)
+    })
+    await bot.handle(msg('/sconosciuti'))
+    expect(logs.join('\n')).toContain('fetch failed')
+    expect(logs.join('\n')).not.toContain('SEGRETO')
+  })
 })

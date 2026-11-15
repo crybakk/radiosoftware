@@ -144,6 +144,20 @@ export class Alarms {
     }
   }
 
+  /**
+   * Stato letto da Liquidsoap all'avvio del controllo: Liquidsoap avvisa solo dei cambiamenti, quindi
+   * una regia (o un'esterna) già collegata prima del riavvio non risulterebbe mai collegata.
+   * Non conta come riconnessione e non manda avvisi di collegamento.
+   */
+  sync(studio: boolean, external: boolean): void {
+    if (studio && !this.studioConnected) {
+      this.studioConnected = true
+      this.disconnectedAt = null
+      this.close('studio_scollegato')
+    }
+    if (external) this.externalConnected = true
+  }
+
   onHeartbeat(): void {
     this.lastHeartbeat = this.now()
     this.close('regia_muta')

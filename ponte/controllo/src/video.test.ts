@@ -1,26 +1,36 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ffmpegArgs, parseVideoStream, VideoLive, type ChildLike } from './video.ts'
 
 class FakeChild implements ChildLike {
   private dataCb: ((d: Buffer) => void) | null = null
-  private exitCb: ((code: number | null) => void) | null = null
+  private exitCbs: ((code: number | null) => void)[] = []
+  private errorCbs: ((e: Error) => void)[] = []
   killed = false
+  signals: string[] = []
+  /** Un ffmpeg bloccato che non esce con SIGTERM. */
+  stubborn = false
   stderr = { on: (_ev: 'data', cb: (d: Buffer) => void) => (this.dataCb = cb) }
-  on(_ev: 'exit', cb: (code: number | null) => void): void {
-    this.exitCb = cb
+  on(ev: 'exit' | 'error', cb: (x: any) => void): void {
+    if (ev === 'exit') this.exitCbs.push(cb)
+    else this.errorCbs.push(cb)
   }
-  kill(): void {
+  kill(sig: string = 'SIGTERM'): void {
+    this.signals.push(sig)
+    if (this.stubborn && sig !== 'SIGKILL') return
     this.killed = true
-    this.exitCb?.(null)
+    this.exit(null)
   }
   line(s: string): void {
     this.dataCb?.(Buffer.from(`${s}\n`))
   }
-  exit(code: number): void {
-    this.exitCb?.(code)
+  exit(code: number | null): void {
+    for (const cb of this.exitCbs) cb(code)
+  }
+  fail(e: Error): void {
+    for (const cb of this.errorCbs) cb(e)
   }
 }
 
@@ -136,5 +146,97 @@ describe('dirette video', () => {
     expect(v.status().state).toBe('errore')
     expect(alerts[0]).toMatch(/interrotta/)
     expect(alerts.at(-1)).toMatch(/fermata/)
+  })
+})
+
+describe('dirette video: errori, chiavi e ripartenze', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('gli errori di ffmpeg non mostrano chiavi né passphrase a chi guarda il pannello', () => {
+    const { v, children } = setup()
+    const logs: string[] = []
+    const alerts: string[] = []
+    v.onLog = (l) => logs.push(l)
+    v.onAlert = (a) => alerts.push(a)
+    v.run({ type: 'config', youtubeKey: 'abcd-efgh-ijkl', facebookKey: 'FB-123-0-Abc' }, 'admin')
+    vi.useFakeTimers()
+    v.run({ type: 'start', source: 'obs', destinations: ['youtube', 'facebook'] }, 'anna')
+    const c = children[0].child
+    c.line('[tee @ 0x55d] Slave \'[f=flv:onfail=ignore]rtmp://a.rtmp.youtube.com/live2/abcd-efgh-ijkl\': Input/output error')
+    c.line('srt://0.0.0.0:9020?mode=listener&latency=200000&passphrase=segreto1234: Connection refused')
+    c.line('[flv @ 0x1] rtmps://live-api-s.facebook.com:443/rtmp/FB-123-0-Abc: Broken pipe')
+    c.exit(1)
+    const visible = JSON.stringify([v.status(), logs, alerts])
+    expect(visible).not.toContain('abcd-efgh-ijkl')
+    expect(visible).not.toContain('FB-123-0-Abc')
+    expect(visible).not.toContain('segreto1234')
+    expect(v.status().error).toContain('rtmps://live-api-s.facebook.com:443/rtmp/***')
+    v.run({ type: 'stop' }, 'anna')
+  })
+
+  it('ffmpeg che non si avvia non fa cadere il servizio: riprova e poi si ferma', () => {
+    const { v, children } = setup()
+    v.run({ type: 'config', youtubeKey: 'abcd-efgh-ijkl' }, 'admin')
+    vi.useFakeTimers()
+    v.run({ type: 'start', source: 'logo', destinations: ['youtube'] }, 'anna')
+    for (let i = 0; i < 6; i++) {
+      children.at(-1)!.child.fail(new Error('spawn ffmpeg ENOENT'))
+      vi.advanceTimersByTime(5000)
+    }
+    expect(children).toHaveLength(6)
+    expect(v.status().state).toBe('errore')
+    expect(v.status().error).toMatch(/non si avvia/)
+  })
+
+  it('se cade sempre pochi secondi dopo essere andata in onda non riparte all\'infinito', () => {
+    const { v, children } = setup()
+    const alerts: string[] = []
+    v.onAlert = (a) => alerts.push(a)
+    v.run({ type: 'config', youtubeKey: 'abcd-efgh-ijkl' }, 'admin')
+    vi.useFakeTimers()
+    v.run({ type: 'start', source: 'logo', destinations: ['youtube'] }, 'anna')
+    for (let i = 0; i < 20 && v.status().state !== 'errore'; i++) {
+      const c = children.at(-1)!.child
+      c.line('frame=  75 fps= 15 q=-1.0 size=  512kB time=00:00:05.00 bitrate= 838.9kbits/s speed=1x')
+      vi.advanceTimersByTime(10_000)
+      c.exit(1)
+      vi.advanceTimersByTime(5000)
+    }
+    expect(v.status().state).toBe('errore')
+    expect(children).toHaveLength(6)
+    expect(alerts.at(-1)).toMatch(/fermata/)
+  })
+
+  it('dopo un po\' in onda una caduta ricomincia i tentativi da capo', () => {
+    const { v, children } = setup()
+    v.run({ type: 'config', youtubeKey: 'abcd-efgh-ijkl' }, 'admin')
+    let t = Date.parse('2026-11-15T10:00:00Z')
+    ;(v as any).now = () => t
+    vi.useFakeTimers()
+    v.run({ type: 'start', source: 'logo', destinations: ['youtube'] }, 'anna')
+    for (let i = 0; i < 8; i++) {
+      const c = children.at(-1)!.child
+      c.line('frame=  75 fps= 15')
+      t += 120_000
+      c.exit(1)
+      vi.advanceTimersByTime(5000)
+    }
+    expect(v.status().state).not.toBe('errore')
+    v.run({ type: 'stop' }, 'anna')
+  })
+
+  it('ffmpeg che non esce con SIGTERM viene chiuso con SIGKILL', () => {
+    const { v, children } = setup()
+    v.run({ type: 'config', youtubeKey: 'abcd-efgh-ijkl' }, 'admin')
+    vi.useFakeTimers()
+    v.run({ type: 'start', source: 'logo', destinations: ['youtube'] }, 'anna')
+    const c = children[0].child
+    c.stubborn = true
+    v.run({ type: 'stop' }, 'anna')
+    expect(c.signals).toEqual(['SIGTERM'])
+    vi.advanceTimersByTime(5000)
+    expect(c.signals).toEqual(['SIGTERM', 'SIGKILL'])
   })
 })

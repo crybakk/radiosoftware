@@ -1,7 +1,7 @@
 // Prove del servizio di controllo completo: si avvia il vero server.ts in un processo separato.
 import { afterEach, describe, expect, it } from 'vitest'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { connect } from 'node:net'
@@ -13,9 +13,12 @@ const SERVER = join(dirname(fileURLToPath(import.meta.url)), 'server.ts')
 let procs: ChildProcess[] = []
 let portBase = 21000 + Math.floor(Math.random() * 20000)
 
-async function startServer(): Promise<{ port: number; proc: ChildProcess; exited: Promise<number | null> }> {
+async function startServer(
+  extra: Record<string, string> = {}
+): Promise<{ port: number; internal: number; music: string; proc: ChildProcess; exited: Promise<number | null> }> {
   const port = portBase++
   const internal = portBase++
+  const music = mkdtempSync(join(tmpdir(), 'ponte-musica-'))
   const proc = spawn(process.execPath, [SERVER], {
     env: {
       ...process.env,
@@ -24,7 +27,9 @@ async function startServer(): Promise<{ port: number; proc: ChildProcess; exited
       CONTROLLO_PORTA: String(port),
       CONTROLLO_PORTA_INTERNA: String(internal),
       LIQUIDSOAP_INTERNO: 'http://127.0.0.1:1',
-      PANNELLO_ADMIN_PASSWORD: 'adminadmin'
+      PANNELLO_ADMIN_PASSWORD: 'adminadmin',
+      CARTELLA_MUSICA: music,
+      ...extra
     },
     stdio: ['ignore', 'pipe', 'pipe']
   })
@@ -34,7 +39,7 @@ async function startServer(): Promise<{ port: number; proc: ChildProcess; exited
     proc.stdout!.on('data', (d) => String(d).includes('in ascolto sulla porta') && res())
     proc.on('exit', () => rej(new Error('il server si è fermato alla partenza')))
   })
-  return { port, proc, exited }
+  return { port, internal, music, proc, exited }
 }
 
 afterEach(() => {
@@ -259,5 +264,105 @@ describe('backup', () => {
       const r = await fetch(`http://127.0.0.1:${port}/api/backup`, { headers: { Authorization: `Bearer ${t}` } })
       expect(r.status).toBe(401)
     }
+  })
+})
+
+describe('brani caricati dal pannello', () => {
+  it('due caricamenti dello stesso file insieme: tutti e due riescono e il file non è un miscuglio', async () => {
+    const { port, music } = await startServer()
+    const admin = await login(port, 'admin', 'adminadmin')
+    const a = Buffer.alloc(3_000_000, 1)
+    const b = Buffer.alloc(3_000_000, 2)
+    const put = (data: Buffer) =>
+      fetch(`http://127.0.0.1:${port}/api/autonoma/carica?nome=prova.mp3`, { method: 'PUT', headers: { Cookie: admin.cookie! }, body: new Uint8Array(data) })
+    const [ra, rb] = await Promise.all([put(a), put(b)])
+    expect([ra.status, rb.status]).toEqual([200, 200])
+    const got = readFileSync(join(music, 'caricati', 'prova.mp3'))
+    expect(got.equals(a) || got.equals(b)).toBe(true)
+  }, 20_000)
+})
+
+describe('titolo in onda (/api/nowplaying)', () => {
+  it('durante la diretta esterna i titoli della regia (che non si sente) non vanno in onda', async () => {
+    const { port, internal } = await startServer({ RICONOSCIMENTO: 'no' })
+    const base = `http://127.0.0.1:${port}`
+    const meta = (title: string) =>
+      fetch(`${base}/api/metadata`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ artist: 'Regia', title })
+      })
+    await meta('Prima')
+    const ev = await fetch(`http://127.0.0.1:${internal}/internal/event`, { method: 'POST', body: JSON.stringify({ kind: 'esterna_collegata' }) })
+    expect(ev.status).toBe(200)
+    await meta('Seconda')
+    const np = await (await fetch(`${base}/api/nowplaying/1`)).json()
+    expect(np.live.is_live).toBe(true)
+    expect(np.now_playing.song.title).toBe('Prima')
+  }, 20_000)
+})
+
+describe('limiti e percorsi dei caricamenti', () => {
+  it('file oltre i 300 MB dichiarati: risposta 413 col motivo, non connessione chiusa', async () => {
+    const { port, exited } = await startServer()
+    const admin = await login(port, 'admin', 'adminadmin')
+    const first = await rawRequest(
+      port,
+      `PUT /api/autonoma/carica?nome=grande.mp3 HTTP/1.1\r\nHost: x\r\nCookie: ${admin.cookie}\r\nContent-Length: 400000000\r\n\r\nabc`
+    )
+    expect(first).toBe('HTTP/1.1 413 Payload Too Large')
+    const backup = await rawRequest(port, `PUT /api/backup HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer ${TOKEN}\r\nContent-Length: 2000000000\r\n\r\nabc`)
+    expect(backup).toBe('HTTP/1.1 413 Payload Too Large')
+    expect(await died(exited)).toBe(false)
+  })
+
+  it('"sposta" non sovrascrive un brano diverso della regia; se è lo stesso toglie solo la copia caricata', async () => {
+    const { port, music } = await startServer()
+    const base = `http://127.0.0.1:${port}`
+    const admin = await login(port, 'admin', 'adminadmin')
+    const auth = { Authorization: `Bearer ${TOKEN}` }
+    const up = (nome: string, data: Buffer) =>
+      fetch(`${base}/api/autonoma/carica?nome=${nome}`, { method: 'PUT', headers: { Cookie: admin.cookie! }, body: new Uint8Array(data) })
+    const putRegia = (id: string, data: Buffer) => fetch(`${base}/api/libreria?id=${encodeURIComponent(id)}`, { method: 'PUT', headers: auth, body: new Uint8Array(data) })
+    const sposta = (da: string, a: string) =>
+      fetch(`${base}/api/caricati/sposta`, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ da, a }) })
+    expect((await up('uno.mp3', Buffer.alloc(5000, 1))).status).toBe(200)
+    expect((await putRegia('regia/A/uno.mp3', Buffer.alloc(9000, 2))).status).toBe(200)
+    expect((await sposta('caricati/uno.mp3', 'regia/A/uno.mp3')).status).toBe(409)
+    expect(readFileSync(join(music, 'regia', 'A', 'uno.mp3')).length).toBe(9000)
+    expect((await up('due.mp3', Buffer.alloc(5000, 3))).status).toBe(200)
+    expect((await putRegia('regia/A/due.mp3', Buffer.alloc(5000, 3))).status).toBe(200)
+    const r = await sposta('caricati/due.mp3', 'regia/A/due.mp3')
+    expect(r.status).toBe(200)
+    expect(await r.json()).toMatchObject({ id: 'regia/A/due.mp3', size: 5000 })
+    const left = await (await fetch(`${base}/api/caricati`, { headers: auth })).json()
+    expect(left.map((t: { id: string }) => t.id)).toEqual(['caricati/uno.mp3'])
+  })
+})
+
+describe('ospiti', () => {
+  it('con un link non si aprono connessioni senza limite dallo stesso indirizzo', async () => {
+    const { port } = await startServer()
+    const admin = await login(port, 'admin', 'adminadmin')
+    const panel = await openWs(`ws://127.0.0.1:${port}/ws/pannello`, { Cookie: admin.cookie! })
+    const invite = new Promise<any>((res) =>
+      panel.on('message', (d) => {
+        const m = JSON.parse(String(d))
+        if (m.t === 'reply' && m.id === 'i') res(m)
+      })
+    )
+    panel.send(JSON.stringify({ t: 'guest', id: 'i', cmd: { type: 'invite', label: 'Prova' } }))
+    const { ok, data } = await invite
+    expect(ok).toBe(true)
+    const url = `ws://127.0.0.1:${port}/ws/ospite?t=${data.token}`
+    const results = await Promise.allSettled(Array.from({ length: 15 }, () => openWs(url)))
+    const open = results.filter((r) => r.status === 'fulfilled') as PromiseFulfilledResult<WebSocket>[]
+    expect(open).toHaveLength(10)
+    // chiudendone una se ne può aprire un'altra
+    open[0].value.close()
+    await closed(open[0].value)
+    await wait(100)
+    const again = await openWs(url)
+    expect(again.readyState).toBe(WebSocket.OPEN)
   })
 })

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -41,6 +41,41 @@ describe('libreria del server', () => {
     // solo il file "Nomade" (durata 0 = sconosciuta) è libero da entrambe le regole
     expect(pick?.id).toBe('Nomade - Io vagabondo.mp3')
     expect(lib.pickRandom(lib.all().map((t) => t.id), [], () => 0)).not.toBeNull()
+  })
+
+  it('un brano caricato durante la scansione resta nell\'indice', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'lib-'))
+    copyFileSync(join(dir, 'regia/c.mp3'), join(d, 'a.mp3'))
+    const lib = new Library(d, join(d, '.indice.json'))
+    const orig = lib.addFile.bind(lib)
+    let once = false
+    // mentre la scansione legge a.mp3 (cartella già letta) arriva un caricamento dal pannello
+    lib.addFile = async (file, meta) => {
+      if (!once) {
+        once = true
+        copyFileSync(join(dir, 'regia/c.mp3'), join(d, 'b.mp3'))
+        await orig(join(d, 'b.mp3'), { title: 'Caricato' })
+      }
+      return orig(file, meta)
+    }
+    await lib.scan()
+    expect(lib.get('b.mp3')?.title).toBe('Caricato')
+    expect(lib.get('a.mp3')).toBeTruthy()
+  })
+
+  it('un file sparito durante la scansione non interrompe la scansione', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'lib-'))
+    copyFileSync(join(dir, 'regia/c.mp3'), join(d, 'a.mp3'))
+    copyFileSync(join(dir, 'regia/c.mp3'), join(d, 'b.mp3'))
+    const lib = new Library(d, join(d, '.indice.json'))
+    const orig = lib.addFile.bind(lib)
+    lib.addFile = async (file, meta) => {
+      if (file.endsWith('a.mp3')) rmSync(file)
+      return orig(file, meta)
+    }
+    expect(await lib.scan()).toBe(1)
+    expect(lib.get('b.mp3')).toBeTruthy()
+    expect(lib.get('a.mp3')).toBeUndefined()
   })
 
   it('nome del file', () => {
@@ -102,6 +137,34 @@ describe('diretta autonoma', () => {
     u.fail()
     await expect(u.p.run({ type: 'start' })).rejects.toThrow(/non risponde/)
     expect(u.p.state().active).toBe(false)
+  })
+
+  it('un brano in coda tolto dalla libreria si salta (non resta preparato un file che non c\'è)', async () => {
+    const { lib, p, calls } = setup()
+    await p.run({ type: 'enqueue', id: 'regia/Rock/a.mp3', where: 'end' })
+    await p.run({ type: 'enqueue', id: 'regia/c.mp3', where: 'end' })
+    lib.remove('regia/Rock/a.mp3')
+    await p.run({ type: 'start' })
+    expect(calls[0]).toMatch(/^push .*\/regia\/c\.mp3$/)
+    expect(p.state()).toMatchObject({ prepared: { id: 'regia/c.mp3' }, queue: [] })
+  })
+
+  it('doppio clic su avvia: un solo brano al mixer e un solo avviso', async () => {
+    const { p, calls } = setup()
+    const active: string[] = []
+    p.onActive = (on) => active.push(String(on))
+    await Promise.all([p.run({ type: 'start' }), p.run({ type: 'start' })])
+    expect(calls.filter((c) => c.startsWith('push'))).toHaveLength(1)
+    expect(active).toEqual(['true'])
+  })
+
+  it('"salta" mentre scatta il timer di fine brano: un solo brano preparato', async () => {
+    const { lib, p, calls } = setup()
+    await p.run({ type: 'start' })
+    p.onTrackStart(lib.path(p.state().prepared as never as Parameters<typeof lib.path>[0]))
+    calls.length = 0
+    await Promise.all([p.run({ type: 'skip' }), p.run({ type: 'skip' })])
+    expect(calls.filter((c) => c.startsWith('push'))).toHaveLength(1)
   })
 
   it('riserva del ponte: brani a caso senza ripetere subito lo stesso artista', async () => {

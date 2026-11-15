@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { missingFields, quarterOf, type SiaeRow } from '../../core/siae'
 import type { Track } from '../../core/types'
 import { TrackEditor } from './LibraryView'
@@ -22,18 +22,22 @@ export function SiaeSection() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [editing, setEditing] = useState<Track | null>(null)
+  // cambiando trimestre mentre il calcolo precedente è in corso, conta solo l'ultima richiesta
+  const loadSeq = useRef(0)
 
   const load = async (): Promise<void> => {
+    const seq = ++loadSeq.current
     setBusy(true)
     setMsg(null)
     try {
       const r = await api.siaeReport(year, q)
+      if (seq !== loadSeq.current) return
       setRows(r.rows)
       setServerError(r.serverError)
     } catch (e) {
-      setMsg({ kind: 'error', text: cleanError(e) })
+      if (seq === loadSeq.current) setMsg({ kind: 'error', text: cleanError(e) })
     } finally {
-      setBusy(false)
+      if (seq === loadSeq.current) setBusy(false)
     }
   }
   useEffect(() => {

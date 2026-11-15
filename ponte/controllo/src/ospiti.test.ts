@@ -100,4 +100,32 @@ describe('ospiti', () => {
     expect(g.validInvite(inv2.token)).toBeNull()
     expect(g.listInvites()).toEqual([])
   })
+
+  it("l'ospite cade mentre il conduttore lo mette in onda: non resta aperto nel mixer", async () => {
+    const mixer: string[] = []
+    let answer: ((ok: boolean) => void) | null = null
+    const slot = new VoiceHub({
+      factory: async (sdp) => ({ answer: sdp, close: () => {}, sendReturn: () => {} }),
+      sendVoice: () => {},
+      setOnAir: (on) => {
+        mixer.push(`ospite1 ${on}`)
+        return on ? new Promise((r) => (answer = r)) : Promise.resolve(true)
+      }
+    })
+    const g = new Guests({ file: join(mkdtempSync(join(tmpdir(), 'osp-')), 'inviti.json'), slots: [slot], station: 'R', listenUrl: '' })
+    const inv = (await g.command({ type: 'invite', label: 'x' }, 'c')) as any
+    const { p, h } = join_(g, inv.token, 'Mario')
+    const id = g.list()[0].id
+    await g.command({ type: 'admit', id }, 'c')
+    h.message(JSON.stringify({ t: 'rtc-offer', id: '1', sdp: 'o' }))
+    await flush()
+    const air = g.command({ type: 'air', id, on: true }, 'c')
+    // 4G caduto: la pagina dell'ospite si chiude prima che il mixer risponda
+    h.close()
+    answer!(true)
+    await expect(air).rejects.toThrow(/chiuso/)
+    expect(mixer).toEqual(['ospite1 true', 'ospite1 false'])
+    expect(p.last('state')).toEqual({ t: 'state', state: 'dentro', onAir: false })
+    expect(slot.status()).toEqual({ user: null, onAir: false })
+  })
 })

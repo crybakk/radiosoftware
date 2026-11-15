@@ -114,9 +114,12 @@ export class Library {
       if (!st) continue
       const old = this.tracks.get(id)
       if (old && old.mtime === st.mtimeMs && old.size === st.size) continue
-      await this.addFile(file)
+      // file sparito o spostato nel frattempo: si salta, senza interrompere tutta la scansione
+      await this.addFile(file).catch(() => null)
     }
-    for (const id of this.tracks.keys()) if (!seen.has(id)) this.tracks.delete(id)
+    // si tolgono solo i brani il cui file non c'è davvero: quelli caricati durante la scansione
+    // (pannello o regia, in cartelle già lette) restano nell'indice
+    for (const [id, t] of this.tracks) if (!seen.has(id) && !existsSync(this.path(t))) this.tracks.delete(id)
     this.save()
     return this.tracks.size
   }

@@ -7,7 +7,8 @@
  * da solo e accoda l'audio allo stesso file. A fine fascia la registrazione diventa una bozza.
  */
 import { spawn as nodeSpawn } from 'node:child_process'
-import { createWriteStream, renameSync, rmSync, type WriteStream } from 'node:fs'
+import { EventEmitter } from 'node:events'
+import { createWriteStream, existsSync, renameSync, rmSync, type WriteStream } from 'node:fs'
 import { parseFile } from 'music-metadata'
 import { activeSlot, type Episode, type Programs } from './programmi.ts'
 
@@ -15,11 +16,39 @@ export interface Proc {
   stdout: NodeJS.ReadableStream | null
   stderr: NodeJS.ReadableStream | null
   on(ev: 'exit', cb: (code: number | null) => void): void
-  kill(): void
+  kill(signal?: NodeJS.Signals): void
 }
 export type Spawn = (cmd: string, args: string[]) => Proc
 
-const defaultSpawn: Spawn = (cmd, args) => nodeSpawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] }) as unknown as Proc
+/**
+ * ffmpeg come processo figlio. Se non parte (programma mancante, troppi processi aperti) Node segnala
+ * un "error" e nessun "exit": senza ascoltatori farebbe cadere il server, e chi aspetta la fine
+ * aspetterebbe per sempre. Qui l'errore diventa una fine con codice null, segnalata una volta sola.
+ */
+const defaultSpawn: Spawn = (cmd, args) => {
+  const c = nodeSpawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+  const ev = new EventEmitter()
+  let done = false
+  const end = (code: number | null): void => {
+    if (done) return
+    done = true
+    ev.emit('exit', code)
+  }
+  c.on('exit', (code) => end(code))
+  c.on('error', () => end(null))
+  return {
+    stdout: c.stdout,
+    stderr: c.stderr,
+    on: (e: 'exit', cb: (code: number | null) => void) => void ev.on(e, cb),
+    kill: (signal?: NodeJS.Signals) => {
+      try {
+        c.kill(signal)
+      } catch {
+        // già finito
+      }
+    }
+  }
+}
 
 /** Legge il programma in onda e lo scrive in MP3 sull'uscita standard. */
 export function recordArgs(url: string, bitrate: string): string[] {
@@ -77,6 +106,8 @@ interface Running {
   proc: Proc | null
   out: WriteStream
   stopping: boolean
+  /** Il file non si può più scrivere (disco pieno...): si smette di registrare. */
+  broken: boolean
   restart: ReturnType<typeof setTimeout> | null
 }
 
@@ -100,6 +131,10 @@ export class Recorder {
     this.timer = setInterval(() => this.tick(), intervalMs)
   }
 
+  private fail(what: string, err: unknown): void {
+    this.log(`${what}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
   /** Programmi che si stanno registrando, con l'ora di fine. */
   recording(): { programId: string; episodeId: string; to: number }[] {
     return [...this.running.values()].map((r) => ({ programId: r.programId, episodeId: r.episodeId, to: r.to }))
@@ -109,10 +144,17 @@ export class Recorder {
     const now = this.now()
     const margin = this.d.programs.settings().marginMinutes
     for (const p of this.d.programs.list()) {
-      const r = this.running.get(p.id)
-      const slot = p.record ? activeSlot(p.slots, new Date(now), margin) : null
-      if (r && (!slot || now >= r.to)) void this.finish(r)
-      else if (!r && slot) this.begin(p.id, now, slot.to)
+      // un errore (disco pieno...) non deve fermare il controllo degli altri programmi né far cadere il server
+      try {
+        const r = this.running.get(p.id)
+        const slot = p.record ? activeSlot(p.slots, new Date(now), margin) : null
+        // fascia allungata o fascia attaccata alla successiva: si continua nello stesso file
+        if (r && !r.stopping && slot && slot.to > r.to) r.to = slot.to
+        if (r && (!slot || now >= r.to)) void this.finish(r)
+        else if (!r && slot) this.begin(p.id, now, slot.to)
+      } catch (err) {
+        this.fail(`registrazione di ${p.title}`, err)
+      }
     }
     // programmi eliminati durante la registrazione
     for (const r of this.running.values()) if (!this.d.programs.get(r.programId)) void this.finish(r, true)
@@ -127,8 +169,15 @@ export class Recorder {
       proc: null,
       out: createWriteStream(this.d.programs.rawFile(e.id), { flags: 'a' }),
       stopping: false,
+      broken: false,
       restart: null
     }
+    r.out.on('error', (err) => {
+      if (r.broken) return
+      r.broken = true
+      this.fail(`registrazione di ${e.title} interrotta, il file non si scrive`, err)
+      r.proc?.kill()
+    })
     this.running.set(programId, r)
     this.log(`registrazione avviata: ${e.title}`)
     this.launch(r)
@@ -136,9 +185,11 @@ export class Recorder {
   }
 
   private launch(r: Running): void {
+    if (r.broken || r.stopping) return
     const proc = this.spawn(this.d.ffmpeg ?? 'ffmpeg', recordArgs(this.d.url, this.d.bitrate ?? '128k'))
     r.proc = proc
-    proc.stdout?.on('data', (c: Buffer) => r.out.write(c))
+    // pipe e non write: se il disco è lento ffmpeg aspetta invece di riempire la memoria
+    proc.stdout?.pipe(r.out, { end: false })
     let err = ''
     proc.stderr?.on('data', (c: Buffer) => (err = (err + String(c)).slice(-500)))
     proc.on('exit', () => {
@@ -158,28 +209,51 @@ export class Recorder {
     if (r.stopping) return
     r.stopping = true
     if (r.restart) clearTimeout(r.restart)
-    const exited = new Promise<void>((ok) => {
-      if (!r.proc) return ok()
-      r.proc.on('exit', () => ok())
-      setTimeout(ok, 3000)
-    })
-    r.proc?.kill()
-    await exited
-    await new Promise<void>((ok) => r.out.end(ok))
-    this.running.delete(r.programId)
-    if (discard) {
-      this.d.programs.removeEpisode(r.episodeId)
-    } else {
-      const length = await (this.d.seconds ?? mp3Seconds)(this.d.programs.rawFile(r.episodeId))
-      const e = this.d.programs.endRecording(r.episodeId, this.now(), length)
-      if (e) {
-        this.log(`registrazione finita: ${e.title} (${Math.round(length / 60)} minuti), da rivedere`)
-        this.d.onDraft?.(e)
-      } else {
-        this.log('registrazione finita senza audio: scartata')
+    try {
+      const proc = r.proc
+      if (proc) {
+        const exited = new Promise<boolean>((ok) => {
+          proc.on('exit', () => ok(true))
+          setTimeout(() => ok(false), 3000)
+        })
+        proc.kill()
+        // ffmpeg non si ferma: lo si chiude per forza, altrimenti resterebbe acceso per sempre
+        if (!(await exited)) proc.kill('SIGKILL')
+        await new Promise((ok) => setImmediate(ok))
+        // da qui in poi niente più audio nel file (scrivere su un file chiuso farebbe cadere il server)
+        proc.stdout?.unpipe(r.out)
       }
+      await new Promise<void>((ok) => {
+        if (r.out.destroyed || r.out.writableFinished) return ok()
+        r.out.once('close', () => ok())
+        r.out.end()
+        setTimeout(ok, 5000)
+      })
+    } catch (err) {
+      this.fail('chiusura della registrazione', err)
     }
-    this.d.onChange?.()
+    this.running.delete(r.programId)
+    try {
+      if (discard) {
+        this.d.programs.removeEpisode(r.episodeId)
+      } else {
+        const length = await (this.d.seconds ?? mp3Seconds)(this.d.programs.rawFile(r.episodeId)).catch(() => 0)
+        const e = this.d.programs.endRecording(r.episodeId, this.now(), length)
+        if (e) {
+          this.log(`registrazione finita: ${e.title} (${Math.round(length / 60)} minuti), da rivedere`)
+          this.d.onDraft?.(e)
+        } else {
+          this.log('registrazione finita senza audio: scartata')
+        }
+      }
+    } catch (err) {
+      this.fail('fine della registrazione', err)
+    }
+    try {
+      this.d.onChange?.()
+    } catch (err) {
+      this.fail('aggiornamento', err)
+    }
   }
 
   /** Spegnimento: le registrazioni in corso diventano bozze. */
@@ -188,6 +262,14 @@ export class Recorder {
     this.timer = null
     await Promise.all([...this.running.values()].map((r) => this.finish(r)))
   }
+}
+
+/** Bozze che si stanno tagliando adesso (una volta sola per bozza). */
+const publishing = new Set<string>()
+
+/** La bozza si sta pubblicando: niente altre operazioni finché non ha finito. */
+export function isPublishing(id: string): boolean {
+  return publishing.has(id)
 }
 
 /** Taglia la bozza tra inizio e fine (secondi) e la pubblica. */
@@ -200,6 +282,23 @@ export async function publishEpisode(
   const e = programs.episode(id)
   if (!e) throw new Error('puntata non trovata')
   if (e.status !== 'bozza') throw new Error('si possono pubblicare solo le bozze')
+  if (publishing.has(id)) throw new Error('la puntata si sta già pubblicando')
+  publishing.add(id)
+  try {
+    return await cutAndPublish(programs, e, meta, opts)
+  } finally {
+    publishing.delete(id)
+  }
+}
+
+async function cutAndPublish(
+  programs: Programs,
+  e: Episode,
+  meta: { from: number; to: number; title: string; description: string },
+  opts: { ffmpeg?: string; spawn?: Spawn; seconds?: (file: string) => Promise<number> }
+): Promise<Episode> {
+  const id = e.id
+  if (!existsSync(programs.rawFile(id))) throw new Error('il file della registrazione non c\'è più')
   const from = Math.max(0, Number(meta.from) || 0)
   const to = Math.min(e.length || Infinity, Number(meta.to) || e.length)
   if (!(to - from >= 10)) throw new Error('la puntata deve durare almeno 10 secondi: controlla inizio e fine')
@@ -213,7 +312,12 @@ export async function publishEpisode(
     rmSync(tmp, { force: true })
     throw new Error(`taglio non riuscito${err.trim() ? `: ${err.trim().split('\n').pop()}` : ''}`)
   }
+  if (!programs.episode(id)) {
+    // eliminata mentre si tagliava
+    rmSync(tmp, { force: true })
+    throw new Error('puntata non trovata')
+  }
   renameSync(tmp, out)
-  const length = (await (opts.seconds ?? mp3Seconds)(out)) || Math.round(to - from)
+  const length = (await (opts.seconds ?? mp3Seconds)(out).catch(() => 0)) || Math.round(to - from)
   return programs.published(id, { title: meta.title, description: meta.description, length })
 }

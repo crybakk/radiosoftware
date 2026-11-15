@@ -27,6 +27,8 @@ export interface PonteStatus {
 }
 
 const HEARTBEAT_MS = 15_000
+/** Dopo un backup automatico non riuscito si riprova tra un po', non a ogni segnale di vita (il 4G costa). */
+const BACKUP_RETRY_MS = 15 * 60_000
 const RESTORE_FILE = 'radio-ripristino.db'
 
 /**
@@ -70,6 +72,7 @@ export class PonteService {
   private db: RadioDb
   private dataDir: string
   private lastBackupFile: string
+  private backupRetryAt = 0
 
   constructor(db: RadioDb, dataDir: string, ffmpegPath: string | null) {
     this.db = db
@@ -192,8 +195,10 @@ export class PonteService {
     }
     this.emit()
     const last = this.status.lastBackup ? new Date(this.status.lastBackup) : null
-    if (this.settings && backupDue(new Date(), this.settings.backupHour, last) && !this.status.backupRunning) {
-      await this.backupNow().catch(() => {})
+    if (this.settings && backupDue(new Date(), this.settings.backupHour, last) && !this.status.backupRunning && Date.now() >= this.backupRetryAt) {
+      await this.backupNow().catch(() => {
+        this.backupRetryAt = Date.now() + BACKUP_RETRY_MS
+      })
     }
   }
 

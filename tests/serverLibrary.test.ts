@@ -213,3 +213,112 @@ describe('copia della libreria sul server', () => {
     expect(c.files.size).toBe(100)
   })
 })
+
+describe('nomi dei brani scaricati dal server', () => {
+  it('nomi riservati di Windows anche con estensione, punti in fondo dopo il taglio, estensioni strane', async () => {
+    const { catalogParts, safeFileName } = await import('../src/core/catalog')
+    expect(safeFileName('CON', 'x')).toBe('CON_')
+    expect(safeFileName('nul.live', 'x')).toBe('nul_.live')
+    expect(safeFileName('Com1 .remix', 'x')).toBe('Com1_ .remix')
+    expect(safeFileName('Conte', 'x')).toBe('Conte')
+    expect(catalogParts({ id: 'caricati/a.mp3', title: 'Aux', artist: 'Prn' })).toEqual(['Prn_', 'Aux_.mp3'])
+    // il taglio a 120 caratteri non lascia un punto in fondo né mezza emoji
+    const long = safeFileName(`${'a'.repeat(119)}.b`, 'x')
+    expect(long).toBe('a'.repeat(119))
+    const emoji = safeFileName(`${'a'.repeat(119)}😀😀`, 'x')
+    expect(emoji).toBe(`${'a'.repeat(119)}😀`)
+    expect(catalogParts({ id: 'caricati/a.mp3:flusso', title: 'T', artist: 'A' })[1]).toBe('T.mp3')
+  })
+})
+
+describe('invio al server: casi difficili', () => {
+  const base2 = mkdtempSync(join(dir, 'casi-'))
+  const add = (db: RadioDb, path: string, title: string, bytes: number, bitrate = 320) => {
+    mkdirSync(join(path, '..'), { recursive: true })
+    writeFileSync(path, Buffer.alloc(bytes, 1))
+    return db.upsertScanned({
+      path, kind: 'music', size: bytes, mtime: 1, title, artist: 'Vasco', album: '', year: 2000, genre: '',
+      composer: '', publisher: '', isrc: '', duration: 200, bitrate, sampleRate: 44100
+    })
+  }
+
+  it('due cartelle con lo stesso nome non si ricaricano a vicenda ogni notte', async () => {
+    const db = new RadioDb(':memory:')
+    const a = join(base2, 'D', 'Musica')
+    const b = join(base2, 'E', 'Musica')
+    db.addFolder(a, 'music')
+    db.addFolder(b, 'music')
+    add(db, join(a, 'x.mp3'), 'Uno', 10)
+    add(db, join(b, 'x.mp3'), 'Due', 20)
+    const c = new FakeClient()
+    const sync = new ServerLibrarySync(db, mkdtempSync(join(base2, 'dati-')), () => c as unknown as PonteClient, () => {})
+    expect(sync.selection().items.map((i) => i.id)).toEqual(['regia/Musica/x.mp3'])
+    await sync.syncNow(true)
+    await sync.syncNow(true)
+    expect(c.uploads).toEqual(['regia/Musica/x.mp3'])
+  })
+
+  it('un file rifiutato dal server o troppo grande non blocca gli altri; un invio interrotto conta nel limite', async () => {
+    const db = new RadioDb(':memory:')
+    const m = join(base2, 'M2', 'Musica')
+    db.addFolder(m, 'music')
+    add(db, join(m, 'a.mp3'), 'A', 1000)
+    add(db, join(m, 'b.mp3'), 'B', 1000)
+    add(db, join(m, 'c.mp3'), 'C', 1000)
+    const { PonteError } = await import('../src/core/ponteClient')
+    const c = new FakeClient()
+    const upload = c.uploadLibraryFile.bind(c)
+    let calls = 0
+    c.uploadLibraryFile = async (meta, body) => {
+      calls++
+      if (meta.id.endsWith('a.mp3')) throw new PonteError('percorso non valido', 400)
+      if (meta.id.endsWith('b.mp3') && calls < 3) {
+        // il 4G cade a metà: qualche byte è già partito
+        const r = (body as ReadableStream<Uint8Array>).getReader()
+        await r.read()
+        throw new PonteError('ponte non raggiungibile')
+      }
+      return upload(meta, body)
+    }
+    const data = mkdtempSync(join(base2, 'dati-'))
+    const sync = new ServerLibrarySync(db, data, () => c as unknown as PonteClient, () => {})
+    await expect(sync.syncNow(true)).rejects.toThrow(/non raggiungibile/)
+    expect(JSON.parse(readFileSync(join(data, 'libreria-server.json'), 'utf8')).bytes).toBeGreaterThan(0)
+    const res = await sync.syncNow(true)
+    expect(c.uploads).toEqual(['regia/Musica/b.mp3', 'regia/Musica/c.mp3'])
+    expect(res).toMatch(/1 rifiutati dal server \(percorso non valido\)/)
+  })
+
+  it('i file oltre il limite del server si saltano', async () => {
+    const db = new RadioDb(':memory:')
+    const m = join(base2, 'M3', 'Musica')
+    db.addFolder(m, 'music')
+    add(db, join(m, 'a.mp3'), 'A', 10)
+    add(db, join(m, 'b.mp3'), 'B', 10)
+    // dimensione dichiarata enorme (non serve un file vero da 300 MB)
+    const big = db.searchTracks({ text: 'A' }).tracks[0]
+    const orig = db.musicForServer.bind(db)
+    db.musicForServer = () => orig().map((r) => (r.track.id === big.id ? { ...r, size: 400 * 1024 * 1024 } : r))
+    db.saveSettings({ ponte: { ...db.getSettings().ponte, libraryDailyMb: 100_000 } })
+    const c = new FakeClient()
+    const sync = new ServerLibrarySync(db, mkdtempSync(join(base2, 'dati-')), () => c as unknown as PonteClient, () => {})
+    const res = await sync.syncNow(true)
+    expect(c.uploads).toEqual(['regia/Musica/b.mp3'])
+    expect(res).toMatch(/1 saltati perché troppo grandi/)
+  })
+
+  it('un brano caricato dal pannello resta sul server anche se la regola lo escluderebbe', async () => {
+    const db = new RadioDb(':memory:')
+    const m = join(base2, 'M4', 'Musica')
+    mkdirSync(m, { recursive: true })
+    db.addFolder(m, 'music')
+    const audio = execFileSync(ffmpegStatic as unknown as string, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-b:a', '96k', '-f', 'mp3', 'pipe:1'])
+    const c = new FakeClient()
+    c.uploaded.push({ id: 'caricati/telefono.mp3', size: audio.length, title: 'Registrazione', artist: 'Ospite', duration: 1, data: new Uint8Array(audio) })
+    const sync = new ServerLibrarySync(db, mkdtempSync(join(base2, 'dati-')), () => c as unknown as PonteClient, () => {})
+    await sync.syncNow(true)
+    const t = db.findByPath(join(m, 'Ospite', 'Registrazione.mp3'))!
+    expect(t.bitrate).toBeLessThan(192)
+    expect(sync.selection().items.map((i) => i.id)).toContain('regia/Musica/Ospite/Registrazione.mp3')
+  })
+})

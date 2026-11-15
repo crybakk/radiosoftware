@@ -17,6 +17,10 @@ const FACEBOOK_URL = 'rtmps://live-api-s.facebook.com:443/rtmp/'
 /** Ripartenze automatiche se ffmpeg si ferma da solo. */
 const MAX_RETRIES = 5
 const RETRY_MS = 5000
+/** Dopo quanto tempo in onda senza problemi i tentativi ripartono da zero. */
+const STABLE_MS = 60_000
+/** Se ffmpeg non si ferma con SIGTERM entro questo tempo, si chiude con SIGKILL. */
+const KILL_MS = 5000
 
 export interface VideoConfig {
   youtubeKey: string
@@ -38,6 +42,8 @@ export interface VideoArgsInput {
 export interface ChildLike {
   stderr: { on(ev: 'data', cb: (d: Buffer) => void): unknown } | null
   on(ev: 'exit', cb: (code: number | null) => void): unknown
+  /** ffmpeg non si avvia (per esempio non installato): senza questo il servizio cadrebbe. */
+  on(ev: 'error', cb: (e: Error) => void): unknown
   kill(sig?: NodeJS.Signals): unknown
 }
 
@@ -232,7 +238,13 @@ export class VideoLive {
     this.retryTimer = null
     const c = this.child
     this.child = null
-    c?.kill('SIGTERM')
+    if (c) {
+      // ffmpeg bloccato sulla rete può ignorare SIGTERM: non deve restare acceso (porta di OBS occupata, doppia diretta)
+      const force = setTimeout(() => c.kill('SIGKILL'), KILL_MS)
+      ;(force as { unref?: () => void }).unref?.()
+      c.on('exit', () => clearTimeout(force))
+      c.kill('SIGTERM')
+    }
     if (was) this.emit({ state: 'spenta', since: null, detail: '', error: null, by: by ?? was.by })
   }
 
@@ -263,10 +275,26 @@ export class VideoLive {
       if (buf.length > 4096) buf = buf.slice(-1024)
     })
     child.on('exit', (code) => this.onExit(child, code))
+    child.on('error', (e) => {
+      if (child !== this.child) return
+      this.stderrTail = `ffmpeg non si avvia: ${this.redact(e.message)}`
+      this.onExit(child, null)
+    })
   }
 
-  private onLine(child: ChildLike, line: string): void {
+  /** Toglie chiavi e passphrase dalle righe di ffmpeg: errori e registro li vedono tutti i pannelli. */
+  private redact(line: string): string {
+    let out = line
+    for (const k of [this.cfg.youtubeKey, this.cfg.facebookKey, this.o.obsPassphrase]) if (k) out = out.split(k).join('***')
+    // anche una chiave cambiata mentre la diretta è accesa: si toglie l'ultimo pezzo degli indirizzi rtmp
+    return out
+      .replace(/(rtmps?:\/\/[^\s'"|/]+\/(?:[^\s'"|/]+\/)*)[^\s'"|/]+/gi, '$1***')
+      .replace(/(passphrase=)[^\s&'"]+/gi, '$1***')
+  }
+
+  private onLine(child: ChildLike, raw: string): void {
     if (child !== this.child) return
+    const line = this.redact(raw)
     // la causa vera è l'ultima riga di errore, non il riassunto finale "Conversion failed!"
     if (!/^frame=|^size=|Conversion failed|^Exiting normally/.test(line) && /error|fail|refused|denied|timed out|invalid|unable|could not|not found|broken pipe|end of file/i.test(line)) {
       this.stderrTail = line.slice(0, 300)
@@ -279,7 +307,6 @@ export class VideoLive {
       this.emit({ detail: `video da OBS ${v.width}x${v.height}` })
     }
     if (/^frame=|^size=/.test(line) && this.st.state !== 'in_onda') {
-      this.retries = 0
       this.emit({ state: 'in_onda', since: new Date(this.now()).toISOString(), error: null })
     }
   }
@@ -295,6 +322,8 @@ export class VideoLive {
     this.child = null
     const w = this.wanted
     if (!w) return
+    // i tentativi ripartono da zero solo dopo un po' in onda: se cade sempre dopo pochi secondi non riprova all'infinito
+    if (this.st.state === 'in_onda' && this.st.since && this.now() - Date.parse(this.st.since) >= STABLE_MS) this.retries = 0
     const why =
       w.source === 'obs' && this.st.state === 'in_onda'
         ? 'il video da OBS si è interrotto: riparte appena OBS trasmette di nuovo'

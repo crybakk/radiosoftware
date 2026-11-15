@@ -22,6 +22,18 @@ describe('allarmi del ponte', () => {
     expect(sent[1]).toMatchObject({ open: false })
   })
 
+  it('controllo riavviato con la regia già collegata: nessun falso allarme "regia scollegata"', () => {
+    const { a, sent, advance } = setup()
+    // Liquidsoap non ripete "studio_connesso": lo stato si legge una volta all'avvio
+    a.sync(true, false)
+    advance(60)
+    expect(sent).toHaveLength(0)
+    expect(a.status()).toMatchObject({ studioConnected: true, reconnectsLast10Min: 0 })
+    a.onEvent('studio_scollegato')
+    advance(31)
+    expect(sent[0]).toMatchObject({ open: true })
+  })
+
   it('una breve caduta non genera allarmi', () => {
     const { a, sent, advance } = setup()
     a.onEvent('studio_connesso')

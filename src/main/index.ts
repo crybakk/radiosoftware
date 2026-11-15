@@ -55,7 +55,8 @@ function createWindow(): void {
   })
   win.maximize()
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    // solo pagine web: un link file:// o di un altro programma non deve aprirsi da qui
+    if (/^(https?:|mailto:)/i.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)

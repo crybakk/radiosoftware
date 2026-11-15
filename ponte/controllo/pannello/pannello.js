@@ -89,22 +89,46 @@ $('menu-btn').addEventListener('click', () => ($('menu').hidden = !$('menu').hid
 function showApp() {
   $('login').hidden = true
   $('app').hidden = false
-  $('who').textContent = `${me.name} · ${me.role}`
-  $('users-btn').hidden = me.role !== 'amministratore'
-  $('readonly').hidden = canCommand()
+  showRole()
   connect()
   loadUnknowns()
+}
+
+/** Pulsanti e sezioni secondo il ruolo (anche quando l'amministratore lo cambia a pannello aperto). */
+function showRole() {
+  $('who').textContent = `${me.name} · ${me.role}`
+  $('users-btn').hidden = me.role !== 'amministratore'
+  if (me.role !== 'amministratore' && !$('users').hidden) {
+    $('users').hidden = true
+    $('main').hidden = false
+  }
+  $('readonly').hidden = canCommand()
 }
 
 // ---------- canale in tempo reale ----------
 
 function connect() {
   if (ws && ws.readyState <= 1) return
-  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/pannello`)
-  ws.onopen = () => (retry = 1)
-  ws.onmessage = (e) => {
-    const m = JSON.parse(e.data)
+  const sock = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/pannello`)
+  ws = sock
+  sock.onopen = () => (retry = 1)
+  sock.onmessage = (e) => {
+    // messaggi di un canale vecchio (per esempio dopo esci e rientra) non toccano quello nuovo
+    if (ws !== sock) return
+    let m
+    try {
+      m = JSON.parse(e.data)
+    } catch {
+      return
+    }
     if (m.t === 'hello') {
+      // il ruolo può essere cambiato mentre il pannello era aperto: vale quello del server
+      if (m.user && me) {
+        me = { ...me, ...m.user }
+        showRole()
+        renderVideo()
+        loadUnknowns()
+      }
       studio = m.studio
       if (m.state) setState(m.state)
       render()
@@ -136,7 +160,8 @@ function connect() {
       }
     }
   }
-  ws.onclose = (e) => {
+  sock.onclose = (e) => {
+    if (ws !== sock) return
     // senza canale il ponte chiude il microfono: lo chiudiamo anche qui
     if (pc) micShutdown('Connessione al ponte persa: microfono chiuso')
     for (const w of waiting.values()) w.reject(new Error('connessione persa'))
@@ -146,7 +171,19 @@ function connect() {
     if (!me) return
     if (e.code === 4003 || e.code === 1008) return showLogin()
     // senza sessione valida il server rifiuta subito: controlliamo prima di riprovare
-    setTimeout(() => api('/api/io').then(connect, (err) => (err.status === 401 ? showLogin() : connect())), retry * 1000)
+    setTimeout(() => {
+      if (ws !== sock || !me) return
+      api('/api/io').then(
+        (r) => {
+          if (r.user && me) {
+            me = r.user
+            showRole()
+          }
+          connect()
+        },
+        (err) => (err.status === 401 ? showLogin() : connect())
+      )
+    }, retry * 1000)
     retry = Math.min(retry * 2, 15)
   }
 }

@@ -68,3 +68,51 @@ Legenda: ✅ corretto in questa PR · ❓ serve una tua decisione · ⏸ lasciat
 ## Note sulla migrazione del database
 
 Le tabelle dei brani ricevono due colonne nuove (`missing`, `kind_manual`), aggiunte in automatico all'avvio. I brani già disattivati prima dell'aggiornamento vengono considerati disattivati a mano: se uno era disattivato solo perché il file mancava, va riattivato a mano una volta.
+
+---
+
+# Seconda caccia ai bug – 15-16/11/2026
+
+Cinque agenti hanno analizzato il codice delle fasi 4b-8 (diretta autonoma, ospiti, video, SIAE, riconoscimento, programmi e podcast, ascoltatori, bot Telegram) e lo hanno corretto, con un test per ogni bug dove possibile. Test totali: 254, tutti verdi.
+
+## Corretti – i più gravi
+
+| Area | Problema |
+|---|---|
+| Programmi | Nei giorni del cambio d'ora le registrazioni partivano un'ora dopo (una fascia delle 21 registrava dalle 22). |
+| Programmi | Due fasce attaccate dello stesso programma tagliavano la registrazione; una fascia a mezzanotte perdeva il margine. |
+| Programmi / podcast | ffmpeg mancante, disco pieno o un file di puntata sparito mentre qualcuno ascolta facevano cadere il server. Una pubblicazione poteva restare in attesa per sempre o partire due volte. |
+| Microfono e ospiti | Se un ospite cadeva (4G) proprio mentre lo si metteva in onda, la voce restava aperta nel mixer e la musica restava abbassata. |
+| Microfono e ospiti | Due richieste di collegamento ravvicinate lasciavano connessioni audio aperte, fino a esaurire le porte; comandi "in onda/fuori onda" potevano arrivare al mixer in ordine sbagliato. |
+| Ospiti | Con un link d'invito si potevano aprire connessioni senza limite (ora massimo 10 per indirizzo); il file degli inviti era leggibile da tutti sul server. |
+| Dirette video | Le chiavi di YouTube/Facebook comparivano negli errori visibili a tutti i ruoli, anche agli ospiti, e negli avvisi. |
+| Dirette video | ffmpeg che non parte faceva cadere il server; una diretta che cadeva dopo pochi secondi ripartiva all'infinito mandando un avviso ogni volta; dopo "stop" ffmpeg poteva restare acceso. |
+| Riconoscimento | Durante le esterne, ffmpeg mancante o un errore nel riconoscimento facevano cadere il server. Dopo molti aggiornamenti delle impronte l'indice si riempiva e ogni ricerca falliva (quindi il server cadeva a ogni esterna). |
+| SIAE | I passaggi di brani etichettati giorni dopo non arrivavano mai nel report. Una sola data rovinata nel registro del server bloccava per sempre l'importazione in regia. |
+| MusicBrainz | Due ricerche insieme superavano il limite di 1 richiesta al secondo. |
+| Bot Telegram | In caso di errore di rete il token del bot finiva nei log. |
+| Diretta autonoma | Un brano in coda tolto dalla libreria bloccava la diretta autonoma in silenzio; un doppio clic su "avvia" mandava due brani. |
+| Libreria sul server | Un file rifiutato dal server (o oltre 300 MB) bloccava per sempre l'invio notturno di tutti gli altri. I brani caricati dal pannello venivano cancellati dal server la notte dopo. Due cartelle con lo stesso nome si sovrascrivevano. Un file caricato durante la scansione spariva dall'indice. |
+| Libreria sul server | Gli invii interrotti dal 4G non contavano nel limite giornaliero (rischio di consumare traffico tutta la notte); il backup automatico fallito veniva ritentato ogni 15 secondi, tutto il giorno. |
+| Server | Ogni richiesta veniva chiusa dopo 5 minuti: backup e caricamenti grandi via 4G fallivano sempre. Ora fino a 3 ore. File troppo grandi ricevono un messaggio chiaro invece di una connessione chiusa. |
+| Server | Dopo ogni riavvio del servizio di controllo partiva un falso allarme "regia scollegata". Durante le esterne e la diretta autonoma il titolo in onda pubblico mostrava i brani della regia, che nessuno sentiva. |
+| Pannello | Dopo un cambio di ruolo il pannello non si aggiornava (un admin declassato vedeva ancora "Utenti"). |
+| Regia | Nomi di file riservati di Windows (CON, NUL…) per i brani scaricati dal server. |
+
+Più una ventina di problemi minori (errori non gestiti, file temporanei rimasti, pagine pubbliche con indirizzi malformati, ecc.).
+
+## Da decidere (non corretti)
+
+1. **Ospiti e bozze:** un ospite può vedere e ascoltare le bozze delle puntate e le registrazioni in corso. Consiglio: solo conduttore e admin.
+2. **Link d'invito riutilizzabili:** un link vale per più persone e resta valido dopo "caccia". Consiglio: un ospite per link, oppure "caccia" annulla il link.
+3. **Ospite (ruolo del pannello):** vede elenco ospiti e clip dei brani sconosciuti. Va bene?
+4. **Spazio su disco del server:** nessun controllo prima di registrare o di accettare caricamenti; le bozze non scadono mai. Consiglio: rifiutare e avvisare sotto una soglia di spazio libero.
+5. **SIAE, doppio conteggio:** se il 4G cade e la regia continua a suonare mentre il server manda la riserva, la stessa fascia viene contata due volte. Consiglio: in quei periodi contare solo il server.
+6. **SIAE, riserva e diretta autonoma:** un brano interrotto dopo 5 secondi conta lo stesso (in regia sotto i 30 s non conta).
+7. **Autori separati da virgola:** un tag "Rossi, Vasco" diventa due autori.
+8. **Bot Telegram:** il pulsante "Non è musica" resta anche dopo l'etichetta, e chiunque nella chat può cancellare un brano già etichettato.
+9. **MusicBrainz:** chiede un contatto (sito o email) nell'identificativo dell'app, altrimenti può rallentarci. Quale mettiamo?
+10. **Cancellazioni sul server:** la protezione scatta solo oltre 50 file *e* oltre il 20%: un disco scollegato in regia può far cancellare fino a 50 brani dal server (o fino al 20% di una libreria grande). Consiglio: non cancellare mai i brani solo temporaneamente mancanti e abbassare la soglia.
+11. **Icecast:** la pagina di amministrazione è raggiungibile in chiaro sulla porta 8000 e la password del relay è uguale a quella di amministrazione. Consiglio: servirla solo tramite Caddy (HTTPS) e usare password diverse.
+12. **Dirette video da OBS:** ora dopo 5 cadute ravvicinate la diretta si ferma con un errore invece di riprovare per sempre.
+13. **Crash durante una registrazione:** la bozza risulta di durata 0 e, se il servizio riparte dentro la fascia, nasce una seconda puntata.
