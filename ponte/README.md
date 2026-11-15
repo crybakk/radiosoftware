@@ -145,6 +145,11 @@ dall'Icecast principale, diretta esterna come "live"), più `/api/station/<nome 
 L'immagine dei brani è la copertina del programma in onda, altrimenti il logo caricato per le dirette video
 (`/api/logo`).
 
+Statistiche degli ascoltatori: ogni minuto il controllo legge l'Icecast principale (`ICECAST_INTERNO`, di base
+`http://icecast:8000`) e il secondario (pagina pubblica `status-json.xsl`, oppure `/admin/stats` con
+`ICECAST_ESTERNO_ADMIN_UTENTE`/`ICECAST_ESTERNO_ADMIN_PASSWORD`); i dati restano un anno nella cartella dati
+`ascoltatori/`. Si vedono dal pannello (Ascoltatori) e dalla regia; `GET /api/ascoltatori?periodo=giorno|settimana&data=AAAA-MM-GG`.
+
 Il nome breve si imposta dal pannello (Programmi → Impostazioni); al posto del nome breve va bene anche `1`.
 Non c'è il feed RSS (niente Spotify o Apple Podcasts).
 

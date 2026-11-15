@@ -57,6 +57,7 @@ const api: RadioApi = {
   ponteListBackups: call('ponteListBackups'),
   ponteState: call('ponteState'),
   ponteListPrograms: call('ponteListPrograms'),
+  ponteListeners: call('ponteListeners'),
   ponteReplay: call('ponteReplay'),
   ponteTestNotification: call('ponteTestNotification'),
   ponteRestore: call('ponteRestore'),

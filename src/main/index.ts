@@ -278,6 +278,7 @@ app.whenReady().then(() => {
   handle('ponteListBackups', () => ponte.listBackups())
   handle('ponteState', () => ponte.remoteState())
   handle('ponteListPrograms', () => ponte.listPrograms())
+  handle('ponteListeners', (periodo: 'giorno' | 'settimana', data: string) => ponte.listenerStats(periodo, data))
   handle('ponteReplay', (programId: string, episodeId?: string) => ponte.replayTrack(programId, episodeId))
   handle('ponteTestNotification', () => ponte.testNotification())
   handle('ponteRestore', async (name: string) => {

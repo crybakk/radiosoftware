@@ -208,3 +208,22 @@ label.block { display: flex; flex-direction: column; gap: 4px; }
 .inline-inputs { display: flex; gap: 6px; align-items: center; }
 .inline-inputs input { width: 70px; }
 .server-list td.button-row { margin: 0; }
+
+/* ascoltatori */
+.stats-view { display: flex; flex-direction: column; gap: 12px; padding: 12px; overflow: auto; }
+.stats-view .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 6px; }
+.stats-view .tile { background: var(--panel2); border-radius: 10px; padding: 10px 12px; }
+.stats-view .tile .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stats-view .tile .l { color: var(--muted); font-size: 12px; }
+.viz { position: relative; max-width: 1000px; }
+.viz svg { display: block; width: 100%; height: auto; }
+.viz text { fill: var(--muted); font-size: 11px; }
+.viz-grid { stroke: var(--line); stroke-width: 1; }
+.viz-line { fill: none; stroke: #3987e5; stroke-width: 2; }
+.viz-area { fill: #3987e5; opacity: 0.15; }
+.viz-bar { fill: #3987e5; }
+.viz-bar.dim { opacity: 0.45; }
+.viz-cross { stroke: var(--muted); stroke-width: 1; }
+.viz-dot { fill: #3987e5; stroke: var(--panel); stroke-width: 2; }
+.viz-tip { position: absolute; transform: translate(-50%, calc(-100% - 10px)); pointer-events: none; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 12px; white-space: nowrap; z-index: 2; }
+.viz-tip b { display: block; font-size: 14px; }

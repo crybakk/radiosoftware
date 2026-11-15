@@ -22,6 +22,7 @@
       <header class="top">
         <div id="lamp" class="lamp">FERMO</div>
         <div id="studio" class="pill off">REGIA…</div>
+        <button id="listeners-pill" class="pill listeners" title="Ascoltatori adesso: apri le statistiche" hidden></button>
         <div class="spacer"></div>
         <button id="mode" class="mode" disabled>…</button>
         <button id="menu-btn" class="ghost" aria-label="Menu">☰</button>
@@ -29,6 +30,7 @@
       <nav id="menu" class="menu" hidden>
         <span id="who"></span>
         <button id="progs-btn" class="ghost">Programmi</button>
+        <button id="stats-btn" class="ghost">Ascoltatori</button>
         <button id="users-btn" class="ghost" hidden>Utenti</button>
         <button id="logout" class="ghost">Esci</button>
       </nav>
@@ -175,6 +177,34 @@
         </section>
       </main>
 
+      <section id="stats" class="users progs stats" hidden>
+        <div class="card">
+          <div class="section-title">Ascoltatori <button class="small ghost" id="stats-close">Chiudi</button></div>
+          <div class="row stats-bar">
+            <button class="small" data-periodo="giorno">Giorno</button>
+            <button class="small" data-periodo="settimana">Settimana</button>
+            <button class="small ghost" id="stats-prev" aria-label="Periodo prima">◀</button>
+            <input type="date" id="stats-date" />
+            <button class="small ghost" id="stats-next" aria-label="Periodo dopo">▶</button>
+          </div>
+          <div class="tiles" id="stats-tiles"></div>
+          <p class="hint" id="stats-note"></p>
+        </div>
+        <div class="card">
+          <div class="section-title" id="stats-chart-title">Andamento</div>
+          <div class="chart" id="stats-chart"></div>
+        </div>
+        <div class="card">
+          <div class="section-title">Per ora del giorno (media)</div>
+          <div class="chart" id="stats-hours"></div>
+        </div>
+        <div class="card">
+          <div class="section-title">Per programma</div>
+          <table class="table"><thead><tr><th>Programma</th><th>Media</th><th>Picco</th><th>Ore di ascolto</th></tr></thead>
+            <tbody id="stats-progs"></tbody></table>
+        </div>
+      </section>
+
       <section id="progs" class="users progs" hidden>
         <div class="card">
           <div class="section-title">Programmi e puntate <button class="small ghost" id="progs-close">Chiudi</button></div>
@@ -241,5 +271,6 @@
     </section>
     <script src="pannello.js"></script>
     <script src="programmi.js"></script>
+    <script src="ascoltatori.js"></script>
   </body>
 </html>

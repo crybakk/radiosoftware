@@ -6,15 +6,17 @@ import { LibraryView } from './LibraryView'
 import { LogView } from './LogView'
 import { OnAirView } from './OnAirView'
 import { SettingsView } from './SettingsView'
+import { StatsView } from './StatsView'
 import { useRadio } from './useRadio'
 
-type Tab = 'onair' | 'library' | 'events' | 'log' | 'link' | 'settings'
+type Tab = 'onair' | 'library' | 'events' | 'log' | 'stats' | 'link' | 'settings'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'onair', label: 'In onda' },
   { id: 'library', label: 'Libreria' },
   { id: 'events', label: 'Eventi' },
   { id: 'log', label: 'Registro' },
+  { id: 'stats', label: 'Ascoltatori' },
   { id: 'link', label: 'Collegamento' },
   { id: 'settings', label: 'Impostazioni' }
 ]
@@ -72,6 +74,7 @@ export function App() {
         {tab === 'library' && <LibraryView radio={radio} />}
         {tab === 'events' && <EventsView radio={radio} />}
         {tab === 'log' && <LogView />}
+        {tab === 'stats' && <StatsView />}
         {tab === 'link' && <ConnectionView radio={radio} />}
         {tab === 'settings' && <SettingsView radio={radio} />}
       </main>

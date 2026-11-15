@@ -1,7 +1,7 @@
 import type { TrackEdit, TrackSearch } from '../core/db'
 import type { EngineStep } from '../core/playout'
 import type { ScanProgress } from '../core/scanner'
-import type { PonteBackup, PonteProgram, PonteState } from '../core/ponteClient'
+import type { ListenerStats, PonteBackup, PonteProgram, PonteState } from '../core/ponteClient'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { PonteStatus, StudioReport } from '../main/ponte'
 import type { ServerSyncStatus, ServerTrackRow } from '../main/serverSync'
@@ -79,6 +79,7 @@ export interface RadioApi {
   ponteListBackups(): Promise<PonteBackup[]>
   ponteState(): Promise<PonteState>
   ponteListPrograms(): Promise<PonteProgram[]>
+  ponteListeners(periodo: 'giorno' | 'settimana', data: string): Promise<ListenerStats>
   ponteReplay(programId: string, episodeId?: string): Promise<Track | null>
   ponteTestNotification(): Promise<{ ok: boolean; results: { channel: string; ok: boolean; error?: string }[] }>
   /** Scarica il backup e riavvia il programma per ripristinarlo. */

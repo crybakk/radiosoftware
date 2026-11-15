@@ -723,6 +723,8 @@ $('video-logo-file').addEventListener('change', async (e) => {
 $('users-btn').addEventListener('click', () => {
   $('menu').hidden = true
   $('main').hidden = true
+  $('progs').hidden = true
+  $('stats').hidden = true
   $('users').hidden = false
   loadUsers()
 })
