@@ -238,6 +238,15 @@ sudo growpart /dev/sda 1 && sudo resize2fs /dev/sda1   # nella VM
 df -h /                            # controlla lo spazio
 ```
 
+### Annunci vocali del server
+
+Menu **☰ → Annunci vocali** (amministratori): annunci a orario con la voce sintetica (sherpa-onnx 1.13.8, voci
+piper Paola o Riccardo), solo quando trasmette il server (diretta autonoma o riserva). Le voci si scaricano dal
+pannello in `DATA_DIR/voci` (dal rilascio `tts-models` di sherpa-onnx su GitHub); gli MP3 pronti finiscono in
+`MUSIC_DIR/.annunci/` (la libreria ignora le cartelle che iniziano col punto) e se ne tengono gli ultimi 200.
+Impostazioni in `DATA_DIR/annunci.json`. L'immagine del controllo è ora `node:24-bookworm-slim` (Debian, serve
+glibc per sherpa-onnx): dopo l'aggiornamento esegui `riavvia.sh` per ricostruirla.
+
 ### Dirette video (YouTube, Facebook)
 
 Dal pannello, sezione **Dirette video**, un conduttore avvia e ferma la diretta quando serve, verso YouTube,

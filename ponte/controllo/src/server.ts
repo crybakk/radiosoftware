@@ -889,7 +889,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         return json(res, 200, { voices: synth.voices() })
       }
       if (req.method === 'POST' && url.pathname === '/api/annunci/prova') {
-        const f = announcer.fill(String(body.text ?? ''))
+        const f = announcer.fill(String(body.text ?? ''), typeof body.radio === 'string' ? body.radio : undefined)
         if (!f.text.replace(/[\s.,;:!?]/g, '')) return json(res, 400, { error: 'testo vuoto' })
         const r = await synth.speak(f.text, (body.voice ?? announceStore.get().voice) as never)
         return json(res, 200, { text: f.text, missing: f.missing, seconds: r.seconds, url: `/api/annunci/audio?f=${encodeURIComponent(r.file.split(/[\\/]/).at(-1)!)}` })

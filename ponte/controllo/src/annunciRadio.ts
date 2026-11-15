@@ -123,9 +123,9 @@ export class AnnounceScheduler {
   }
 
   /** Testo pronto per la voce, con le parti riempite. */
-  fill(text: string): { text: string; missing: string[] } {
+  fill(text: string, radio?: string): { text: string; missing: string[] } {
     const cfg = this.d.store.get()
-    return fillTemplate(text, { now: this.now(), radio: cfg.radio || this.d.stationName, ...this.d.context() })
+    return fillTemplate(text, { now: this.now(), radio: radio?.trim() || cfg.radio || this.d.stationName, ...this.d.context() })
   }
 
   /** Controlla se in questo minuto c'è un annuncio da fare (una volta sola per minuto). */

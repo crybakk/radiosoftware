@@ -146,7 +146,7 @@ function annRow(a) {
   const test = button('🎧 Ascolta', 'Prova con la voce e le impostazioni qui sopra', async () => {
     msg.textContent = 'Preparo la voce… (la prima volta la scarica: può volerci qualche minuto)'
     try {
-      const r = await api('/api/annunci/prova', { method: 'POST', body: JSON.stringify({ text: text.value, voice: annVoice }) })
+      const r = await api('/api/annunci/prova', { method: 'POST', body: JSON.stringify({ text: text.value, voice: annVoice, radio: $('ann-radio').value }) })
       msg.textContent = `"${r.text}"${r.missing.length ? ` · adesso non so: ${r.missing.map((m) => `{${m}}`).join(', ')}` : ''}`
       player.src = r.url
       player.hidden = false
