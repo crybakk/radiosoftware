@@ -233,3 +233,10 @@ label.block { display: flex; flex-direction: column; gap: 4px; }
 .news-source { border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: grid; gap: 8px; }
 .form-grid .span2 { grid-column: span 2; }
 .error-text { color: var(--red); }
+
+/* voce sintetica */
+.announce { display: grid; gap: 6px; }
+.announce textarea { width: 100%; resize: vertical; font: inherit; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; box-sizing: border-box; }
+.placeholders { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.placeholders button { font-family: ui-monospace, monospace; font-size: 12px; }
+.form-grid.sliders input[type='range'] { width: 100%; }

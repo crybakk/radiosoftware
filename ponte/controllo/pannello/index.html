@@ -31,6 +31,7 @@
         <span id="who"></span>
         <button id="progs-btn" class="ghost">Programmi</button>
         <button id="stats-btn" class="ghost">Ascoltatori</button>
+        <button id="ann-btn" class="ghost" hidden>Annunci vocali</button>
         <button id="users-btn" class="ghost" hidden>Utenti</button>
         <button id="logout" class="ghost">Esci</button>
       </nav>
@@ -248,6 +249,29 @@
         </details>
       </section>
 
+      <section id="ann" class="users progs" hidden>
+        <div class="card">
+          <div class="section-title">Annunci vocali del server <button class="small ghost" id="ann-close">Chiudi</button></div>
+          <p class="hint">Annunci a orario letti dalla voce sintetica, solo quando trasmette il server (diretta autonoma o
+            musica di riserva): vanno in onda dopo il brano in corso. Quando c'è la regia gli annunci li fa la regia con i suoi eventi.</p>
+          <p class="hint" id="ann-status"></p>
+        </div>
+        <div class="card prog-form">
+          <div class="section-title">Voce</div>
+          <label>Voce <select id="ann-voice"></select></label>
+          <div class="row"><button class="small" id="ann-voice-get" type="button" hidden></button><span class="hint" id="ann-voice-msg"></span></div>
+          <label>Nome della radio (per {radio}) <input id="ann-radio" maxlength="100" /></label>
+          <div id="ann-sliders"></div>
+          <button class="small ghost" id="ann-reset" type="button">Valori normali</button>
+        </div>
+        <div class="card">
+          <div class="section-title">Annunci <button class="small" id="ann-add" type="button">Aggiungi annuncio</button></div>
+          <p class="hint">Nel testo puoi mettere: <span id="ann-tags"></span></p>
+          <ul class="list ann-list" id="ann-list"></ul>
+          <div class="row"><button class="primary" id="ann-save" type="button">Salva</button><span class="hint" id="ann-msg"></span></div>
+        </div>
+      </section>
+
       <section id="users" class="card users" hidden>
         <div class="section-title">Utenti del pannello <button class="small ghost" id="users-close">Chiudi</button></div>
         <table class="table">
@@ -272,5 +296,6 @@
     <script src="pannello.js"></script>
     <script src="programmi.js"></script>
     <script src="ascoltatori.js"></script>
+    <script src="annunci.js"></script>
   </body>
 </html>

@@ -10,6 +10,7 @@ import {
 } from '../../core/types'
 import type { PonteProgram } from '../../core/ponteClient'
 import type { NewsSource } from '../../core/news'
+import { AnnounceTester } from './VoiceSection'
 import { hhmm, KIND_LABEL } from './format'
 import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
@@ -63,6 +64,8 @@ function newAction(type: EventAction['type']): EventAction {
       return { type, programId: '', title: '' }
     case 'news':
       return { type, sourceId: '', title: '' }
+    case 'voice':
+      return { type, text: 'Sono le {ora}. Avete ascoltato {brano} di {artista}.' }
     default:
       return { type } as EventAction
   }
@@ -121,6 +124,8 @@ function actionSummary(a: EventAction, tracks: Map<number, Track>): string {
       return a.programId ? `ultima puntata di "${a.title || a.programId}"` : 'nessun programma scelto'
     case 'news':
       return a.sourceId ? `ultima edizione di "${a.title || a.sourceId}"` : 'nessuna fonte scelta'
+    case 'voice':
+      return `"${a.text.length > 80 ? `${a.text.slice(0, 77)}…` : a.text}"`
   }
 }
 
@@ -763,6 +768,8 @@ function ActionForm({
       return <div className="hint">Sfuma tutto quello che è in onda e passa in manuale.</div>
     case 'replay':
       return <ReplayForm action={a} onChange={onChange} />
+    case 'voice':
+      return <VoiceForm action={a} onChange={onChange} />
     case 'news': {
       const known = news.some((n) => n.id === a.sourceId)
       return (
@@ -946,6 +953,15 @@ function ReplayForm({
               : 'Questo programma non ha ancora puntate pubblicate.'
             : "All'ora dell'evento va in onda l'ultima puntata pubblicata del programma, in streaming dal server."}
       </div>
+    </div>
+  )
+}
+
+/** Annuncio vocale: testo con le parti che si riempiono da sole, e prova. */
+function VoiceForm({ action: a, onChange }: { action: Extract<EventAction, { type: 'voice' }>; onChange: (a: EventAction) => void }) {
+  return (
+    <div className="voice-form">
+      <AnnounceTester text={a.text} onText={(text) => onChange({ ...a, text })} />
     </div>
   )
 }

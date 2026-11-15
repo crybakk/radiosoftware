@@ -91,6 +91,7 @@ function showApp() {
   $('app').hidden = false
   $('who').textContent = `${me.name} · ${me.role}`
   $('users-btn').hidden = me.role !== 'amministratore'
+  $('ann-btn').hidden = me.role !== 'amministratore'
   $('readonly').hidden = canCommand()
   connect()
   loadUnknowns()
@@ -725,6 +726,7 @@ $('users-btn').addEventListener('click', () => {
   $('main').hidden = true
   $('progs').hidden = true
   $('stats').hidden = true
+  $('ann').hidden = true
   $('users').hidden = false
   loadUsers()
 })

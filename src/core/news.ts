@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-export type NewsFallback = 'salta' | 'vecchio' | 'file'
+export type NewsFallback = 'salta' | 'vecchio' | 'file' | 'voce'
 
 export interface NewsSource {
   id: string
@@ -25,12 +25,15 @@ export interface NewsSource {
   ifMissing: NewsFallback
   /** File da mandare con ifMissing = 'file' (percorso sul PC della regia, o file caricato sul server). */
   fallbackFile: string
+  /** Testo da dire con la voce sintetica con ifMissing = 'voce'. */
+  fallbackText?: string
 }
 
 export const NEWS_FALLBACKS: { value: NewsFallback; label: string }[] = [
   { value: 'salta', label: 'Saltalo' },
   { value: 'vecchio', label: "Manda l'ultimo scaricato" },
-  { value: 'file', label: 'Manda un file a scelta' }
+  { value: 'file', label: 'Manda un file a scelta' },
+  { value: 'voce', label: 'Leggi un testo con la voce sintetica' }
 ]
 
 export interface NewsItem {
@@ -95,13 +98,16 @@ export function validateSource(s: Partial<NewsSource>): NewsSource {
   const ifMissing = NEWS_FALLBACKS.some((f) => f.value === s.ifMissing) ? (s.ifMissing as NewsFallback) : 'salta'
   const fallbackFile = String(s.fallbackFile ?? '').trim()
   if (ifMissing === 'file' && !fallbackFile) throw new Error('scegli il file da mandare quando il notiziario manca')
+  const fallbackText = String(s.fallbackText ?? '').trim()
+  if (ifMissing === 'voce' && !fallbackText) throw new Error('scrivi il testo da leggere quando il notiziario manca')
   return {
     id: String(s.id ?? '').trim() || `n${Date.now().toString(36)}`,
     name: name.slice(0, 100),
     url,
     maxAgeMinutes: Math.max(0, Math.min(10_080, Math.round(Number(s.maxAgeMinutes) || 0))),
     ifMissing,
-    fallbackFile
+    fallbackFile,
+    fallbackText
   }
 }
 
@@ -117,6 +123,8 @@ async function duration(file: string): Promise<number> {
 export interface NewsResult {
   /** Il notiziario da mandare in onda (null = niente). */
   item: NewsItem | null
+  /** Testo da leggere con la voce sintetica al suo posto (ifMissing = 'voce'). */
+  speak?: string
   /** Spiegazione per il registro, gli avvisi e il pulsante "Prova". */
   note: string
   /** true se è il notiziario aggiornato (non un ripiego). */
@@ -251,6 +259,9 @@ export class NewsFetcher {
     if (src.ifMissing === 'file' && src.fallbackFile && existsSync(src.fallbackFile)) {
       const d = fallbackDuration ? await fallbackDuration(src.fallbackFile) : await duration(src.fallbackFile)
       return { item: { file: src.fallbackFile, title: src.name, publishedAt: 0, duration: d }, note: `${src.name} ${why}: mando il file scelto`, fresh: false }
+    }
+    if (src.ifMissing === 'voce' && src.fallbackText?.trim()) {
+      return { item: null, speak: src.fallbackText.trim(), note: `${src.name} ${why}: leggo il testo con la voce sintetica`, fresh: false }
     }
     if (src.ifMissing === 'file') return { item: null, note: `${src.name} ${why}, e il file da mandare al suo posto non c'è`, fresh: false }
     return { item: null, note: `${src.name} ${why}: saltato`, fresh: false }

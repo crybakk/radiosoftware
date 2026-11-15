@@ -1,8 +1,10 @@
-FROM node:24-alpine
+# Debian (non Alpine): la voce sintetica (sherpa-onnx) è compilata per glibc
+FROM node:24-bookworm-slim
 WORKDIR /app
 ENV NODE_ENV=production TZ=Europe/Rome
-# ffmpeg: dirette video verso YouTube e Facebook
-RUN apk add --no-cache tzdata ffmpeg
+# ffmpeg: dirette video, puntate, annunci; bzip2: per estrarre le voci scaricate
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata ffmpeg bzip2 ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY src ./src

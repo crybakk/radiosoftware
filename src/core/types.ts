@@ -1,5 +1,6 @@
 /** Tipo di elemento audio: decide come viene usato in rotazione e nella cartwall. */
 import type { NewsSource } from './news'
+import { DEFAULT_VOICE, type VoiceSettings } from '../../ponte/controllo/src/annunci.ts'
 
 export type TrackKind = 'music' | 'jingle' | 'spot' | 'news' | 'program'
 
@@ -74,6 +75,10 @@ export interface Settings {
   ponte: PonteSettings
   /** Fonti dei notiziari (feed dei podcast o link diretti). */
   news: NewsSource[]
+  /** Voce sintetica degli annunci. */
+  voice: VoiceSettings
+  /** Nome della radio, per {radio} negli annunci. */
+  radioName: string
 }
 
 export interface PonteSettings {
@@ -148,7 +153,9 @@ export const DEFAULT_SETTINGS: Settings = {
   cartwall: Array(12).fill(null),
   rotationProfile: null,
   ponte: DEFAULT_PONTE,
-  news: []
+  news: [],
+  voice: DEFAULT_VOICE,
+  radioName: ''
 }
 
 /** Profilo di rotazione attivato da un evento (per esempio "dalle 22 musica tranquilla"). */
@@ -178,6 +185,8 @@ export type EventAction =
   | { type: 'replay'; programId: string; title: string }
   /** Notiziario: l'ultima edizione di una fonte (impostazioni → Notiziari), scaricata al momento. */
   | { type: 'news'; sourceId: string; title: string }
+  /** Annuncio con la voce sintetica: testo con le parti che si riempiono da sole ({ora}, {brano}, ...). */
+  | { type: 'voice'; text: string }
 
 export const ACTION_LABELS: Record<EventAction['type'], string> = {
   play: 'Brano',
@@ -190,7 +199,8 @@ export const ACTION_LABELS: Record<EventAction['type'], string> = {
   rotation: 'Regole di rotazione',
   command: 'Comando esterno',
   replay: 'Replica di un programma',
-  news: 'Notiziario'
+  news: 'Notiziario',
+  voice: 'Annuncio vocale'
 }
 
 /** Evento a orario fisso. */

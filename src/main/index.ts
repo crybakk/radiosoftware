@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
 import { spawn } from 'node:child_process'
-import { expandEvent, newsTrack } from '../core/eventActions'
+import { expandEvent, newsTrack, voiceTrack } from '../core/eventActions'
+import { fillTemplate, programContext, Synth, type AnnounceContext, type VoiceSettings } from '../../ponte/controllo/src/sintesi.ts'
 import { NewsFetcher, type NewsSource } from '../core/news'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -84,8 +85,38 @@ app.whenReady().then(() => {
   // notiziari: scaricati al momento, uno per fonte (l'ultimo)
   const newsDir = join(app.getPath('userData'), 'notiziari')
   const news = new NewsFetcher(newsDir)
-  const newsForAir = async (src: NewsSource): Promise<{ track: Track | null; note: string }> => {
+  // voce sintetica: voci scaricate la prima volta, annunci prodotti al momento (gli ultimi restano pronti)
+  const voicesDir = join(app.getPath('userData'), 'voci')
+  const announceDir = join(app.getPath('userData'), 'annunci')
+  const synth = new Synth({ voicesDir, outDir: announceDir, ffmpeg: ffmpegPath() ?? 'ffmpeg' })
+  type Ctx = Pick<AnnounceContext, 'track' | 'nextTrack'> & { radio?: string }
+  /** Annuncio pronto da mandare in onda: riempie le parti tra graffe e produce l'audio. */
+  const speakTrack = async (text: string, ctx: Ctx, voice?: VoiceSettings): Promise<{ track: Track | null; note: string }> => {
+    const s = db.getSettings()
+    const now = new Date()
+    // programma in onda e prossimo: dal palinsesto del server, se raggiungibile (al massimo 3 secondi)
+    let progs = { program: null as string | null, nextProgram: null as { title: string; at: Date } | null }
+    if (/\{(prossimo_|ora_prossimo_)?programma\}/.test(text)) {
+      try {
+        progs = programContext(await Promise.race([ponte.listPrograms(), new Promise<never>((_, rej) => setTimeout(() => rej(new Error('lento')), 3000))]), now)
+      } catch {
+        // senza server le parti del programma restano vuote
+      }
+    }
+    const filled = fillTemplate(text, { now, ...ctx, radio: ctx.radio ?? s.radioName, ...progs })
+    if (!filled.text.replace(/[\s.,;:!?]/g, '')) return { track: null, note: 'testo vuoto' }
+    const r = await synth.speak(filled.text, voice ?? s.voice)
+    return {
+      track: voiceTrack(filled.text, r.file, r.seconds),
+      note: filled.missing.length ? `non so ancora ${filled.missing.map((m) => `{${m}}`).join(', ')}: detto senza` : ''
+    }
+  }
+  const newsForAir = async (src: NewsSource, ctx: Ctx = {}): Promise<{ track: Track | null; note: string }> => {
     const r = await news.forAir(src)
+    if (!r.item && r.speak) {
+      const v = await speakTrack(r.speak, ctx)
+      return { track: v.track, note: r.note }
+    }
     return { track: r.item ? newsTrack(src.name, r.item) : null, note: r.note }
   }
   ponte.applySettings(db.getSettings().ponte)
@@ -156,7 +187,7 @@ app.whenReady().then(() => {
     if (url.host === 'file') {
       // notiziari scaricati e file scelti al loro posto: solo quelli, non file qualsiasi
       const path = decodeURIComponent(url.pathname.replace(/^\//, ''))
-      const allowed = path.startsWith(newsDir) || db.getSettings().news.some((n) => n.fallbackFile && n.fallbackFile === path)
+      const allowed = path.startsWith(newsDir) || path.startsWith(announceDir) || db.getSettings().news.some((n) => n.fallbackFile && n.fallbackFile === path)
       if (!allowed) return new Response('File non permesso', { status: 403 })
       const res = serveFile(path, request)
       res.headers.set('Access-Control-Allow-Origin', '*')
@@ -228,16 +259,18 @@ app.whenReady().then(() => {
     // per i brani della libreria usiamo i dati aggiornati del database (autori, codici SIAE)
     const t = track.id > 0 ? (db.getTrack(track.id) ?? track) : track
     ponte.onTrackStart(t)
-    return db.logStart(t, new Date(at), track.id > 0 ? 'regia' : track.kind === 'news' ? 'notiziario' : 'flusso esterno')
+    const source = track.id > 0 ? 'regia' : track.kind === 'news' ? 'notiziario' : track.path.startsWith(announceDir) ? 'annuncio' : 'flusso esterno'
+    return db.logStart(t, new Date(at), source)
   })
-  handle('expandEvent', (event: ScheduledEvent) =>
+  handle('expandEvent', (event: ScheduledEvent, ctx: Ctx = {}) =>
     expandEvent(db, event, {
+      voice: (text) => speakTrack(text, ctx),
       now: () => new Date(),
       replay: (programId) => ponte.replayTrack(programId),
       news: async (sourceId) => {
         const src = db.getSettings().news.find((n) => n.id === sourceId)
         if (!src) return { track: null, note: 'fonte non trovata (tolta dalle impostazioni?)' }
-        return newsForAir(src)
+        return newsForAir(src, ctx)
       },
       runCommand: (command) => {
         const child = spawn(command, { shell: true, detached: true, windowsHide: true, stdio: 'ignore' })
@@ -248,6 +281,13 @@ app.whenReady().then(() => {
   )
   handle('listGenres', () => db.listGenres())
   handle('newsTest', (src: NewsSource) => newsForAir(src))
+  handle('voiceList', () => synth.voices())
+  handle('voiceInstall', (id: string) => synth.installVoice(id).then(() => synth.voices()))
+  handle('voiceRemove', (id: string) => synth.removeVoice(id).then(() => synth.voices()))
+  // prova dalle impostazioni o dall'evento: brano e artista di esempio se non c'è niente in onda
+  handle('voiceTest', (text: string, voice?: VoiceSettings, ctx?: Ctx) =>
+    speakTrack(text, ctx?.track ? ctx : { track: { title: 'Caruso', artist: 'Lucio Dalla' }, nextTrack: { title: 'Azzurro', artist: 'Adriano Celentano' }, radio: ctx?.radio }, voice)
+  )
   handle('choosePath', async (kind: 'playlist' | 'folder' | 'audio') => {
     const res = await dialog.showOpenDialog(win!, {
       title: kind === 'folder' ? 'Scegli una cartella' : kind === 'audio' ? 'Scegli un file audio' : 'Scegli una playlist',

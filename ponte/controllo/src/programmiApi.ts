@@ -161,6 +161,8 @@ export async function handleProgramApi(req: IncomingMessage, res: ServerResponse
         return {
           id: p.id,
           title: p.title,
+          // fasce: per {programma} e {prossimo_programma} negli annunci della regia
+          slots: p.slots,
           episodes: eps.map((e) => ({ id: e.id, title: e.title, length: e.length, path: `/api/station/${st}/public/podcast/${p.id}/episode/${e.id}/download.mp3` }))
         }
       })

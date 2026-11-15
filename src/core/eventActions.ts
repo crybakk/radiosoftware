@@ -13,6 +13,8 @@ export interface EventEffects {
   replay?(programId: string, episodeId?: string): Promise<Track | null>
   /** Notiziario da mandare in onda (scaricato al momento); track null = niente, note spiega perché. */
   news?(sourceId: string): Promise<{ track: Track | null; note: string }>
+  /** Annuncio con la voce sintetica (testo con le parti tra graffe ancora da riempire). */
+  voice?(text: string): Promise<{ track: Track | null; note: string }>
 }
 
 /** Estrae i percorsi da una playlist M3U/M3U8 o PLS. I percorsi relativi sono rispetto alla playlist. */
@@ -83,6 +85,19 @@ export function newsTrack(name: string, item: { file: string; title: string; dur
     ...streamTrack(item.file, seconds / 60, item.title || name),
     kind: 'news',
     artist: name,
+    duration: seconds,
+    cueOut: seconds,
+    mixPoint: seconds
+  }
+}
+
+/** Brano "virtuale" per un annuncio con la voce sintetica (file locale). */
+export function voiceTrack(text: string, file: string, seconds: number): Track {
+  const words = text.replace(/\s+/g, ' ').trim()
+  return {
+    ...streamTrack(file, seconds / 60, words.length > 60 ? `${words.slice(0, 57)}…` : words),
+    kind: 'jingle',
+    artist: 'Annuncio vocale',
     duration: seconds,
     cueOut: seconds,
     mixPoint: seconds
@@ -205,6 +220,18 @@ export async function expandEvent(db: RadioDb, event: ScheduledEvent, fx: EventE
         }
         if (r.track) front.push(r.track)
         else steps.push({ kind: 'error', message: `notiziario "${a.title || a.sourceId}": ${r.note}` })
+        break
+      }
+      case 'voice': {
+        let r: { track: Track | null; note: string } = { track: null, note: 'voce sintetica non disponibile' }
+        try {
+          if (fx.voice) r = await fx.voice(a.text)
+        } catch (err) {
+          r = { track: null, note: err instanceof Error ? err.message : String(err) }
+        }
+        if (r.track) front.push(r.track)
+        else steps.push({ kind: 'error', message: `annuncio vocale: ${r.note}` })
+        if (r.track && r.note) steps.push({ kind: 'error', message: `annuncio vocale: ${r.note}` })
         break
       }
       case 'command':

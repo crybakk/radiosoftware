@@ -191,6 +191,8 @@ export type ListenerStats = Report & {
 export interface PonteProgram {
   id: string
   title: string
+  /** Fasce del palinsesto (giorni 0 = domenica, orari "HH:MM"); assenti con un ponte vecchio. */
+  slots?: { days: number[]; start: string; end: string }[]
   /** Puntate pubblicate; path è l'indirizzo completo dell'audio. */
   episodes: { id: string; title: string; length: number; path: string }[]
 }
