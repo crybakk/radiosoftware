@@ -165,6 +165,142 @@ describe('regia, ponte e pannello insieme', () => {
   })
 })
 
+/** WebSocket finto: il test fa la parte del ponte. */
+class FakeWs {
+  static all: FakeWs[] = []
+  readyState = 0
+  sent: any[] = []
+  closed = false
+  onopen: (() => void) | null = null
+  onmessage: ((e: { data: string }) => void) | null = null
+  onclose: ((e: { code: number }) => void) | null = null
+  onerror: (() => void) | null = null
+  constructor(public url: string) {
+    FakeWs.all.push(this)
+    setTimeout(() => {
+      this.readyState = 1
+      this.onopen?.()
+    }, 0)
+  }
+  send(d: string) {
+    this.sent.push(JSON.parse(d))
+  }
+  close() {
+    this.closed = true
+    this.readyState = 3
+  }
+  receive(m: unknown) {
+    this.onmessage?.({ data: JSON.stringify(m) })
+  }
+}
+
+describe('collegamento della regia (ponte finto)', () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  it('dopo il primo ping, se il ponte tace la regia chiude e si ricollega', async () => {
+    FakeWs.all = []
+    const link = new RemoteLink(async () => null, () => {}, FakeWs as never, { silenceMs: 150 })
+    link.start('ws://ponte/ws/regia', TOKEN)
+    await until(() => FakeWs.all[0]?.sent.length === 1)
+    const first = FakeWs.all[0]
+    first.receive({ t: 'auth-ok' })
+    first.receive({ t: 'ping' })
+    expect(link.getStatus().state).toBe('collegato')
+    // i messaggi tengono vivo il collegamento
+    for (let i = 0; i < 4; i++) {
+      await sleep(80)
+      first.receive({ t: 'ping' })
+    }
+    expect(first.closed).toBe(false)
+    // poi silenzio (4G "appeso"): chiuso e nuovo tentativo
+    await until(() => first.closed, 2000)
+    expect(link.getStatus().state).toBe('errore')
+    expect(link.getStatus().message).toContain('segni di vita')
+    await until(() => FakeWs.all.length === 2, 5000)
+    link.stop()
+  })
+
+  it('ponte vecchio senza ping: nessuna chiusura per silenzio', async () => {
+    FakeWs.all = []
+    const link = new RemoteLink(async () => null, () => {}, FakeWs as never, { silenceMs: 50 })
+    link.start('ws://ponte/ws/regia', TOKEN)
+    await until(() => FakeWs.all[0]?.sent.length === 1)
+    FakeWs.all[0].receive({ t: 'auth-ok' })
+    await sleep(300)
+    expect(FakeWs.all[0].closed).toBe(false)
+    expect(link.getStatus().state).toBe('collegato')
+    link.stop()
+  })
+
+  it('messaggi non validi (null, numeri) vengono ignorati', async () => {
+    FakeWs.all = []
+    const link = new RemoteLink(async () => null, () => {}, FakeWs as never)
+    link.start('ws://ponte/ws/regia', TOKEN)
+    await until(() => FakeWs.all[0]?.sent.length === 1)
+    const ws = FakeWs.all[0]
+    expect(() => {
+      ws.onmessage?.({ data: 'null' })
+      ws.onmessage?.({ data: '42' })
+      ws.onmessage?.({ data: '"x"' })
+    }).not.toThrow()
+    ws.receive({ t: 'auth-ok' })
+    expect(link.getStatus().state).toBe('collegato')
+    link.stop()
+  })
+
+  it('i comandi vengono eseguiti nell\'ordine di arrivo, la ricerca no', async () => {
+    FakeWs.all = []
+    const log: string[] = []
+    const link = new RemoteLink(
+      async (cmd) => {
+        log.push(`inizio ${cmd.type}`)
+        // il primo comando è lento (es. caricamento del brano)
+        await sleep(cmd.type === 'enqueue' ? 100 : 5)
+        log.push(`fine ${cmd.type}`)
+        return null
+      },
+      () => {},
+      FakeWs as never
+    )
+    link.start('ws://ponte/ws/regia', TOKEN)
+    await until(() => FakeWs.all[0]?.sent.length === 1)
+    const ws = FakeWs.all[0]
+    ws.receive({ t: 'auth-ok' })
+    ws.receive({ t: 'cmd', id: '1', by: 'anna', cmd: { type: 'enqueue', trackId: 1, where: 'next' } })
+    ws.receive({ t: 'cmd', id: '2', by: 'anna', cmd: { type: 'next' } })
+    ws.receive({ t: 'cmd', id: '3', by: 'anna', cmd: { type: 'search', q: 'x' } })
+    await until(() => ws.sent.filter((m) => m.t === 'reply').length === 3)
+    expect(log.indexOf('inizio next')).toBeGreaterThan(log.indexOf('fine enqueue'))
+    expect(log.indexOf('inizio search')).toBeLessThan(log.indexOf('fine enqueue'))
+    expect(ws.sent.filter((m) => m.t === 'reply').map((m) => m.id)).toEqual(['3', '1', '2'])
+    link.stop()
+  })
+
+  it('un comando fallito non blocca i successivi', async () => {
+    FakeWs.all = []
+    const link = new RemoteLink(
+      async (cmd) => {
+        if (cmd.type === 'cart') throw new Error('tasto jingle vuoto')
+        return null
+      },
+      () => {},
+      FakeWs as never
+    )
+    link.start('ws://ponte/ws/regia', TOKEN)
+    await until(() => FakeWs.all[0]?.sent.length === 1)
+    const ws = FakeWs.all[0]
+    ws.receive({ t: 'auth-ok' })
+    ws.receive({ t: 'cmd', id: '1', by: 'a', cmd: { type: 'cart', n: 5 } })
+    ws.receive({ t: 'cmd', id: '2', by: 'a', cmd: { type: 'play' } })
+    await until(() => ws.sent.filter((m) => m.t === 'reply').length === 2)
+    expect(ws.sent.filter((m) => m.t === 'reply')).toEqual([
+      { t: 'reply', id: '1', ok: false, error: 'tasto jingle vuoto' },
+      { t: 'reply', id: '2', ok: true }
+    ])
+    link.stop()
+  })
+})
+
 async function until(pred: () => boolean, ms = 8000): Promise<void> {
   const end = Date.now() + ms
   while (!pred()) {

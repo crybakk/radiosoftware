@@ -2,11 +2,7 @@ import { useEffect, useState } from 'react'
 import type { LogEntry } from '../../core/types'
 import { KIND_LABEL, mmss } from './format'
 import { SiaeSection } from './SiaeSection'
-
-function dayStart(s: string): Date {
-  const [y, m, d] = s.split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
+import { logRange } from './logRange'
 
 function isoDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -27,14 +23,12 @@ export function LogView() {
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [saved, setSaved] = useState<string | null>(null)
 
-  const range = (): [string, string] => {
-    const end = dayStart(to)
-    end.setDate(end.getDate() + 1)
-    return [dayStart(from).toISOString(), end.toISOString()]
-  }
+  const range = logRange(from, to)
 
   useEffect(() => {
-    const [a, b] = range()
+    // data cancellata o incompleta: resta l'ultimo elenco finché non è di nuovo valida
+    if (!range) return
+    const [a, b] = range
     void window.radio.listLog(a, b).then(setEntries)
     const t = setInterval(() => void window.radio.listLog(a, b).then(setEntries), 5000)
     return () => clearInterval(t)
@@ -58,8 +52,11 @@ export function LogView() {
           </label>
           <button
             className="primary"
+            disabled={!range}
+            title={range ? undefined : 'Indica le date del periodo'}
             onClick={async () => {
-              const [a, b] = range()
+              if (!range) return
+              const [a, b] = range
               setSaved(await window.radio.exportLogCsv(a, b))
             }}
           >

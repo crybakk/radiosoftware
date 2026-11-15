@@ -194,8 +194,11 @@ export function SettingsView({ radio }: { radio: Radio }) {
                 min={n.min}
                 max={n.max}
                 step={n.step ?? 1}
-                value={draft[n.key] as number}
-                onChange={(e) => setDraft({ ...draft, [n.key]: Number(e.target.value) })}
+                value={Number.isFinite(draft[n.key]) ? (draft[n.key] as number) : ''}
+                // campo vuoto (o "-" a metà digitazione): NaN, al salvataggio resta il valore precedente
+                onChange={(e) =>
+                  setDraft({ ...draft, [n.key]: e.target.value.trim() === '' ? NaN : Number(e.target.value) })
+                }
               />
             </label>
           ))}
@@ -243,7 +246,8 @@ export function SettingsView({ radio }: { radio: Radio }) {
           onClick={async () => {
             const clamp = { ...draft }
             for (const n of NUMBERS) {
-              const v = Number(clamp[n.key])
+              // campo lasciato vuoto o non valido: si tiene il valore salvato, non 0 o il minimo
+              const v = Number.isFinite(clamp[n.key]) ? Number(clamp[n.key]) : Number(radio.settings[n.key])
               ;(clamp as unknown as Record<string, number>)[n.key] = Math.min(n.max, Math.max(n.min, Number.isFinite(v) ? v : n.min))
             }
             await radio.saveSettings(clamp)

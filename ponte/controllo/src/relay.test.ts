@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { PublicUser } from './users.ts'
 import { Relay, type Peer } from './relay.ts'
 
 class FakePeer implements Peer {
@@ -83,4 +84,71 @@ describe('smistamento tra pannello e regia', () => {
     a.h.close() // la chiusura della vecchia non deve scollegare la nuova
     expect(r.studioConnected()).toBe(true)
   })
+
+  it('messaggi JSON validi ma non oggetti vengono ignorati (regia e pannello, anche senza autenticazione)', () => {
+    const r = new Relay('tok')
+    const anon = new FakePeer()
+    const ah = r.attachStudio(anon)
+    for (const raw of ['null', '3', '"x"', '[]', 'true']) expect(() => ah.message(raw)).not.toThrow()
+    const s = connectStudio(r)
+    for (const raw of ['null', '3', '[]', '{"t":"reply","id":null}']) expect(() => s.h.message(raw)).not.toThrow()
+    const panel = new FakePeer()
+    const ph = r.attachPanel(panel, { name: 'anna', role: 'conduttore' })
+    for (const raw of ['null', '3', '[]', '{"t":"cmd","id":"p1","cmd":null}', '{"t":"cmd","id":"p1","cmd":5}']) {
+      expect(() => ph.message(raw)).not.toThrow()
+    }
+    expect(s.p.last('cmd')).toBeUndefined()
+    expect(r.studioConnected()).toBe(true)
+  })
+
+  it('il token della regia deve essere una stringa uguale', () => {
+    const r = new Relay('tok')
+    const p = new FakePeer()
+    r.attachStudio(p).message(JSON.stringify({ t: 'auth', token: ['tok'] }))
+    expect(p.closed).toBe(4003)
+  })
+
+  it('segnale di vita alla regia collegata (solo dopo l\'autenticazione)', () => {
+    const r = new Relay('tok')
+    const anon = new FakePeer()
+    r.attachStudio(anon)
+    r.pingStudio()
+    expect(anon.sent).toEqual([])
+    const s = connectStudio(r)
+    r.pingStudio()
+    expect(s.p.last()).toEqual({ t: 'ping' })
+  })
+
+  it('a ogni comando si usa il ruolo attuale della sessione', () => {
+    const r = new Relay('tok')
+    const s = connectStudio(r)
+    const panel = new FakePeer()
+    let now: PublicUser | null = { name: 'anna', role: 'conduttore' }
+    const ph = r.attachPanel(panel, { name: 'anna', role: 'conduttore' }, undefined, () => now)
+    ph.message(JSON.stringify({ t: 'cmd', id: 'p1', cmd: { type: 'stop' } }))
+    expect(s.p.last('cmd')).toMatchObject({ cmd: { type: 'stop' } })
+    s.p.sent = []
+    now = { name: 'anna', role: 'ospite' }
+    ph.message(JSON.stringify({ t: 'cmd', id: 'p2', cmd: { type: 'stop' } }))
+    expect(panel.last('reply')).toMatchObject({ id: 'p2', ok: false, error: expect.stringContaining('ruolo') })
+    expect(s.p.last('cmd')).toBeUndefined()
+    now = null // sessione chiusa o scaduta, utente eliminato
+    ph.message(JSON.stringify({ t: 'cmd', id: 'p3', cmd: { type: 'search', q: 'x' } }))
+    expect(panel.closed).toBe(4003)
+    expect(s.p.last('cmd')).toBeUndefined()
+  })
+
+  it('kick chiude solo le connessioni di quell\'utente, con il codice richiesto', () => {
+    const r = new Relay('tok')
+    const a = new FakePeer()
+    const b = new FakePeer()
+    r.attachPanel(a, { name: 'Anna', role: 'conduttore' })
+    r.attachPanel(b, { name: 'luca', role: 'conduttore' })
+    r.kick('anna', 4002, 'ruolo cambiato')
+    expect(a.closed).toBe(4002)
+    expect(b.closed).toBeNull()
+    r.kick('luca')
+    expect(b.closed).toBe(4003)
+  })
 })
+

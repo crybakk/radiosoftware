@@ -1,6 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import ffmpegStatic from 'ffmpeg-static'
 import { afterAll, describe, expect, it } from 'vitest'
 import { RadioDb } from '../src/core/db'
 import { exclusionReason, gainFor, onServer, planSync, serverId } from '../src/core/serverLibrary'
@@ -178,7 +180,10 @@ describe('copia della libreria sul server', () => {
   it('scarica i brani caricati dal pannello in Artista/Titolo e manda le impronte', async () => {
     const c = new FakeClient()
     db.saveSettings({ ponte: { ...db.getSettings().ponte, libraryDailyMb: 100 } })
-    c.uploaded.push({ id: 'caricati/registrazione_01.mp3', size: 5, title: 'Canzone: nuova?', artist: 'Band Locale', duration: 180, data: new Uint8Array([1, 2, 3, 4, 5]) })
+    // un mp3 vero (il catalogo scarta i file che non contengono audio) e uno rovinato, che va saltato
+    const audio = execFileSync(ffmpegStatic as unknown as string, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-f', 'mp3', 'pipe:1'])
+    c.uploaded.push({ id: 'caricati/rotto.mp3', size: 5, title: 'Rotto', artist: 'Nessuno', duration: 0, data: new Uint8Array([1, 2, 3, 4, 5]) })
+    c.uploaded.push({ id: 'caricati/registrazione_01.mp3', size: audio.length, title: 'Canzone: nuova?', artist: 'Band Locale', duration: 180, data: new Uint8Array(audio) })
     // un brano con l'impronta, uno vecchio sul server da togliere
     const withFp = db.searchTracks({ text: 'Albachiara' }).tracks[0]
     db.saveFingerprint(withFp.id, new Uint8Array(16))
@@ -188,7 +193,7 @@ describe('copia della libreria sul server', () => {
     sync.onCatalogued = (ids) => catalogued.push(...ids)
     const res = await sync.syncNow(true)
     const file = join(music, 'Band Locale', 'Canzone nuova.mp3')
-    expect(readFileSync(file)).toEqual(Buffer.from([1, 2, 3, 4, 5]))
+    expect(readFileSync(file)).toEqual(audio)
     expect(c.moved).toEqual([['caricati/registrazione_01.mp3', 'regia/Musica/Band Locale/Canzone nuova.mp3']])
     const t = db.findByPath(file)!
     expect(t).toMatchObject({ kind: 'music', title: 'Canzone: nuova?', artist: 'Band Locale' })

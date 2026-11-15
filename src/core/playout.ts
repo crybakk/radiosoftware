@@ -95,10 +95,17 @@ export class PlayoutEngine {
   private carts: Slot[] = []
   private events: ScheduledEvent[] = []
   private lastEventCheck: Date
+  /** Occorrenze già eseguite (id evento @ orario), per non ripeterle se l'orologio torna indietro. */
+  private firedEvents = new Map<string, number>()
   private starting = false
   private filling = false
   private lastError: string | null = null
-  private eventDeadline: Date | null = null
+  /** Tolleranza degli eventi soft: uid del brano evento da proteggere -> ora limite. */
+  private eventDeadlines = new Map<string, Date>()
+  /** Vero dopo STOP: nessun brano riparte da solo finché la regia non lo chiede. */
+  private stopped = false
+  /** Cresce a ogni STOP: un brano che stava caricando quando è stato premuto non va in onda. */
+  private generation = 0
   private listeners = new Set<(s: PlayoutSnapshot) => void>()
 
   constructor(
@@ -129,6 +136,7 @@ export class PlayoutEngine {
 
   setMode(mode: PlayoutMode): void {
     this.mode = mode
+    if (mode === 'auto') this.stopped = false
     this.emit()
   }
 
@@ -138,11 +146,13 @@ export class PlayoutEngine {
 
   /** Avvia il primo brano in coda se non c'è nulla in onda. */
   async play(): Promise<void> {
+    this.stopped = false
     if (!this.current()) await this.startNext()
   }
 
   /** Sfuma il brano in onda e passa subito al successivo. */
   async next(): Promise<void> {
+    this.stopped = false
     const cur = this.current()
     if (cur) this.fade(cur, this.options.crossfadeSeconds)
     await this.startNext()
@@ -151,6 +161,9 @@ export class PlayoutEngine {
   /** Ferma tutto con una breve sfumatura e passa in manuale. */
   stop(): void {
     this.mode = 'manual'
+    this.stopped = true
+    this.generation++
+    this.eventDeadlines.clear()
     for (const s of this.slots) this.fade(s, 1)
     this.emit()
   }
@@ -165,6 +178,7 @@ export class PlayoutEngine {
 
   remove(uid: string): void {
     this.queue = this.queue.filter((q) => q.uid !== uid)
+    this.eventDeadlines.delete(uid)
     this.emit()
   }
 
@@ -179,6 +193,7 @@ export class PlayoutEngine {
 
   clearQueue(): void {
     this.queue = []
+    this.eventDeadlines.clear()
     this.emit()
   }
 
@@ -201,19 +216,30 @@ export class PlayoutEngine {
     const now = this.now()
 
     // 1. eventi a orario
+    // Se l'orologio del PC torna indietro un evento già eseguito non deve scattare di nuovo:
+    // ogni occorrenza (evento + orario) parte una volta sola.
     const due = dueEvents(this.events, this.lastEventCheck, now)
     this.lastEventCheck = now
-    for (const { event } of due) await this.runEvent(event, now)
+    for (const [key, at] of this.firedEvents) if (at < now.getTime() - 10 * 60_000) this.firedEvents.delete(key)
+    for (const { event, at } of due) {
+      const key = `${event.id}@${at.getTime()}`
+      if (this.firedEvents.has(key)) continue
+      this.firedEvents.set(key, at.getTime())
+      await this.runEvent(event, now)
+    }
 
     // 1b. tolleranza scaduta: l'evento in testa alla coda non aspetta oltre
-    if (this.eventDeadline && now >= this.eventDeadline) {
-      this.eventDeadline = null
-      if (this.queue[0]?.origin === 'event' && this.current()) await this.next()
+    const head = this.queue[0]
+    const deadline = head ? this.eventDeadlines.get(head.uid) : undefined
+    if (head && deadline && now >= deadline) {
+      this.eventDeadlines.delete(head.uid)
+      if (head.origin === 'event' && this.current()) await this.next()
     }
 
     // 2. passaggio al brano successivo al punto di mix
     const cur = this.current()
-    if (cur && !cur.mixTriggered && !cur.fading) {
+    // Un brano di durata sconosciuta (non analizzato) passa al successivo solo quando finisce davvero.
+    if (cur && !cur.mixTriggered && !cur.fading && this.knownLength(cur.item.track)) {
       const pos = cur.player.position()
       if (pos >= this.mixPoint(cur.item.track)) {
         cur.mixTriggered = true
@@ -275,6 +301,7 @@ export class PlayoutEngine {
 
   /** Esegue subito un evento (usato dagli orari e dal tasto "Prova" nell'interfaccia). */
   async runEvent(event: ScheduledEvent, now: Date = this.now()): Promise<void> {
+    this.stopped = false
     let steps: EngineStep[]
     try {
       steps = await this.host.expandEvent(event)
@@ -286,6 +313,7 @@ export class PlayoutEngine {
     while (insertAt < this.queue.length && this.queue[insertAt].origin === 'event') insertAt++
     let queuedFront = false
     let stopped = false
+    let protect: string | null = null
     for (const step of steps) {
       switch (step.kind) {
         case 'error':
@@ -296,6 +324,8 @@ export class PlayoutEngine {
           break
         case 'clear':
           this.queue = []
+          this.eventDeadlines.clear()
+          protect = null
           insertAt = 0
           break
         case 'stop':
@@ -312,8 +342,11 @@ export class PlayoutEngine {
           } else {
             if (step.placement === 'replace') {
               this.queue = []
+              this.eventDeadlines.clear()
+              protect = null
               insertAt = 0
             }
+            protect ??= items[0].uid
             this.queue.splice(insertAt, 0, ...items)
             insertAt += items.length
             queuedFront = true
@@ -329,10 +362,13 @@ export class PlayoutEngine {
         await this.startNext()
       } else if (event.mode === 'hard') {
         await this.next()
-      } else if (event.toleranceSeconds > 0) {
-        this.eventDeadline = new Date(now.getTime() + event.toleranceSeconds * 1000)
+      } else if (event.toleranceSeconds > 0 && protect) {
+        this.eventDeadlines.set(protect, new Date(now.getTime() + event.toleranceSeconds * 1000))
       }
     }
+    // Un "Ferma tutto" dell'evento seguito da brani dell'evento: i brani partono
+    // alla fine della sfumatura, come previsto dall'evento.
+    if (stopped && queuedFront) this.stopped = false
     this.emit()
   }
 
@@ -349,6 +385,11 @@ export class PlayoutEngine {
   private mixPoint(t: Track): number {
     if (t.mixPoint > t.cueIn) return t.mixPoint
     return this.endPoint(t)
+  }
+
+  /** Falso per i brani di cui non si conosce la fine (durata 0, non ancora analizzati). */
+  private knownLength(t: Track): boolean {
+    return this.endPoint(t) > t.cueIn
   }
 
   private endPoint(t: Track): number {
@@ -380,10 +421,17 @@ export class PlayoutEngine {
     this.starting = true
     try {
       // prova fino a 3 brani: se un file è sparito o rovinato passa al successivo
+      const gen = this.generation
       for (let attempt = 0; attempt < 3 && this.queue.length; attempt++) {
         const item = this.queue.shift()!
+        this.eventDeadlines.delete(item.uid)
         const slot = await this.launch(item, this.slots)
         if (slot) break
+        if (gen !== this.generation) {
+          // STOP premuto mentre il brano caricava: non va in onda, torna in testa alla coda
+          this.queue.unshift(item)
+          break
+        }
       }
     } finally {
       this.starting = false
@@ -403,12 +451,24 @@ export class PlayoutEngine {
       ended: false
     }
     player.onEnded(() => void this.finish(slot, list))
+    const gen = this.generation
+    const stale = (): boolean => list === this.slots && gen !== this.generation
     try {
       await player.start()
     } catch (err) {
+      if (stale()) {
+        slot.ended = true
+        return null
+      }
       this.lastError = `Impossibile riprodurre "${item.track.artist} - ${item.track.title}": ${
         err instanceof Error ? err.message : String(err)
       }`
+      return null
+    }
+    if (stale()) {
+      // STOP premuto durante il caricamento
+      slot.ended = true
+      player.stop()
       return null
     }
     slot.startedAt = this.now()
@@ -436,7 +496,13 @@ export class PlayoutEngine {
       }
     }
     // In manuale, se un evento è in testa alla coda parte comunque.
-    if (list === this.slots && !this.current() && this.mode === 'manual' && this.queue[0]?.origin === 'event') {
+    if (
+      list === this.slots &&
+      !this.stopped &&
+      !this.current() &&
+      this.mode === 'manual' &&
+      this.queue[0]?.origin === 'event'
+    ) {
       await this.startNext()
     }
     this.emit()

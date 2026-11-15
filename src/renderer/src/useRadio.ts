@@ -120,6 +120,8 @@ export function useRadio() {
       })
     return () => {
       cancelled = true
+      // ferma anche un avvio ancora in corso: al prossimo giro ne parte uno solo
+      capture.stop()
     }
   }, [captureKey, capture, backend]) // eslint-disable-line react-hooks/exhaustive-deps
 
