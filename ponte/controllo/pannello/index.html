@@ -67,6 +67,23 @@
           <audio id="mic-ret" autoplay></audio>
         </section>
 
+        <section class="card guests mic" id="guests-card" hidden>
+          <div class="section-title">Ospiti <span id="guests-count" class="mic-who"></span></div>
+          <div id="guests-list"></div>
+          <div id="guests-ctl">
+            <form id="invite-form" class="search">
+              <input id="invite-label" placeholder="Per chi è il link? (es. Mario, intervista delle 18)" maxlength="60" />
+              <button type="submit">Crea link</button>
+            </form>
+            <div id="invite-out" hidden>
+              <div class="invite-url"><input id="invite-url" readonly /><button id="invite-copy" type="button">Copia</button><button id="invite-share" type="button" hidden>Invia…</button></div>
+              <p class="hint">Mandalo all'ospite (per esempio su WhatsApp). Vale 24 ore.</p>
+            </div>
+            <button id="invites-show" class="small ghost" type="button">Link attivi</button>
+            <ul class="list" id="invites-list" hidden></ul>
+          </div>
+        </section>
+
         <section class="card auto" id="auto-card" hidden>
           <div class="section-title">Diretta autonoma dal server <span id="auto-badge" class="mic-who"></span></div>
           <p class="hint" id="auto-hint">Il ponte suona la musica della libreria del server al posto della regia. Con la coda vuota sceglie da solo.</p>

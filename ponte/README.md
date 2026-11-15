@@ -118,7 +118,7 @@ Ruoli (menu ☰ → Utenti, solo per gli amministratori):
 |---|---|
 | Amministratore | tutto, compresa la gestione degli utenti |
 | Conduttore | comandare la regia e usare il microfono dal pannello |
-| Ospite | vedere soltanto, senza microfono (il collegamento audio degli ospiti arriva con la fase 5) |
+| Ospite | vedere soltanto, senza microfono (per gli ospiti in diretta si usa il link, vedi sotto) |
 
 ### Microfono dal pannello
 
@@ -135,6 +135,17 @@ processore audio. Liquidsoap rimanda al conduttore il programma senza la sua voc
 - La voce va in onda solo quando c'è un programma (regia o esterna): senza, l'uscita verso AzuraCast resta
   ferma e AzuraCast usa la sua AutoDJ.
 - `MICROFONO_REMOTO=no` lo disattiva.
+
+### Ospiti
+
+Dal pannello (sezione Ospiti) un conduttore crea un **link** valido 24 ore (revocabile) e lo manda all'ospite.
+L'ospite apre `https://<dominio>:9080/ospite.html?t=...`, scrive il nome, prova il microfono ed entra in
+**sala d'attesa** (dove sente la radio se `ASCOLTO_URL` è impostato). Il conduttore lo fa entrare, lo mette in onda,
+lo toglie, lo chiude. Al massimo **3 ospiti** insieme, più il microfono del conduttore.
+
+Ognuno sente in cuffia il programma e le altre voci in onda, ma non la propria (mix-minus fatto in Liquidsoap).
+Porte interne (rete Docker): voci 41030/41032/41034/41036, ritorni 41040/41042/41044/41046 (pari, perché RTP usa
+la successiva per RTCP). All'esterno servono solo la porta del pannello e le UDP `WEBRTC_PORTE`.
 
 ### Diretta autonoma (musica dal server)
 
