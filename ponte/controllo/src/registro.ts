@@ -25,6 +25,8 @@ const KEEP_DAYS = 400
 export class PlayLog {
   private readonly file: string
   private readonly now: () => number
+  /** Avviso a ogni brano aggiunto (titolo in onda). */
+  onAdd: ((e: ServerPlay) => void) | null = null
 
   constructor(file: string, now: () => number = () => Date.now()) {
     this.file = file
@@ -44,6 +46,7 @@ export class PlayLog {
       ...(p.publisher ? { publisher: p.publisher } : {})
     }
     appendFileSync(this.file, `${JSON.stringify(entry)}\n`)
+    this.onAdd?.(entry)
     return entry
   }
 

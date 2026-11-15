@@ -503,6 +503,11 @@ contenuti on demand da AzuraCast funziona cambiando solo l'indirizzo del server.
 negli indirizzi si imposta in **Impostazioni** (in fondo alla pagina Programmi): metti lo stesso che usavi su
 AzuraCast.
 
+Anche il **titolo in onda** risponde come AzuraCast (`/api/nowplaying`): brano in onda con la durata, ultimi 5
+brani, numero di ascoltatori dell'Icecast principale e diretta esterna segnata come "live". L'immagine è la
+copertina del programma in onda oppure il logo caricato nelle dirette video. Il titolo arriva comunque anche
+nel flusso Icecast, come prima.
+
 **Spazio su disco:** a 128 kbps un'ora di registrazione occupa circa 58 MB (`PUNTATE_BITRATE` nel `.env`). Le bozze
 non pubblicate restano finché non le elimini.
 
@@ -598,3 +603,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Report SIAE trimestrale in CSV per il portale; brani della diretta autonoma e della riserva nel registro; autori, editore, ISWC e ISRC da MusicBrainz; elenco della musica con dati mancanti |
 | 15/11/2026 | Riconoscimento dei brani nelle dirette esterne con le impronte della libreria; brani sconosciuti da ascoltare ed etichettare nel pannello; i brani caricati dal pannello scendono in regia e vengono catalogati come Artista\Titolo |
 | 15/11/2026 | Programmi dal pannello con fasce e copertina; registrazione automatica delle puntate, revisione e pubblicazione; pagine `podcast.html` e `ascolta.html`; API dei podcast come AzuraCast per l'app; repliche dal pannello e con gli eventi |
+| 15/11/2026 | Titolo in onda, ultimi brani e ascoltatori agli indirizzi `/api/nowplaying` di AzuraCast, per l'app |

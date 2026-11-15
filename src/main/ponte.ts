@@ -169,7 +169,7 @@ export class PonteService {
     const c = this.client()
     if (!c || !this.settings?.sendMetadata || !this.settings.enabled) return
     if (track.kind === 'jingle' || track.kind === 'spot') return
-    c.metadata(track.artist, track.title).catch(() => {
+    c.metadata(track.artist, track.title, Math.max(0, (track.cueOut || track.duration) - track.cueIn)).catch(() => {
       // non è grave: il prossimo brano riproverà
     })
   }
