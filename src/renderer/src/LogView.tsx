@@ -2,9 +2,21 @@ import { useEffect, useState } from 'react'
 import type { LogEntry } from '../../core/types'
 import { KIND_LABEL, mmss } from './format'
 
-function dayStart(s: string): Date {
-  const [y, m, d] = s.split('-').map(Number)
-  return new Date(y, m - 1, d)
+/** Mezzanotte locale del giorno "AAAA-MM-GG"; null se la data è vuota o non valida (campo cancellato). */
+export function dayStart(s: string): Date | null {
+  const m = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(s)
+  if (!m) return null
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** Intervallo [inizio di `from`, fine di `to`) in ISO; null se una delle due date non è valida. */
+export function logRange(from: string, to: string): [string, string] | null {
+  const start = dayStart(from)
+  const end = dayStart(to)
+  if (!start || !end) return null
+  end.setDate(end.getDate() + 1)
+  return [start.toISOString(), end.toISOString()]
 }
 
 function isoDay(d: Date): string {
@@ -18,14 +30,12 @@ export function LogView() {
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [saved, setSaved] = useState<string | null>(null)
 
-  const range = (): [string, string] => {
-    const end = dayStart(to)
-    end.setDate(end.getDate() + 1)
-    return [dayStart(from).toISOString(), end.toISOString()]
-  }
+  const range = logRange(from, to)
 
   useEffect(() => {
-    const [a, b] = range()
+    // data cancellata o incompleta: resta l'ultimo elenco finché non è di nuovo valida
+    if (!range) return
+    const [a, b] = range
     void window.radio.listLog(a, b).then(setEntries)
     const t = setInterval(() => void window.radio.listLog(a, b).then(setEntries), 5000)
     return () => clearInterval(t)
@@ -48,8 +58,11 @@ export function LogView() {
           </label>
           <button
             className="primary"
+            disabled={!range}
+            title={range ? undefined : 'Indica le date del periodo'}
             onClick={async () => {
-              const [a, b] = range()
+              if (!range) return
+              const [a, b] = range
               setSaved(await window.radio.exportLogCsv(a, b))
             }}
           >

@@ -1,6 +1,6 @@
 /** Smista i messaggi tra la regia (una sola) e i pannelli remoti (quanti si vuole). */
 import type { FromPanel, FromStudio, RemoteState, ToPanel, ToStudio } from './protocol.ts'
-import { can, type PublicUser } from './users.ts'
+import { can, sameSecret, type PublicUser } from './users.ts'
 
 export interface Peer {
   send(data: string): void
@@ -53,8 +53,10 @@ export class Relay {
         } catch {
           return
         }
+        // JSON valido ma non un oggetto (null, numeri, liste…): lo ignoriamo
+        if (typeof msg !== 'object' || msg === null || Array.isArray(msg)) return
         if (!authed) {
-          if (msg.t !== 'auth' || msg.token !== this.token) {
+          if (msg.t !== 'auth' || typeof msg.token !== 'string' || !sameSecret(msg.token, this.token)) {
             peer.close(4003, 'token non valido')
             return
           }
@@ -73,6 +75,7 @@ export class Relay {
           this.state = msg.state
           this.broadcast({ t: 'state', state: msg.state })
         } else if (msg.t === 'reply') {
+          if (typeof msg.id !== 'string') return
           const p = this.pending.get(msg.id)
           if (!p) return
           clearTimeout(p.timer)
@@ -100,9 +103,22 @@ export class Relay {
     this.studio?.send(JSON.stringify(m))
   }
 
+  /** Segnale di vita a livello di applicazione verso la regia collegata. */
+  pingStudio(): void {
+    this.sendStudio({ t: 'ping' })
+  }
+
   // ---------- pannelli ----------
 
-  attachPanel(peer: Peer, user: PublicUser): { message: (raw: string) => void; close: () => void } {
+  /**
+   * Nuovo pannello. `current` (facoltativo) restituisce l'utente aggiornato della sessione:
+   * a ogni comando si ricontrolla il ruolo, e senza sessione valida la connessione si chiude.
+   */
+  attachPanel(
+    peer: Peer,
+    user: PublicUser,
+    current?: () => PublicUser | null
+  ): { message: (raw: string) => void; close: () => void } {
     this.panels.set(peer, user)
     this.sendTo(peer, { t: 'hello', user, studio: this.studio !== null, state: this.state })
     this.sendTo(peer, this.alarms)
@@ -114,10 +130,13 @@ export class Relay {
         } catch {
           return
         }
-        if (msg.t !== 'cmd' || typeof msg.id !== 'string' || !msg.cmd) return
+        if (typeof msg !== 'object' || msg === null || Array.isArray(msg)) return
+        if (msg.t !== 'cmd' || typeof msg.id !== 'string' || typeof msg.cmd !== 'object' || msg.cmd === null) return
         const reply = (ok: boolean, error?: string): void => this.sendTo(peer, { t: 'reply', id: msg.id, ok, error })
+        const now = current ? current() : user
+        if (!now) return peer.close(4003, 'sessione chiusa')
         // la ricerca è una lettura: la può fare anche chi non comanda
-        if (msg.cmd.type !== 'search' && !can(user.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la regia')
+        if (msg.cmd.type !== 'search' && !can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la regia')
         if (!this.studio) return reply(false, 'regia scollegata')
         const id = `c${++this.seq}`
         this.pending.set(id, {
@@ -128,7 +147,7 @@ export class Relay {
             reply(false, 'la regia non ha risposto')
           }, REPLY_TIMEOUT_MS)
         })
-        this.sendStudio({ t: 'cmd', id, cmd: msg.cmd, by: user.name })
+        this.sendStudio({ t: 'cmd', id, cmd: msg.cmd, by: now.name })
       },
       close: () => {
         this.panels.delete(peer)
@@ -141,9 +160,12 @@ export class Relay {
     }
   }
 
-  /** Chiude le connessioni di un utente (eliminato o con password cambiata). */
-  kick(name: string): void {
-    for (const [peer, u] of this.panels) if (u.name.toLowerCase() === name.toLowerCase()) peer.close(4003, 'sessione chiusa')
+  /**
+   * Chiude le connessioni di un utente (eliminato o con password cambiata: 4003, il pannello torna all'accesso).
+   * Con un altro codice (per esempio 4002 dopo un cambio di ruolo) il pannello si ricollega da solo.
+   */
+  kick(name: string, code = 4003, reason = 'sessione chiusa'): void {
+    for (const [peer, u] of this.panels) if (u.name.toLowerCase() === name.toLowerCase()) peer.close(code, reason)
   }
 
   setAlarms(alarms: { key: string; since: string; message: string }[]): void {

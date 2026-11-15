@@ -11,6 +11,7 @@ export class UplinkCapture {
   private stream: MediaStream | null = null
   private source: AudioNode | null = null
   private loaded = false
+  private gen = 0
   private ctx: AudioContext
   private program: AudioNode
   private send: (pcm: ArrayBuffer) => void
@@ -27,9 +28,33 @@ export class UplinkCapture {
 
   async start(p: Pick<PonteSettings, 'source' | 'inputDeviceId'>): Promise<void> {
     this.stop()
+    // ogni start() (e ogni stop()) apre una nuova "generazione": se nel frattempo ne è partita
+    // un'altra, questa si ritira e rilascia quello che ha aperto (nodo, microfono)
+    const gen = this.gen
     if (!this.loaded) {
       await this.ctx.audioWorklet.addModule(workletUrl)
       this.loaded = true
+    }
+    if (gen !== this.gen) return
+    let stream: MediaStream | null = null
+    let source: AudioNode
+    if (p.source === 'ingresso') {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: p.inputDeviceId ? { exact: p.inputDeviceId } : undefined,
+          channelCount: 2,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      })
+      if (gen !== this.gen) {
+        for (const t of stream.getTracks()) t.stop()
+        return
+      }
+      source = this.ctx.createMediaStreamSource(stream)
+    } else {
+      source = this.program
     }
     const node = new AudioWorkletNode(this.ctx, 'pcm-capture', {
       numberOfInputs: 1,
@@ -39,31 +64,21 @@ export class UplinkCapture {
       channelInterpretation: 'speakers'
     })
     node.port.onmessage = (e: MessageEvent<ArrayBuffer>) => this.send(e.data)
-    if (p.source === 'ingresso') {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: p.inputDeviceId ? { exact: p.inputDeviceId } : undefined,
-          channelCount: 2,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        }
-      })
-      this.source = this.ctx.createMediaStreamSource(this.stream)
-    } else {
-      this.source = this.program
-    }
-    this.source.connect(node)
+    source.connect(node)
     // il nodo deve essere collegato all'uscita per lavorare: lo colleghiamo a volume zero
-    this.mute = this.ctx.createGain()
-    this.mute.gain.value = 0
-    node.connect(this.mute)
-    this.mute.connect(this.ctx.destination)
+    const mute = this.ctx.createGain()
+    mute.gain.value = 0
+    node.connect(mute)
+    mute.connect(this.ctx.destination)
     this.node = node
+    this.mute = mute
+    this.stream = stream
+    this.source = source
     if (this.ctx.state === 'suspended') await this.ctx.resume()
   }
 
   stop(): void {
+    this.gen++
     if (this.node) {
       try {
         this.source?.disconnect(this.node)

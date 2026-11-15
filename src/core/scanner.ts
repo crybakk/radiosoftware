@@ -15,17 +15,26 @@ export interface ScanProgress {
   done: boolean
 }
 
-async function* walk(dir: string): AsyncGenerator<string> {
+/** Errore per i file con estensione audio che non contengono audio (vuoti, rovinati, rinominati). */
+export class NotAudioError extends Error {
+  constructor(path: string) {
+    super(`Il file non contiene audio leggibile: ${path}`)
+  }
+}
+
+/** Elenca i file audio sotto `dir`. Le cartelle che non si possono leggere finiscono in `unreadable`. */
+async function* walk(dir: string, unreadable: string[]): AsyncGenerator<string> {
   let entries
   try {
     entries = await readdir(dir, { withFileTypes: true })
   } catch {
+    unreadable.push(dir)
     return
   }
   for (const e of entries) {
     if (e.name.startsWith('.')) continue
     const full = join(dir, e.name)
-    if (e.isDirectory()) yield* walk(full)
+    if (e.isDirectory()) yield* walk(full, unreadable)
     else if (e.isFile() && AUDIO_EXTENSIONS.has(extname(e.name).toLowerCase())) yield full
   }
 }
@@ -51,6 +60,8 @@ export async function readFileInfo(path: string, kind: TrackKind): Promise<Scann
   const st = await stat(path)
   const { parseFile } = await import('music-metadata')
   const meta = await parseFile(path, { duration: false, skipCovers: true })
+  // file vuoto o non audio: niente durata e niente frequenza di campionamento
+  if (!((meta.format.duration ?? 0) > 0) && !((meta.format.sampleRate ?? 0) > 0)) throw new NotAudioError(path)
   const c = meta.common
   const fallback = guessFromFilename(path)
   const native = meta.native ?? {}
@@ -83,36 +94,44 @@ export async function readFileInfo(path: string, kind: TrackKind): Promise<Scann
 /**
  * Scansiona tutte le cartelle della libreria. I file non modificati vengono saltati,
  * quelli spariti vengono disabilitati (non cancellati, per non perdere lo storico).
+ * I brani dentro cartelle che non si riescono a leggere (per esempio un NAS spento) non vengono toccati:
+ * ogni cartella illeggibile conta come un errore.
  */
 export async function scanLibrary(db: RadioDb, onProgress?: (p: ScanProgress) => void): Promise<ScanProgress> {
   const folders = db.listFolders()
   const seenPaths = new Set<string>()
+  const unreadable: string[] = []
   const progress: ScanProgress = { folder: '', seen: 0, added: 0, updated: 0, errors: 0, disabled: 0, done: false }
   for (const folder of folders) {
     progress.folder = folder.path
-    for await (const file of walk(resolve(folder.path))) {
+    const before = unreadable.length
+    for await (const file of walk(resolve(folder.path), unreadable)) {
       seenPaths.add(file)
       progress.seen++
       try {
         const st = await stat(file)
         const prev = db.fileState(file)
         if (prev && prev.size === st.size && Math.abs(prev.mtime - st.mtimeMs) < 1) {
-          // non modificato: assicuriamoci solo che sia abilitato e del tipo giusto
-          db.db.prepare('UPDATE tracks SET enabled = 1, kind = ? WHERE path = ?').run(folder.kind, file)
+          // non modificato: riabilitato se era sparito, tipo della cartella se non cambiato a mano
+          db.refreshUnchanged(file, folder.kind)
         } else {
           db.upsertScanned(await readFileInfo(file, folder.kind))
           if (prev) progress.updated++
           else progress.added++
         }
-      } catch {
+      } catch (e) {
         progress.errors++
+        // un file non audio non va in onda: se era in libreria viene disabilitato come se fosse sparito
+        if (e instanceof NotAudioError) seenPaths.delete(file)
       }
       if (progress.seen % 50 === 0) onProgress?.({ ...progress })
     }
+    progress.errors += unreadable.length - before
   }
   progress.disabled = db.disableMissing(
     seenPaths,
-    folders.map((f) => resolve(f.path))
+    folders.map((f) => resolve(f.path)),
+    unreadable
   )
   progress.done = true
   onProgress?.({ ...progress })

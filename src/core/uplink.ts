@@ -17,8 +17,10 @@ export interface UplinkStatus {
   /** Quando è iniziato il collegamento attuale (ISO). */
   connectedSince: string | null
   reconnects: number
-  /** Secondi alla prossima riconnessione. */
+  /** Secondi alla prossima riconnessione (calcolati quando lo stato viene inviato). */
   retryIn: number | null
+  /** Quando ci sarà la prossima riconnessione (ISO): l'interfaccia ci calcola il conto alla rovescia. */
+  retryAt: string | null
   kbps: number
 }
 
@@ -85,7 +87,7 @@ export class Uplink {
   private stderr = ''
   private lastBytes = 0
   private lastBytesAt = 0
-  private status: UplinkStatus = { state: 'spento', message: 'Invio al ponte spento', connectedSince: null, reconnects: 0, retryIn: null, kbps: 0 }
+  private status: UplinkStatus = { state: 'spento', message: 'Invio al ponte spento', connectedSince: null, reconnects: 0, retryIn: null, retryAt: null, kbps: 0 }
   private listeners = new Set<(s: UplinkStatus) => void>()
   private ffmpegPath: string
 
@@ -99,7 +101,11 @@ export class Uplink {
   }
 
   getStatus(): UplinkStatus {
-    return { ...this.status, retryIn: this.retryAt ? Math.max(0, Math.ceil((this.retryAt - Date.now()) / 1000)) : null }
+    return {
+      ...this.status,
+      retryIn: this.retryAt ? Math.max(0, Math.ceil((this.retryAt - Date.now()) / 1000)) : null,
+      retryAt: this.retryAt ? new Date(this.retryAt).toISOString() : null
+    }
   }
 
   private set(patch: Partial<UplinkStatus>): void {

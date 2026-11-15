@@ -1,4 +1,4 @@
-import { analyzeFile } from '../core/analyzer'
+import { ANALYSIS_TIMEOUT_MS, analyzeFile } from '../core/analyzer'
 import type { RadioDb } from '../core/db'
 import { scanLibrary, type ScanProgress } from '../core/scanner'
 import type { LibraryStatus } from '../shared/api'
@@ -11,6 +11,7 @@ export class LibraryService {
   private scanning: ScanProgress | null = null
   private analyzing = false
   private stopRequested = false
+  private abort: AbortController | null = null
   private listeners = new Set<(s: LibraryStatus) => void>()
 
   constructor(
@@ -52,6 +53,7 @@ export class LibraryService {
     if (this.analyzing || !this.ffmpegPath) return
     this.analyzing = true
     this.stopRequested = false
+    const abort = (this.abort = new AbortController())
     this.emit()
     let lastEmit = 0
     try {
@@ -61,9 +63,19 @@ export class LibraryService {
         for (const t of batch) {
           if (this.stopRequested) break
           try {
-            const r = await analyzeFile(this.ffmpegPath, t.path)
+            // tempo massimo: 60 s o tre volte la durata del brano
+            const timeout = Math.max(ANALYSIS_TIMEOUT_MS, 3 * t.duration * 1000)
+            const r = await analyzeFile(this.ffmpegPath, t.path, abort.signal, timeout)
             this.db.saveAnalysis(t.id, r)
           } catch {
+            // analisi interrotta da stop(): il brano resta da analizzare
+            if (abort.signal.aborted) break
+            if (!(t.duration > 0)) {
+              // né i tag né ffmpeg sanno quanto dura: non è un brano da mandare in onda.
+              // Viene disabilitato come un file sparito, una nuova scansione lo riprova.
+              this.db.markMissing(t.id)
+              continue
+            }
             // file illeggibile: lo segniamo come analizzato con i dati del tag, per non riprovarlo all'infinito
             this.db.saveAnalysis(t.id, {
               duration: t.duration,
@@ -80,6 +92,7 @@ export class LibraryService {
         }
       }
     } finally {
+      if (this.abort === abort) this.abort = null
       this.analyzing = false
       this.emit()
     }
@@ -87,5 +100,6 @@ export class LibraryService {
 
   stop(): void {
     this.stopRequested = true
+    this.abort?.abort()
   }
 }

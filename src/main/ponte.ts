@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { RadioDb } from '../core/db'
-import { backupDue, PonteClient, type PonteAlarm, type PonteBackup, type PonteState } from '../core/ponteClient'
+import { backupDue, parsePonteHost, PonteClient, type PonteAlarm, type PonteBackup, type PonteState } from '../core/ponteClient'
 import type { PonteSettings, Track } from '../core/types'
 import { Uplink, type UplinkStatus } from '../core/uplink'
 import { RemoteLink, remoteTrack, remoteUrl, type RemoteCommand, type RemoteLinkStatus, type RemoteState } from '../core/remote'
@@ -112,12 +112,7 @@ export class PonteService {
   }
 
   private srtHost(): string {
-    const h = this.settings?.host.trim() ?? ''
-    try {
-      return /^https?:\/\//i.test(h) ? new URL(h).hostname : h
-    } catch {
-      return h
-    }
+    return parsePonteHost(this.settings?.host ?? '').hostname
   }
 
   applySettings(p: PonteSettings): void {

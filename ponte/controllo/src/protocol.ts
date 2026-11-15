@@ -43,7 +43,11 @@ export type FromStudio =
   | { t: 'reply'; id: string; ok: boolean; data?: unknown; error?: string }
 
 /** Ponte → regia */
-export type ToStudio = { t: 'auth-ok' } | { t: 'cmd'; id: string; cmd: RemoteCommand; by: string }
+export type ToStudio =
+  | { t: 'auth-ok' }
+  | { t: 'cmd'; id: string; cmd: RemoteCommand; by: string }
+  /** Segnale di vita ogni 15 secondi: la regia lo può ignorare (le versioni vecchie ignorano i tipi sconosciuti). */
+  | { t: 'ping' }
 
 /** Pannello → ponte */
 export type FromPanel = { t: 'cmd'; id: string; cmd: RemoteCommand }

@@ -1,0 +1,263 @@
+// Prove del servizio di controllo completo: si avvia il vero server.ts in un processo separato.
+import { afterEach, describe, expect, it } from 'vitest'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { connect } from 'node:net'
+import { fileURLToPath } from 'node:url'
+import WebSocket from 'ws'
+
+const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123'
+const SERVER = join(dirname(fileURLToPath(import.meta.url)), 'server.ts')
+let procs: ChildProcess[] = []
+let portBase = 21000 + Math.floor(Math.random() * 20000)
+
+async function startServer(): Promise<{ port: number; proc: ChildProcess; exited: Promise<number | null> }> {
+  const port = portBase++
+  const internal = portBase++
+  const proc = spawn(process.execPath, [SERVER], {
+    env: {
+      ...process.env,
+      CONTROLLO_TOKEN: TOKEN,
+      CARTELLA_DATI: mkdtempSync(join(tmpdir(), 'ponte-')),
+      CONTROLLO_PORTA: String(port),
+      CONTROLLO_PORTA_INTERNA: String(internal),
+      LIQUIDSOAP_INTERNO: 'http://127.0.0.1:1',
+      PANNELLO_ADMIN_PASSWORD: 'adminadmin'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  procs.push(proc)
+  const exited = new Promise<number | null>((r) => proc.on('exit', (c) => r(c)))
+  await new Promise<void>((res, rej) => {
+    proc.stdout!.on('data', (d) => String(d).includes('in ascolto sulla porta') && res())
+    proc.on('exit', () => rej(new Error('il server si è fermato alla partenza')))
+  })
+  return { port, proc, exited }
+}
+
+afterEach(() => {
+  for (const p of procs) p.kill('SIGKILL')
+  procs = []
+})
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const died = (exited: Promise<number | null>, ms = 1500) =>
+  Promise.race([exited.then(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), ms))])
+
+/** Richiesta scritta a mano; restituisce la prima riga della risposta ('' se la connessione si chiude senza risposta). */
+function rawRequest(port: number, text: string): Promise<string> {
+  return new Promise((res) => {
+    let out = ''
+    const s = connect(port, '127.0.0.1', () => s.write(text))
+    s.on('error', () => res(out.split('\r\n')[0]))
+    s.on('data', (d) => {
+      out += d
+      s.destroy()
+      res(out.split('\r\n')[0])
+    })
+    s.on('close', () => res(out.split('\r\n')[0]))
+  })
+}
+
+async function login(port: number, name: string, password: string): Promise<{ status: number; cookie?: string }> {
+  const r = await fetch(`http://127.0.0.1:${port}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, password })
+  })
+  const sc = r.headers.get('set-cookie') ?? undefined
+  return { status: r.status, cookie: sc?.split(';')[0] }
+}
+
+function openWs(url: string, headers: Record<string, string> = {}): Promise<WebSocket> {
+  return new Promise((res, rej) => {
+    const ws = new WebSocket(url, { headers })
+    ws.on('open', () => res(ws))
+    ws.on('error', rej)
+  })
+}
+
+const closed = (ws: WebSocket, ms = 1000): Promise<number | null> =>
+  new Promise((r) => {
+    if (ws.readyState === WebSocket.CLOSED) return r(-1)
+    const t = setTimeout(() => r(null), ms)
+    ws.on('close', (code) => {
+      clearTimeout(t)
+      r(code)
+    })
+  })
+
+async function regia(port: number): Promise<{ ws: WebSocket; cmds: any[] }> {
+  const ws = await openWs(`ws://127.0.0.1:${port}/ws/regia`)
+  const cmds: any[] = []
+  const ok = new Promise((r) =>
+    ws.on('message', (d) => {
+      const m = JSON.parse(String(d))
+      if (m.t === 'cmd') cmds.push(m)
+      if (m.t === 'auth-ok') r(null)
+    })
+  )
+  ws.send(JSON.stringify({ t: 'auth', token: TOKEN }))
+  await ok
+  return { ws, cmds }
+}
+
+const HANDSHAKE =
+  'GET /ws/pannello HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
+  'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n'
+
+describe('il ponte non cade per richieste anonime malformate', () => {
+  it('GET "//" riceve una risposta e il processo resta vivo', async () => {
+    const { port, exited } = await startServer()
+    expect(await rawRequest(port, 'GET // HTTP/1.1\r\nHost: x\r\n\r\n')).toMatch(/^HTTP\/1\.1 \d+/)
+    expect(await died(exited)).toBe(false)
+  })
+
+  it('WS /ws/regia: messaggi "null", numeri e liste senza autenticazione', async () => {
+    const { port, exited } = await startServer()
+    const ws = await openWs(`ws://127.0.0.1:${port}/ws/regia`)
+    ws.on('error', () => {})
+    for (const m of ['null', '3', '[]', '"x"']) ws.send(m)
+    expect(await died(exited)).toBe(false)
+  })
+
+  it('WS /ws/pannello: messaggio "null" da un pannello collegato', async () => {
+    const { port, exited } = await startServer()
+    const admin = await login(port, 'admin', 'adminadmin')
+    const ws = await openWs(`ws://127.0.0.1:${port}/ws/pannello`, { Cookie: admin.cookie! })
+    for (const m of ['null', '3', '{"t":"cmd","id":"a","cmd":null}']) ws.send(m)
+    expect(await died(exited)).toBe(false)
+    expect(ws.readyState).toBe(WebSocket.OPEN)
+  })
+
+  it('cookie di sessione con codifica non valida (%E0): rifiutato, processo vivo', async () => {
+    const { port, exited } = await startServer()
+    expect(await rawRequest(port, HANDSHAKE + 'Cookie: sessione=%E0\r\n\r\n')).toBe('HTTP/1.1 401 Unauthorized')
+    expect(await died(exited)).toBe(false)
+  })
+
+  it('cookie sessione=constructor / __proto__: rifiutato, processo vivo', async () => {
+    const { port, exited } = await startServer()
+    for (const t of ['constructor', '__proto__', 'toString']) {
+      expect(await rawRequest(port, HANDSHAKE + `Cookie: sessione=${t}\r\n\r\n`)).toBe('HTTP/1.1 401 Unauthorized')
+      const io = await fetch(`http://127.0.0.1:${port}/api/io`, { headers: { Cookie: `sessione=${t}` } })
+      expect(io.status).toBe(401)
+    }
+    expect(await died(exited)).toBe(false)
+  })
+})
+
+describe('ruoli e sessioni del pannello', () => {
+  async function setup() {
+    const { port } = await startServer()
+    const base = `http://127.0.0.1:${port}`
+    const studio = await regia(port)
+    const admin = await login(port, 'admin', 'adminadmin')
+    const post = (body: unknown) =>
+      fetch(`${base}/api/utenti`, {
+        method: 'POST',
+        headers: { Cookie: admin.cookie!, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+    expect((await post({ name: 'mario', role: 'conduttore', password: 'password1' })).status).toBe(200)
+    const mario = await login(port, 'mario', 'password1')
+    const panel = await openWs(`ws://127.0.0.1:${port}/ws/pannello`, { Cookie: mario.cookie! })
+    return { port, base, studio, admin, post, mario, panel }
+  }
+
+  it('cambiando ruolo (senza cambiare password) il pannello aperto viene chiuso e non comanda più', async () => {
+    const { port, base, studio, post, mario, panel } = await setup()
+    const code = closed(panel)
+    expect((await post({ name: 'mario', role: 'ospite' })).status).toBe(200)
+    expect(await code).toBe(4002) // non 4003: la sessione resta valida e il pannello si ricollega
+    const io = await (await fetch(`${base}/api/io`, { headers: { Cookie: mario.cookie! } })).json()
+    expect(io.user.role).toBe('ospite')
+    // ricollegato, ha il ruolo nuovo
+    const again = await openWs(`ws://127.0.0.1:${port}/ws/pannello`, { Cookie: mario.cookie! })
+    const replies: any[] = []
+    again.on('message', (d) => replies.push(JSON.parse(String(d))))
+    again.send(JSON.stringify({ t: 'cmd', id: 'x', cmd: { type: 'stop' } }))
+    await wait(200)
+    expect(studio.cmds).toEqual([])
+    expect(replies.find((m) => m.t === 'reply')).toMatchObject({ id: 'x', ok: false })
+  })
+
+  it('eliminando un utente il suo pannello viene chiuso', async () => {
+    const { base, admin, panel } = await setup()
+    const code = closed(panel)
+    const r = await fetch(`${base}/api/utenti/mario`, { method: 'DELETE', headers: { Cookie: admin.cookie! } })
+    expect(r.status).toBe(200)
+    expect(await code).toBe(4003)
+  })
+
+  it("l'uscita chiude i WebSocket aperti con quella sessione (e solo quelli)", async () => {
+    const { port, base, mario, panel } = await setup()
+    const other = await login(port, 'mario', 'password1')
+    const otherWs = await openWs(`ws://127.0.0.1:${port}/ws/pannello`, { Cookie: other.cookie! })
+    const code = closed(panel)
+    await fetch(`${base}/api/logout`, { method: 'POST', headers: { Cookie: mario.cookie! } })
+    expect(await code).toBe(4003)
+    await wait(100)
+    expect(otherWs.readyState).toBe(WebSocket.OPEN)
+  })
+})
+
+describe('accesso al pannello', () => {
+  it('il limite di 5 tentativi al minuto per indirizzo regge anche a richieste in parallelo', async () => {
+    const { port } = await startServer()
+    // intestazioni subito e corpo dopo: prima tutte le richieste passavano il controllo
+    const body = JSON.stringify({ name: 'admin', password: 'password-sbagliata' })
+    const one = () =>
+      new Promise<number>((res) => {
+        const s = connect(port, '127.0.0.1', () => {
+          s.write(`POST /api/login HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n`)
+          setTimeout(() => s.write(body), 300)
+        })
+        let out = ''
+        s.on('data', (d) => (out += d))
+        s.on('end', () => res(Number(out.split(' ')[1])))
+        s.on('error', () => res(0))
+      })
+    const results = await Promise.all(Array.from({ length: 30 }, one))
+    expect(results.filter((r) => r === 401).length).toBeLessThanOrEqual(5)
+    expect(results.filter((r) => r === 429).length).toBeGreaterThanOrEqual(25)
+  }, 20_000)
+
+  it('gli accessi riusciti non consumano tentativi', async () => {
+    const { port } = await startServer()
+    for (let i = 0; i < 4; i++) expect((await login(port, 'admin', 'sbagliata!')).status).toBe(401)
+    for (let i = 0; i < 6; i++) expect((await login(port, 'admin', 'adminadmin')).status).toBe(200)
+    expect((await login(port, 'admin', 'sbagliata!')).status).toBe(401)
+    expect((await login(port, 'admin', 'adminadmin')).status).toBe(429)
+  }, 20_000)
+})
+
+describe('backup', () => {
+  it('due invii nello stesso istante non si mescolano e il download funziona', async () => {
+    const { port } = await startServer()
+    const base = `http://127.0.0.1:${port}`
+    const auth = { Authorization: `Bearer ${TOKEN}` }
+    const a = Buffer.alloc(200_000, 1)
+    const b = Buffer.alloc(200_000, 2)
+    const put = (data: Buffer) => fetch(`${base}/api/backup`, { method: 'PUT', headers: auth, body: new Uint8Array(data) }).then((r) => r.json())
+    const [ra, rb] = await Promise.all([put(a), put(b)])
+    expect(ra.ok && rb.ok).toBe(true)
+    const list = await (await fetch(`${base}/api/backup`, { headers: auth })).json()
+    for (const { name } of list) {
+      const got = Buffer.from(await (await fetch(`${base}/api/backup/${name}`, { headers: auth })).arrayBuffer())
+      expect(got.length).toBe(200_000)
+      // ogni copia è tutta di un invio, non un miscuglio dei due
+      expect(got.equals(a) || got.equals(b)).toBe(true)
+    }
+  })
+
+  it('token sbagliato o di lunghezza diversa: 401', async () => {
+    const { port } = await startServer()
+    for (const t of ['x', TOKEN.slice(0, -1) + 'X', TOKEN + 'X']) {
+      const r = await fetch(`http://127.0.0.1:${port}/api/backup`, { headers: { Authorization: `Bearer ${t}` } })
+      expect(r.status).toBe(401)
+    }
+  })
+})

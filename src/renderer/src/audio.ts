@@ -39,6 +39,9 @@ export class WebAudioBackend implements AudioBackend {
   }
 }
 
+/** Attesa massima perché un file (o un flusso) sia pronto a partire. */
+const START_TIMEOUT_MS = 15_000
+
 class WebPlayer implements Player {
   private audio: HTMLAudioElement
   private source: MediaElementAudioSourceNode | null = null
@@ -70,28 +73,40 @@ class WebPlayer implements Player {
   }
 
   async start(): Promise<void> {
-    if (this.ctx.state === 'suspended') await this.ctx.resume()
-    await new Promise<void>((resolve, reject) => {
-      if (this.audio.readyState >= 1) return resolve()
-      const ok = (): void => {
-        cleanup()
-        resolve()
-      }
-      const ko = (): void => {
-        cleanup()
-        reject(new Error('file non leggibile'))
-      }
-      const cleanup = (): void => {
-        this.audio.removeEventListener('loadedmetadata', ok)
-        this.audio.removeEventListener('error', ko)
-      }
-      this.audio.addEventListener('loadedmetadata', ok)
-      this.audio.addEventListener('error', ko)
-    })
-    this.source = this.ctx.createMediaElementSource(this.audio)
-    this.source.connect(this.gain)
-    if (this.track.cueIn > 0) this.audio.currentTime = this.track.cueIn
-    await this.audio.play()
+    try {
+      if (this.ctx.state === 'suspended') await this.ctx.resume()
+      await new Promise<void>((resolve, reject) => {
+        if (this.audio.readyState >= 1) return resolve()
+        const ok = (): void => {
+          cleanup()
+          resolve()
+        }
+        const ko = (): void => {
+          cleanup()
+          reject(new Error('file non leggibile'))
+        }
+        // un flusso o una cartella di rete bloccati non devono fermare la messa in onda
+        const timer = setTimeout(() => {
+          cleanup()
+          reject(new Error('il file non risponde'))
+        }, START_TIMEOUT_MS)
+        const cleanup = (): void => {
+          clearTimeout(timer)
+          this.audio.removeEventListener('loadedmetadata', ok)
+          this.audio.removeEventListener('error', ko)
+        }
+        this.audio.addEventListener('loadedmetadata', ok)
+        this.audio.addEventListener('error', ko)
+      })
+      this.source = this.ctx.createMediaElementSource(this.audio)
+      this.source.connect(this.gain)
+      if (this.track.cueIn > 0) this.audio.currentTime = this.track.cueIn
+      await this.audio.play()
+    } catch (e) {
+      // avvio fallito: liberiamo audio e volume senza segnalare la fine (il brano non è mai partito)
+      this.release()
+      throw e
+    }
     this.audio.addEventListener('error', () => this.finish())
   }
 
@@ -120,6 +135,11 @@ class WebPlayer implements Player {
 
   private finish(): void {
     if (this.done) return
+    this.release()
+    for (const cb of this.endedCbs) cb()
+  }
+
+  private release(): void {
     this.done = true
     if (this.fadeTimer) clearTimeout(this.fadeTimer)
     this.audio.pause()
@@ -127,7 +147,6 @@ class WebPlayer implements Player {
     this.gain.disconnect()
     this.audio.removeAttribute('src')
     this.audio.load()
-    for (const cb of this.endedCbs) cb()
   }
 }
 

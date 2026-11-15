@@ -25,14 +25,63 @@ export interface PonteState {
 
 export class PonteError extends Error {}
 
+export interface PonteAddress {
+  /** Solo il nome o l'IP del ponte (per SRT, che usa sempre la sua porta). */
+  hostname: string
+  /**
+   * Indirizzo completo del servizio di controllo, se è stato scritto con http(s):// o ws(s)://
+   * (es. https://ponte.esempio.it:8443): in quel caso vale la porta scritta lì.
+   */
+  base: string | null
+  /** Porta scritta dopo il nome senza http(s):// (es. "radio.esempio.it:9080"): ambigua, non usata. */
+  strayPort: number | null
+}
+
+/**
+ * Unico punto in cui si interpreta l'indirizzo del ponte scritto nelle impostazioni:
+ * toglie spazi e barre finali, accetta http(s):// e ws(s)://.
+ */
+export function parsePonteHost(input: string): PonteAddress {
+  const h = input.trim().replace(/\/+$/, '')
+  if (/^(https?|wss?):\/\//i.test(h)) {
+    // ws:// → http://, wss:// → https://
+    const http = h.replace(/^ws/i, 'http')
+    try {
+      const u = new URL(http)
+      const path = u.pathname.replace(/\/+$/, '')
+      return { hostname: u.hostname, base: `${u.protocol}//${u.host}${path}`, strayPort: null }
+    } catch {
+      return { hostname: h.replace(/^[a-z]+:\/\//i, '').split('/')[0], base: null, strayPort: null }
+    }
+  }
+  const bare = h.split('/')[0]
+  const m = /^([^:]+):(\d+)$/.exec(bare)
+  if (m) return { hostname: m[1], base: null, strayPort: Number(m[2]) }
+  return { hostname: bare, base: null, strayPort: null }
+}
+
+/** Problema nell'indirizzo del ponte da segnalare prima di salvare, oppure null. */
+export function ponteHostProblem(input: string): string | null {
+  const a = parsePonteHost(input)
+  if (input.trim() && !a.hostname) return 'Indirizzo del server non valido'
+  if (a.strayPort !== null)
+    return 'Scrivi l\'indirizzo del server senza ":porta" (es. radio.esempio.it): le porte vanno nei campi «Porta SRT» e «Porta del servizio di controllo»'
+  return null
+}
+
+/** Indirizzo http(s) del servizio di controllo (e del pannello). */
+export function ponteControlBase(host: string, port: number, https: boolean): string {
+  const a = parsePonteHost(host)
+  return a.base ?? `${https ? 'https' : 'http'}://${a.hostname}:${port}`
+}
+
 export class PonteClient {
   private base: string
   private token: string
 
   constructor(host: string, port: number, token: string, https = false) {
-    const h = host.trim().replace(/\/+$/, '')
     // si può scrivere anche l'indirizzo completo (https://ponte.esempio.it:8443)
-    this.base = /^https?:\/\//i.test(h) ? h : `${https ? 'https' : 'http'}://${h}:${port}`
+    this.base = ponteControlBase(host, port, https)
     this.token = token
   }
 

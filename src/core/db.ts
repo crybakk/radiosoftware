@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import { resolve } from 'node:path'
 import {
   DEFAULT_PONTE,
   DEFAULT_SETTINGS,
@@ -43,6 +44,8 @@ CREATE TABLE IF NOT EXISTS tracks (
   cue_out REAL NOT NULL DEFAULT 0,
   mix_point REAL NOT NULL DEFAULT 0,
   enabled INTEGER NOT NULL DEFAULT 1,
+  missing INTEGER NOT NULL DEFAULT 0,
+  kind_manual INTEGER NOT NULL DEFAULT 0,
   file_size INTEGER NOT NULL DEFAULT 0,
   file_mtime REAL NOT NULL DEFAULT 0,
   analyzed_at TEXT,
@@ -227,12 +230,20 @@ export class RadioDb {
 
   constructor(file: string) {
     this.db = new DatabaseSync(file)
+    // minuscolo() di SQLite tocca solo le lettere ASCII: per la ricerca serve anche "À" → "à"
+    this.db.function('minuscolo', { deterministic: true }, (v) => (typeof v === 'string' ? v.toLowerCase() : v))
     this.db.exec(SCHEMA)
     this.migrate()
   }
 
   /** Porta i dati delle versioni precedenti al formato attuale. */
   private migrate(): void {
+    // v0.2: "missing" distingue i brani disabilitati dalla scansione (file sparito o non audio) da quelli
+    // disabilitati dall'utente; "kind_manual" ricorda che il tipo è stato cambiato a mano.
+    // Nei database esistenti i brani già disabilitati restano tali (non si può sapere chi li ha disabilitati).
+    const cols = new Set((this.db.prepare('PRAGMA table_info(tracks)').all() as Row[]).map((r) => String(r.name)))
+    if (!cols.has('missing')) this.db.exec('ALTER TABLE tracks ADD COLUMN missing INTEGER NOT NULL DEFAULT 0')
+    if (!cols.has('kind_manual')) this.db.exec('ALTER TABLE tracks ADD COLUMN kind_manual INTEGER NOT NULL DEFAULT 0')
     // v0.1: eventi con un solo brano (tabella "events") → eventi con azioni (tabella "schedule")
     const old = this.db.prepare('SELECT * FROM events').all() as Row[]
     if (old.length) {
@@ -313,8 +324,23 @@ export class RadioDb {
       .run(path, kind)
   }
 
+  /** Toglie una cartella dalla libreria e disabilita i suoi brani (non quelli coperti da un'altra cartella). */
   removeFolder(id: number): void {
+    const r = this.db.prepare('SELECT path FROM folders WHERE id = ?').get(id) as Row | undefined
     this.db.prepare('DELETE FROM folders WHERE id = ?').run(id)
+    if (!r) return
+    const dir = trimSep(resolve(String(r.path)))
+    const others = this.listFolders().map((f) => resolve(f.path))
+    const like = (sep: string): string => `${escapeLike(dir + sep)}%`
+    const rows = this.db
+      .prepare("SELECT id, path FROM tracks WHERE enabled = 1 AND (path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\')")
+      .all(like('/'), like('\\')) as Row[]
+    const stmt = this.db.prepare('UPDATE tracks SET enabled = 0, missing = 1 WHERE id = ?')
+    for (const t of rows) {
+      const p = String(t.path)
+      // LIKE ignora maiuscole/minuscole: il controllo esatto lo facciamo qui
+      if (isUnder(p, dir) && !others.some((o) => isUnder(p, o))) stmt.run(Number(t.id))
+    }
   }
 
   // ---------- brani ----------
@@ -325,13 +351,33 @@ export class RadioDb {
     return r ? { size: Number(r.file_size), mtime: Number(r.file_mtime) } : null
   }
 
+  /**
+   * File già in libreria e non modificato: riabilita il brano solo se era stato disabilitato dalla scansione
+   * e aggiorna il tipo solo se l'utente non l'ha cambiato a mano.
+   */
+  refreshUnchanged(path: string, kind: TrackKind): void {
+    this.db
+      .prepare(
+        `UPDATE tracks SET enabled = CASE WHEN missing = 1 THEN 1 ELSE enabled END, missing = 0,
+           kind = CASE WHEN kind_manual = 1 THEN kind ELSE ? END
+         WHERE path = ?`
+      )
+      .run(kind, path)
+  }
+
+  /** Disabilita un brano in automatico (file sparito, non audio o illeggibile): una nuova scansione lo riabilita. */
+  markMissing(id: number): void {
+    this.db.prepare('UPDATE tracks SET enabled = 0, missing = 1 WHERE id = ?').run(id)
+  }
+
   /** Inserisce o aggiorna un file scansionato. Se il file è cambiato, l'analisi va rifatta. */
   upsertScanned(f: ScannedFile): number {
     const existing = this.db.prepare('SELECT id FROM tracks WHERE path = ?').get(f.path) as Row | undefined
     if (existing) {
       this.db
         .prepare(
-          `UPDATE tracks SET kind=?, title=?, artist=?, album=?, year=?, genre=?,
+          `UPDATE tracks SET kind=CASE WHEN kind_manual = 1 THEN kind ELSE ? END,
+             enabled=CASE WHEN missing = 1 THEN 1 ELSE enabled END, missing=0, title=?, artist=?, album=?, year=?, genre=?,
              composer=CASE WHEN composer='' THEN ? ELSE composer END,
              publisher=CASE WHEN publisher='' THEN ? ELSE publisher END,
              isrc=CASE WHEN isrc='' THEN ? ELSE isrc END,
@@ -385,14 +431,18 @@ export class RadioDb {
     return Number(res.lastInsertRowid)
   }
 
-  /** Segna come disabilitati i brani i cui file non esistono più. */
-  disableMissing(existingPaths: Set<string>, folderPrefixes: string[]): number {
+  /**
+   * Segna come disabilitati i brani i cui file non esistono più.
+   * I brani sotto `unreadableDirs` (cartelle che non si sono potute leggere, per esempio un NAS spento) restano come sono.
+   */
+  disableMissing(existingPaths: Set<string>, folderPrefixes: string[], unreadableDirs: string[] = []): number {
     const rows = this.db.prepare('SELECT id, path FROM tracks WHERE enabled = 1').all() as Row[]
-    const stmt = this.db.prepare('UPDATE tracks SET enabled = 0 WHERE id = ?')
+    const stmt = this.db.prepare('UPDATE tracks SET enabled = 0, missing = 1 WHERE id = ?')
     let n = 0
     for (const r of rows) {
       const p = String(r.path)
-      if (!folderPrefixes.some((pre) => p.startsWith(pre))) continue
+      if (!folderPrefixes.some((pre) => isUnder(p, pre))) continue
+      if (unreadableDirs.some((d) => isUnder(p, d))) continue
       if (!existingPaths.has(p)) {
         stmt.run(Number(r.id))
         n++
@@ -444,6 +494,13 @@ export class RadioDb {
       sets.push(`${col} = ?`)
       values.push(typeof v === 'boolean' ? (v ? 1 : 0) : (v as string | number | null))
     }
+    // abilitato/disabilitato a mano: è una scelta dell'utente, la scansione non la cambia più
+    if (edit.enabled !== undefined) sets.push('missing = 0')
+    // tipo cambiato a mano: la scansione non lo riporta a quello della cartella
+    if (edit.kind !== undefined) {
+      sets.push('kind_manual = CASE WHEN kind != ? THEN 1 ELSE kind_manual END')
+      values.push(edit.kind)
+    }
     if (sets.length) this.db.prepare(`UPDATE tracks SET ${sets.join(', ')} WHERE id = ?`).run(...values, id)
     return this.getTrack(id)
   }
@@ -457,9 +514,9 @@ export class RadioDb {
     }
     const words = (q.text ?? '').trim().split(/\s+/).filter(Boolean)
     for (const w of words) {
-      where.push("(title LIKE ? ESCAPE '\\' OR artist LIKE ? ESCAPE '\\' OR album LIKE ? ESCAPE '\\')")
-      const like = `%${w.replace(/[\\%_]/g, (c) => '\\' + c)}%`
-      params.push(like, like, like)
+      // le parole non contengono spazi, quindi non possono "scavalcare" il separatore tra i campi
+      where.push("minuscolo(title || ' ' || artist || ' ' || album) LIKE ? ESCAPE '\\'")
+      params.push(`%${escapeLike(w.toLowerCase())}%`)
     }
     const clause = where.join(' AND ')
     const total = Number(
@@ -665,14 +722,42 @@ export class RadioDb {
     }))
   }
 
-  /** Chiude le voci rimaste aperte (per esempio dopo un crash). */
+  /**
+   * Chiude le voci rimaste aperte (chiusura del programma o crash). La durata trasmessa è il tempo dall'inizio
+   * a `now`, al massimo la durata del brano (dopo un crash il programma può ripartire molto più tardi).
+   */
   closeDanglingLog(now: Date): void {
-    this.db
+    const rows = this.db
       .prepare(
-        `UPDATE play_log SET ended_at = ? WHERE ended_at IS NULL`
+        `SELECT l.id, l.started_at, t.duration FROM play_log l LEFT JOIN tracks t ON t.id = l.track_id
+         WHERE l.ended_at IS NULL`
       )
-      .run(now.toISOString())
+      .all() as Row[]
+    const stmt = this.db.prepare('UPDATE play_log SET ended_at = ?, played_seconds = ? WHERE id = ?')
+    for (const r of rows) {
+      let played = (now.getTime() - Date.parse(String(r.started_at))) / 1000
+      if (!Number.isFinite(played) || played < 0) played = 0
+      const duration = Number(r.duration)
+      if (r.duration != null && duration > 0) played = Math.min(played, duration)
+      stmt.run(now.toISOString(), Math.round(played * 10) / 10, Number(r.id))
+    }
   }
+}
+
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => '\\' + c)
+}
+
+function trimSep(p: string): string {
+  return p.length > 1 ? p.replace(/[\\/]+$/, '') || p : p
+}
+
+/** `p` è dentro la cartella `dir` (confine di cartella vero: "/musica" non contiene "/musica2/x.mp3"). */
+function isUnder(p: string, dir: string): boolean {
+  const d = trimSep(dir)
+  if (!p.startsWith(d)) return false
+  if (p.length === d.length) return true
+  return /[\\/]$/.test(d) || p[d.length] === '/' || p[d.length] === '\\'
 }
 
 const HM = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -681,6 +766,11 @@ const HM = /^([01]\d|2[0-3]):[0-5]\d$/
 export function validateEvent(e: Omit<ScheduledEvent, 'id'>): void {
   if (!/^([01]\d|2[0-3]|\*):[0-5]\d$/.test(e.time)) throw new Error('Orario non valido, usa HH:MM')
   if (e.untilTime && !HM.test(e.untilTime)) throw new Error('Orario di fine ripetizioni non valido')
+  // le ripetizioni non attraversano la mezzanotte: "fino alle" deve venire dopo l'orario di partenza
+  if (e.repeatMinutes > 0 && e.untilTime && !e.time.startsWith('*') && e.untilTime <= e.time)
+    throw new Error(
+      `L'orario di fine ripetizioni (${e.untilTime}) deve essere dopo quello di partenza (${e.time}): le ripetizioni non possono passare la mezzanotte`
+    )
   if (e.validFrom && e.validTo && e.validFrom > e.validTo) throw new Error('La data di inizio è dopo quella di fine')
   if (!e.days.length) throw new Error('Scegli almeno un giorno')
   if (!e.actions.length) throw new Error("Aggiungi almeno un'azione")

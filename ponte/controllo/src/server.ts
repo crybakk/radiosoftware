@@ -28,11 +28,11 @@ import { dirname, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { pipeline } from 'node:stream/promises'
-import { timingSafeEqual } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { Alarms, DEFAULT_ALARM_CONFIG, type AlarmKey } from './alarms.ts'
 import { Notifier } from './notifier.ts'
 import { Relay } from './relay.ts'
-import { can, ROLES, Users, type PublicUser, type Role } from './users.ts'
+import { can, ROLES, sameSecret, Users, type PublicUser, type Role } from './users.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -87,6 +87,8 @@ setInterval(() => alarms.tick(), 2000)
 
 const relay = new Relay(TOKEN)
 relay.onStudioChange = (c) => console.log(`[regia] canale di controllo ${c ? 'collegato' : 'scollegato'}`)
+// segnale di vita a livello di applicazione: la regia capisce se il canale è ancora vivo
+setInterval(() => relay.pingStudio(), 15_000)
 
 await mkdir(DATA_DIR, { recursive: true })
 const users = new Users(join(DATA_DIR, 'utenti.json'), join(DATA_DIR, 'sessioni.json'))
@@ -127,15 +129,18 @@ function authorized(req: IncomingMessage): boolean {
   const h = req.headers.authorization ?? ''
   const m = /^Bearer (.+)$/.exec(h)
   if (!m) return false
-  const a = Buffer.from(m[1])
-  const b = Buffer.from(TOKEN)
-  return a.length === b.length && timingSafeEqual(a, b)
+  return sameSecret(m[1], TOKEN)
 }
 
 function cookie(req: IncomingMessage, name: string): string | undefined {
   for (const part of (req.headers.cookie ?? '').split(';')) {
     const [k, ...v] = part.trim().split('=')
-    if (k === name) return decodeURIComponent(v.join('='))
+    if (k !== name) continue
+    try {
+      return decodeURIComponent(v.join('='))
+    } catch {
+      return undefined // codifica non valida: come se il cookie non ci fosse
+    }
   }
   return undefined
 }
@@ -156,13 +161,37 @@ function sameOrigin(req: IncomingMessage): boolean {
 }
 
 // troppi tentativi di accesso sbagliati dallo stesso indirizzo: pausa di un minuto
+// (il tentativo si conta prima di leggere la richiesta, e si toglie se l'accesso riesce:
+//  così tante richieste in parallelo non passano tutte il controllo)
 const failedLogins = new Map<string, number[]>()
-function tooManyAttempts(ip: string): boolean {
+function recentAttempts(ip: string): number[] {
   const now = Date.now()
   const list = (failedLogins.get(ip) ?? []).filter((t) => now - t < 60_000)
-  failedLogins.set(ip, list)
-  return list.length >= 5
+  if (list.length) failedLogins.set(ip, list)
+  else failedLogins.delete(ip)
+  return list
 }
+/** Riserva un tentativo; restituisce null se ce ne sono già troppi, altrimenti la funzione per annullarlo. */
+function reserveAttempt(ip: string): (() => void) | null {
+  const list = recentAttempts(ip)
+  if (list.length >= 5) return null
+  const t = Date.now()
+  list.push(t)
+  failedLogins.set(ip, list)
+  return () => {
+    const l = failedLogins.get(ip)
+    const i = l ? l.indexOf(t) : -1
+    if (i >= 0) l!.splice(i, 1)
+    if (l && !l.length) failedLogins.delete(ip)
+  }
+}
+// pulizia degli indirizzi che non tentano più
+setInterval(() => {
+  for (const ip of [...failedLogins.keys()]) recentAttempts(ip)
+}, 60_000)
+
+// WebSocket dei pannelli aperti con ogni sessione: all'uscita si chiudono
+const panelSockets = new Map<string, Set<WebSocket>>()
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -206,7 +235,8 @@ async function saveBackup(req: IncomingMessage): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const name = `radio-${stamp}.db`
-  const tmp = join(BACKUP_DIR, `.${name}.part`)
+  // nome provvisorio unico: due invii nello stesso secondo non si mescolano
+  const tmp = join(BACKUP_DIR, `.${name}.${randomBytes(6).toString('hex')}.part`)
   let size = 0
   req.on('data', (c: Buffer) => {
     size += c.length
@@ -244,8 +274,8 @@ const certs = loadCert()
 const tls = certs !== null
 
 async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const url = new URL(req.url ?? '/', 'http://x')
   try {
+    const url = new URL(req.url ?? '/', 'http://x')
     if (url.pathname === '/health') return json(res, 200, { ok: true })
     if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
       if (await serveStatic(res, url.pathname)) return
@@ -257,13 +287,12 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     if (req.method === 'POST' && url.pathname === '/api/login') {
       if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
       const ip = req.socket.remoteAddress ?? ''
-      if (tooManyAttempts(ip)) return json(res, 429, { error: 'Troppi tentativi: riprova tra un minuto' })
+      const cancel = reserveAttempt(ip)
+      if (!cancel) return json(res, 429, { error: 'Troppi tentativi: riprova tra un minuto' })
       const body = await readJson(req, 4096)
-      const s = users.login(String(body.name ?? '').trim(), String(body.password ?? ''))
-      if (!s) {
-        failedLogins.get(ip)?.push(Date.now())
-        return json(res, 401, { error: 'Nome o password errati' })
-      }
+      const s = await users.login(String(body.name ?? '').trim(), String(body.password ?? ''))
+      if (!s) return json(res, 401, { error: 'Nome o password errati' })
+      cancel()
       res.setHeader(
         'Set-Cookie',
         `sessione=${s.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${30 * 86400}${tls ? '; Secure' : ''}`
@@ -272,7 +301,11 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     }
     if (req.method === 'POST' && url.pathname === '/api/logout') {
       const t = cookie(req, 'sessione')
-      if (t) users.logout(t)
+      if (t) {
+        users.logout(t)
+        for (const ws of panelSockets.get(t) ?? []) ws.close(4003, 'sessione chiusa')
+        panelSockets.delete(t)
+      }
       res.setHeader('Set-Cookie', 'sessione=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0')
       return json(res, 200, { ok: true })
     }
@@ -287,8 +320,11 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         const body = await readJson(req, 4096)
         const name = String(body.name ?? '').trim()
         const password = body.password ? String(body.password) : undefined
+        const before = users.get(name)
         const u = users.save(name, String(body.role ?? '') as Role, password)
         if (password) relay.kick(u.name)
+        // cambio di ruolo: il pannello si ricollega e riceve il ruolo nuovo
+        else if (before && before.role !== u.role) relay.kick(u.name, 4002, 'ruolo cambiato')
         return json(res, 200, { user: u, users: users.list() })
       }
       if (req.method === 'DELETE' && url.pathname.startsWith('/api/utenti/')) {
@@ -339,7 +375,8 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         'Content-Length': st.size,
         'Content-Disposition': `attachment; filename="${name}"`
       })
-      return void createReadStream(file).pipe(res)
+      // se la lettura si interrompe la risposta viene chiusa (vedi sotto)
+      return await pipeline(createReadStream(file), res)
     }
     if (req.method === 'GET' && url.pathname === '/api/stato') {
       const ls = await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
@@ -359,13 +396,15 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     }
     return json(res, 404, { error: 'non trovato' })
   } catch (e) {
+    // risposta già iniziata (per esempio un backup in download): non si può che chiuderla
+    if (res.headersSent) return void res.destroy()
     return json(res, 400, { error: e instanceof Error ? e.message : String(e) })
   }
 }
 
-const publicServer = certs
-  ? createHttpsServer(certs, (req, res) => void handlePublic(req, res))
-  : createServer((req, res) => void handlePublic(req, res))
+const onRequest = (req: IncomingMessage, res: ServerResponse): void =>
+  void handlePublic(req, res).catch(() => res.destroy())
+const publicServer = certs ? createHttpsServer(certs, onRequest) : createServer(onRequest)
 
 if (tls) {
   // il certificato di AzuraCast si rinnova da solo: lo ricarichiamo ogni 12 ore
@@ -379,15 +418,30 @@ if (tls) {
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 })
 
-function wire(ws: WebSocket, h: { message: (raw: string) => void; close: () => void }): void {
-  ws.on('message', (data) => h.message(String(data)))
-  ws.on('close', () => h.close())
+/** `valid` (facoltativo) si ricontrolla a ogni segnale di vita: se diventa falso la connessione si chiude. */
+function wire(ws: WebSocket, h: { message: (raw: string) => void; close: () => void }, valid?: () => boolean): void {
+  // un messaggio malformato non deve mai far cadere il servizio
+  ws.on('message', (data) => {
+    try {
+      h.message(String(data))
+    } catch (e) {
+      console.error(`[ws] messaggio scartato: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  })
+  ws.on('close', () => {
+    try {
+      h.close()
+    } catch (e) {
+      console.error(`[ws] errore in chiusura: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  })
   ws.on('error', () => ws.terminate())
   // segnale di vita: le connessioni morte (4G caduto) vengono chiuse
   let alive = true
   ws.on('pong', () => (alive = true))
   const ping = setInterval(() => {
     if (!alive) return ws.terminate()
+    if (valid && !valid()) return ws.close(4003, 'sessione scaduta')
     alive = false
     ws.ping()
   }, 15_000)
@@ -395,19 +449,37 @@ function wire(ws: WebSocket, h: { message: (raw: string) => void; close: () => v
 }
 
 publicServer.on('upgrade', (req, socket, head) => {
-  const url = new URL(req.url ?? '/', 'http://x')
-  if (url.pathname === '/ws/regia') {
-    return wss.handleUpgrade(req, socket, head, (ws) => wire(ws, relay.attachStudio(ws)))
-  }
-  if (url.pathname === '/ws/pannello') {
-    const me = sessionUser(req)
-    if (!me || !sameOrigin(req)) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
-      return socket.destroy()
+  socket.on('error', () => socket.destroy())
+  try {
+    const url = new URL(req.url ?? '/', 'http://x')
+    if (url.pathname === '/ws/regia') {
+      return wss.handleUpgrade(req, socket, head, (ws) => wire(ws, relay.attachStudio(ws)))
     }
-    return wss.handleUpgrade(req, socket, head, (ws) => wire(ws, relay.attachPanel(ws, me)))
+    if (url.pathname === '/ws/pannello') {
+      const token = cookie(req, 'sessione')
+      const me = users.session(token)
+      if (!token || !me || !sameOrigin(req)) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+        return socket.destroy()
+      }
+      return wss.handleUpgrade(req, socket, head, (ws) => {
+        const set = panelSockets.get(token) ?? new Set<WebSocket>()
+        panelSockets.set(token, set)
+        set.add(ws)
+        ws.on('close', () => {
+          set.delete(ws)
+          if (!set.size && panelSockets.get(token) === set) panelSockets.delete(token)
+        })
+        // a ogni comando si usa il ruolo attuale della sessione (cambiato, scaduta, utente eliminato)
+        const current = (): PublicUser | null => users.session(token)
+        wire(ws, relay.attachPanel(ws, me, current), () => current() !== null)
+      })
+    }
+    socket.destroy()
+  } catch (e) {
+    console.error(`[ws] richiesta di collegamento non valida: ${e instanceof Error ? e.message : String(e)}`)
+    socket.destroy()
   }
-  socket.destroy()
 })
 
 // ---------- server interno (Liquidsoap) ----------
