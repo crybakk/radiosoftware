@@ -72,6 +72,10 @@ export class Library {
     }
   }
 
+  isScanning(): boolean {
+    return this.scanning !== null
+  }
+
   count(): number {
     return this.tracks.size
   }

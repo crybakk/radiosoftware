@@ -11,6 +11,7 @@ import type { ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
 import { LibraryService } from './library'
 import { serveFile } from './media'
 import { applyPendingRestore, PonteService, type StudioReport } from './ponte'
+import { ServerLibrarySync } from './serverSync'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 
 protocol.registerSchemesAsPrivileged([
@@ -77,6 +78,11 @@ app.whenReady().then(() => {
   const rotation = new RotationService(db)
   const ponte = new PonteService(db, app.getPath('userData'), ffmpegPath())
   ponte.applySettings(db.getSettings().ponte)
+  const serverSync = new ServerLibrarySync(db, app.getPath('userData'), () => ponte.client(), (st) =>
+    win?.webContents.send('serverSyncStatus', st)
+  )
+  // ogni 10 minuti: nelle ore scelte invia al server i brani nuovi della selezione
+  const syncTimer = setInterval(() => void serverSync.tick(), 10 * 60_000)
 
   protocol.handle('media', async (request) => {
     const url = new URL(request.url)
@@ -215,6 +221,21 @@ app.whenReady().then(() => {
     app.quit()
   })
   handle('restoredFrom', () => restoredFrom)
+
+  // libreria del server (diretta autonoma)
+  handle('serverSyncStatus', () => serverSync.status())
+  handle('serverSyncList', (filter: 'esclusi' | 'tutti', q: string) => serverSync.list(filter, q))
+  handle('serverSyncChoice', (id: number, choice: boolean | null) => serverSync.setChoice(id, choice))
+  handle('serverSyncNow', () => serverSync.syncNow(true))
+  handle('serverSyncStop', () => serverSync.stop())
+  handle('serverSyncExport', async () => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Scegli il disco o la cartella dove copiare la selezione',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (res.canceled || !res.filePaths[0]) return null
+    return serverSync.exportTo(res.filePaths[0])
+  })
   ipcMain.on('uplink:pcm', (_e, pcm: Uint8Array) => ponte.writePcm(pcm))
   ipcMain.on('remote:state', (_e, state: RemoteState) => ponte.sendRemoteState(state))
   // comandi dal pannello remoto: li esegue l'interfaccia, che ha il motore di messa in onda
@@ -256,6 +277,8 @@ app.whenReady().then(() => {
   void library.analyzeAll()
 
   app.on('before-quit', () => {
+    clearInterval(syncTimer)
+    serverSync.stop()
     library.stop()
     ponte.stop()
     db.closeDanglingLog(new Date())

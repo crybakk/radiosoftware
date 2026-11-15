@@ -4,6 +4,7 @@ import type { ScanProgress } from '../core/scanner'
 import type { PonteBackup, PonteState } from '../core/ponteClient'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { PonteStatus, StudioReport } from '../main/ponte'
+import type { ServerSyncStatus, ServerTrackRow } from '../main/serverSync'
 import type { LibraryFolder, LogEntry, ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
 
 export interface LibraryStatus {
@@ -67,6 +68,16 @@ export interface RadioApi {
   /** Se all'avvio è stato ripristinato un backup: dove è stata messa la versione precedente. */
   restoredFrom(): Promise<string | null>
   onPonteStatus(cb: (s: PonteStatus) => void): () => void
+  // libreria del server (diretta autonoma)
+  serverSyncStatus(): Promise<ServerSyncStatus>
+  serverSyncList(filter: 'esclusi' | 'tutti', q: string): Promise<ServerTrackRow[]>
+  /** Scelta a mano: true = sul server, false = no, null = decide la regola. */
+  serverSyncChoice(id: number, choice: boolean | null): Promise<void>
+  serverSyncNow(): Promise<string>
+  serverSyncStop(): Promise<void>
+  /** Copia la selezione su un disco scelto dall'utente; null se annullato. */
+  serverSyncExport(): Promise<string | null>
+  onServerSyncStatus(cb: (s: ServerSyncStatus) => void): () => void
   /** Stato della regia per il pannello remoto. */
   sendRemoteState(state: RemoteState): void
   /** Comandi dal pannello remoto: la funzione restituisce la risposta. */

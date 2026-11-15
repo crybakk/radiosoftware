@@ -36,15 +36,25 @@ export class PonteClient {
     this.token = token
   }
 
-  private async request(method: string, path: string, body?: BodyInit, type?: string, timeoutMs = 10_000): Promise<Response> {
+  private async request(
+    method: string,
+    path: string,
+    body?: BodyInit,
+    type?: string,
+    timeoutMs = 10_000,
+    signal?: AbortSignal
+  ): Promise<Response> {
     let r: Response
     try {
+      const timeout = AbortSignal.timeout(timeoutMs)
       r = await fetch(this.base + path, {
         method,
         headers: { Authorization: `Bearer ${this.token}`, ...(type ? { 'Content-Type': type } : {}) },
         body,
-        signal: AbortSignal.timeout(timeoutMs)
-      })
+        signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
+        // corpo in streaming (file della libreria)
+        ...(body && typeof (body as ReadableStream).getReader === 'function' ? { duplex: 'half' } : {})
+      } as RequestInit)
     } catch (e) {
       const msg = e instanceof Error && e.name === 'TimeoutError' ? 'il ponte non risponde' : 'ponte non raggiungibile'
       throw new PonteError(msg)
@@ -87,10 +97,45 @@ export class PonteClient {
     return (await (await this.request('GET', '/api/backup')).json()) as PonteBackup[]
   }
 
+  /** Brani della regia già presenti sul server. */
+  async listLibrary(): Promise<{ id: string; size: number }[]> {
+    return (await (await this.request('GET', '/api/libreria', undefined, undefined, 60_000)).json()) as { id: string; size: number }[]
+  }
+
+  /** Carica un file nella libreria del server (in streaming). */
+  async uploadLibraryFile(meta: LibraryMeta, body: ReadableStream<Uint8Array>, signal?: AbortSignal): Promise<void> {
+    const q = new URLSearchParams({
+      id: meta.id,
+      titolo: meta.title,
+      artista: meta.artist,
+      durata: String(meta.duration),
+      guadagno: String(meta.gainDb)
+    })
+    await this.request('PUT', `/api/libreria?${q}`, body, 'application/octet-stream', 60 * 60_000, signal)
+  }
+
+  async deleteLibraryFile(id: string): Promise<void> {
+    await this.request('DELETE', `/api/libreria?${new URLSearchParams({ id })}`)
+  }
+
+  /** Titoli e volumi aggiornati (anche per i file copiati a mano). */
+  async sendLibraryMeta(tracks: LibraryMeta[]): Promise<number> {
+    const r = await this.request('POST', '/api/libreria/dati', JSON.stringify({ tracks }), 'application/json', 60_000)
+    return ((await r.json()) as { updated: number }).updated
+  }
+
   async downloadBackup(name: string): Promise<Uint8Array> {
     const r = await this.request('GET', `/api/backup/${encodeURIComponent(name)}`, undefined, undefined, 5 * 60_000)
     return new Uint8Array(await r.arrayBuffer())
   }
+}
+
+export interface LibraryMeta {
+  id: string
+  title: string
+  artist: string
+  duration: number
+  gainDb: number
 }
 
 /** Il backup automatico è dovuto? Una volta al giorno, all'ora scelta o appena dopo. */

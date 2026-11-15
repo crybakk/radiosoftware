@@ -487,6 +487,9 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     }
     if (url.pathname === '/api/libreria' || url.pathname === '/api/libreria/dati') {
       if (req.method === 'GET') {
+        // prima si guarda la cartella: ci possono essere file copiati a mano (disco USB)
+        await Promise.race([library.scan().catch(() => 0), new Promise((r) => setTimeout(r, 45_000))])
+        if (library.isScanning()) return json(res, 503, { error: 'il server sta ancora leggendo la libreria: riprova più tardi' })
         return json(res, 200, library.all().filter((t) => t.id.startsWith('regia/')).map((t) => ({ id: t.id, size: t.size })))
       }
       if (req.method === 'POST' && url.pathname === '/api/libreria/dati') {

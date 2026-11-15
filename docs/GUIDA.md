@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, fase 4 (microfono dal pannello remoto).
+**Ultimo aggiornamento:** 15/11/2026, fase 4 (microfono dal pannello e diretta autonoma dal server).
 
 ## Indice
 
@@ -19,6 +19,8 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
 11. [Dirette esterne](#11-dirette-esterne)
 12. [Pannello remoto e utenti](#12-pannello-remoto-e-utenti)
     - [Microfono dal pannello](#microfono-dal-pannello)
+    - [Diretta autonoma dal server](#diretta-autonoma-dal-server)
+    - [Libreria sul server](#libreria-sul-server)
 13. [Allarmi e notifiche](#13-allarmi-e-notifiche)
 14. [Backup e ripristino](#14-backup-e-ripristino)
 15. [Problemi comuni](#15-problemi-comuni)
@@ -150,7 +152,7 @@ Serve una volta sola. La guida tecnica completa è in [ponte/README.md](../ponte
 1. **Crea la VM**: copia `ponte/proxmox/crea-vm.sh` sul nodo Proxmox ed eseguilo come root.
    Con indirizzo fisso (consigliato):
    `IP=192.168.1.50/24 GATEWAY=192.168.1.1 bash crea-vm.sh`
-   Crea una VM Ubuntu 24.04 con 4 core, 8 GB di RAM e 150 GB, che si avvia insieme a Proxmox.
+   Crea una VM Ubuntu 24.04 con 4 core, 8 GB di RAM e 300 GB di disco (servono per la musica della diretta autonoma), che si avvia insieme a Proxmox.
 2. **Installa**: entra nella VM (`ssh radio@192.168.1.50`), copia la cartella `ponte` ed esegui
    `sudo bash installa-server.sh`. Installa AzuraCast e il ponte e alla fine stampa i valori per la regia.
    Tienili da parte.
@@ -167,6 +169,9 @@ Serve una volta sola. La guida tecnica completa è in [ponte/README.md](../ponte
    - TCP 9080 (allarmi, titoli, backup, pannello remoto)
    - TCP 9010 (dirette esterne)
    - UDP 40000-40049 (microfono dal pannello remoto)
+
+   Se hai già creato la VM con 150 GB, ingrandisci il disco come spiegato in `ponte/README.md`
+   ("Spazio su disco"): la musica della diretta autonoma occupa circa 100 GB.
 5. Se l'IP pubblico di casa cambia, usa un nome DNS dinamico (DuckDNS o quello del router) e mettilo nella
    regia al posto dell'IP. Con un nome di dominio AzuraCast può attivare l'HTTPS.
 
@@ -260,11 +265,55 @@ Cose utili da sapere:
   non danno il microfono alle pagine non protette;
 - un solo microfono remoto alla volta: chi lo apre per secondo vede chi lo sta usando;
 - se la connessione cade o chiudi la pagina, il microfono esce dall'onda da solo;
-- la voce va in onda solo se c'è un programma (regia o diretta esterna). Con la regia spenta, AzuraCast
-  passa alla sua AutoDJ come sempre; la **diretta autonoma** dal server arriverà con il prossimo aggiornamento;
+- la voce va in onda solo se c'è un programma: regia, diretta esterna o diretta autonoma. Con la regia spenta
+  avvia la **diretta autonoma** (qui sotto) e parla sopra la musica del server;
 - **Uso le cuffie**: lascialo spuntato. Senza cuffie toglilo prima di aprire il microfono: il browser
   attiva la riduzione dell'eco e del rumore, ma la voce suona meno naturale;
 - **Ritorno**: volume del programma in cuffia.
+
+### Diretta autonoma dal server
+
+Serve quando vuoi andare in onda senza la regia, per esempio da fuori con il telefono: il ponte suona la musica
+che ha sul server, e tu puoi parlarci sopra con il microfono del pannello.
+
+- **▶ Avvia diretta autonoma**: la musica del server va in onda **al posto della regia** (la regia può restare
+  accesa, ma non si sente). Se si collega una diretta esterna, ha la precedenza.
+- **Cerca nella libreria del server**: ⤒ mette il brano come prossimo, + lo aggiunge in fondo. Con la coda vuota il
+  ponte sceglie da solo, senza ripetere troppo presto lo stesso brano o lo stesso artista.
+- **⬆ Carica brani dal dispositivo**: scegli uno o più file dal telefono o dal computer; vengono caricati sul
+  server e messi in coda.
+- **⏭ Salta** passa al brano successivo; **■ Ferma e torna alla regia** chiude la diretta autonoma.
+
+Il brano successivo si decide circa 20 secondi prima della fine di quello in onda: fino ad allora puoi cambiare la
+coda. Tra un brano e l'altro non c'è dissolvenza. Inizio e fine della diretta autonoma arrivano come notifica.
+Gli ospiti del pannello vedono cosa suona ma non la comandano.
+
+### Libreria sul server
+
+Nella regia, scheda **Collegamento**, sezione **Libreria sul server**. Sul server va solo una selezione:
+
+- niente **live** (parola "live" o "dal vivo" nel genere, nella cartella, oppure nel titolo come "(Live)",
+  "- Live at…"; titoli come "Live Forever" restano dentro);
+- niente **interviste** ("intervista" nel titolo, nel genere o nella cartella);
+- niente file sotto i **192 kbps** (modificabile).
+
+Con **Scegli a mano** vedi gli esclusi con il motivo e puoi premere **Includi comunque**; con "Tutta la musica"
+cerchi un brano e lo puoi **Escludere**. **Lascia decidere alla regola** annulla la scelta a mano.
+
+**Prima copia (a mano, circa 100 GB):**
+
+1. Collega un disco USB alla regia e premi **Copia la selezione su disco…**, scegliendo il disco. Copia solo i brani
+   della selezione, già nelle cartelle giuste. Se la interrompi, alla ripartenza salta quelli già copiati.
+2. Porta il disco a casa, collegalo al server (in Proxmox: passa il disco USB alla VM) ed esegui nella VM:
+   `sudo rsync -a --info=progress2 /media/<disco>/regia/ /opt/radio-ponte/musica/regia/` e poi
+   `sudo chown -R 1000:1000 /opt/radio-ponte/musica`.
+
+**Dopo:** la regia invia da sola via internet solo i brani **nuovi o cambiati**, e toglie dal server quelli usciti
+dalla selezione. Lo fa **di notte** (di base dalle 1 alle 6) e al massimo **1 GB al giorno**, perché il 4G non è
+illimitato: puoi cambiare ore e limite nella stessa sezione (poi **Salva**). **Invia ora i brani nuovi** parte
+subito, ma rispetta il limite del giorno. Ogni giorno manda anche al server i titoli corretti e il volume misurato.
+Se un giorno la regia vedesse sparire troppi brani (per esempio il disco della musica scollegato), si ferma e non
+toglie nulla dal server.
 
 ## 13. Allarmi e notifiche
 
@@ -276,7 +325,8 @@ Il ponte avvisa via Telegram e/o email (da configurare nel `.env` del server; la
 - silenzio in onda;
 - collegamento instabile (troppe riconnessioni);
 - errori verso AzuraCast;
-- inizio e fine di una diretta esterna.
+- inizio e fine di una diretta esterna;
+- avvio e fine della diretta autonoma, con il nome di chi l'ha comandata.
 
 Quando il problema si risolve arriva un secondo messaggio. Gli allarmi attivi si vedono anche nella scheda Collegamento.
 
@@ -303,16 +353,18 @@ Il ponte tiene gli ultimi 14.
 | Il pannello non si apre | porta 9080 non inoltrata, oppure stai usando http:// invece di https:// (o il contrario) |
 | "Il microfono funziona solo con il pannello aperto in HTTPS" | apri il pannello con `https://` e il nome di dominio (sezione 9) |
 | Il microfono si apre ma non si sente nulla, oppure si chiude dopo 20 secondi | porte UDP 40000-40049 non inoltrate sul router verso la VM |
+| "la libreria del server è vuota" | fai la prima copia della selezione (sezione 12, Libreria sul server) o carica brani dal pannello |
+| "la selezione toglierebbe … brani dal server" | il disco o la cartella della musica della regia non è collegato: ricollegalo e riprova |
+| La regia non invia brani al server | fuori dalle ore di invio, limite del giorno raggiunto, oppure "Invia da solo" spento |
 | "Permesso del microfono negato dal browser" | nelle impostazioni del sito nel browser consenti il microfono, poi ricarica la pagina |
 
 ## 16. In arrivo
 
 Prossime fasi (l'ordine può cambiare):
 
-- diretta autonoma dal server, senza la regia (musica dalla libreria del server o dal dispositivo, più la voce);
 - ospiti collegati con un link, con sala d'attesa;
 - uscite verso Icecast esterni, Fluidstream, YouTube e Facebook;
-- analisi della libreria stile MusicBrainz e report SIAE nel formato del fac simile;
+- analisi della libreria stile MusicBrainz, report SIAE nel formato del fac simile e riconoscimento dei brani in onda (anche nelle esterne);
 - registrazione della messa in onda e podcast, download automatico di notiziari, voce sintetica;
 - rotazioni generate dall'AI a partire da una descrizione del palinsesto.
 
@@ -323,3 +375,4 @@ Prossime fasi (l'ordine può cambiare):
 | 14/11/2026 | Prima versione: regia (fase 1), eventi avanzati, ponte, collegamento, backup, dirette esterne, VM Proxmox |
 | 15/11/2026 | Pannello remoto dal browser, utenti con ruoli, HTTPS con il certificato di AzuraCast, `riavvia.sh` |
 | 15/11/2026 | Microfono dal pannello remoto: voce in onda con la musica che si abbassa, ritorno in cuffia; nuova porta UDP 40000-40049 |
+| 15/11/2026 | Diretta autonoma dal server (dal pannello), libreria sul server con selezione automatica, copia su disco USB e invio notturno; disco della VM a 300 GB |

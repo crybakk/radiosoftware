@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { PonteStatus } from '../main/ponte'
+import type { ServerSyncStatus } from '../main/serverSync'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { LibraryStatus, RadioApi } from '../shared/api'
 
@@ -45,6 +46,17 @@ const api: RadioApi = {
   ponteTestNotification: call('ponteTestNotification'),
   ponteRestore: call('ponteRestore'),
   restoredFrom: call('restoredFrom'),
+  serverSyncStatus: call('serverSyncStatus'),
+  serverSyncList: call('serverSyncList'),
+  serverSyncChoice: call('serverSyncChoice'),
+  serverSyncNow: call('serverSyncNow'),
+  serverSyncStop: call('serverSyncStop'),
+  serverSyncExport: call('serverSyncExport'),
+  onServerSyncStatus: (cb: (s: ServerSyncStatus) => void) => {
+    const listener = (_e: unknown, s: ServerSyncStatus): void => cb(s)
+    ipcRenderer.on('serverSyncStatus', listener)
+    return () => ipcRenderer.removeListener('serverSyncStatus', listener)
+  },
   sendRemoteState: (state: RemoteState) => ipcRenderer.send('remote:state', state),
   onRemoteCommand: (cb: (cmd: RemoteCommand, by: string) => Promise<unknown>) => {
     const listener = (_e: unknown, id: number, cmd: RemoteCommand, by: string): void => {

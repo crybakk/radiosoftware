@@ -99,6 +99,15 @@ export interface PonteSettings {
   sendMetadata: boolean
   /** Ora del backup automatico giornaliero (0-23, -1 = mai). */
   backupHour: number
+  /** Invia da solo al server i brani nuovi della selezione (di notte, entro il limite giornaliero). */
+  librarySync: boolean
+  /** Sotto questa qualità (kbps) un brano non va sul server. */
+  libraryMinKbps: number
+  /** Massimo di MB caricati sul server in un giorno (traffico 4G). */
+  libraryDailyMb: number
+  /** Ore in cui si può caricare: dalle ... alle ... (es. 1 e 6). */
+  librarySyncFrom: number
+  librarySyncTo: number
 }
 
 export const DEFAULT_PONTE: PonteSettings = {
@@ -115,7 +124,12 @@ export const DEFAULT_PONTE: PonteSettings = {
   controlHttps: false,
   remoteControl: true,
   sendMetadata: true,
-  backupHour: 4
+  backupHour: 4,
+  librarySync: true,
+  libraryMinKbps: 192,
+  libraryDailyMb: 1024,
+  librarySyncFrom: 1,
+  librarySyncTo: 6
 }
 
 export const DEFAULT_SETTINGS: Settings = {
