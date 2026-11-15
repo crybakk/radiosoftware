@@ -4,6 +4,9 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 COMPOSE=(-f docker-compose.yml)
+# libreria musicale del server (diretta autonoma): scrivibile dal servizio di controllo (utente 1000)
+mkdir -p musica
+chown 1000:1000 musica 2>/dev/null || true
 if docker volume inspect azuracast_acme >/dev/null 2>&1 \
   && docker run --rm -v azuracast_acme:/acme:ro alpine sh -c 'test -s /acme/acme.crt || test -s /acme/custom.crt' 2>/dev/null; then
   COMPOSE+=(-f docker-compose.https.yml)

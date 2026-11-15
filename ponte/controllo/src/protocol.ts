@@ -36,6 +36,31 @@ export type RemoteCommand =
   | { type: 'move'; uid: string; delta: -1 | 1 }
   | { type: 'search'; q: string }
 
+/** Diretta autonoma dal server (senza regia). */
+export interface AutoTrack {
+  id: string
+  title: string
+  artist: string
+  duration: number
+}
+
+export interface AutoState {
+  active: boolean
+  onAir: (AutoTrack & { startedAt: string }) | null
+  /** Già passato al mixer: partirà dopo quello in onda. */
+  prepared: AutoTrack | null
+  queue: (AutoTrack & { uid: string })[]
+  libraryCount: number
+}
+
+export type AutoCommand =
+  | { type: 'start' }
+  | { type: 'stop' }
+  | { type: 'skip' }
+  | { type: 'enqueue'; id: string; where: 'next' | 'end' }
+  | { type: 'remove'; uid: string }
+  | { type: 'search'; q: string }
+
 /** Regia → ponte */
 export type FromStudio =
   | { t: 'auth'; token: string }
@@ -54,6 +79,8 @@ export type FromPanel =
   | { t: 'mic'; id: string; on: boolean }
   /** Chiude il microfono. */
   | { t: 'rtc-close' }
+  /** Diretta autonoma. */
+  | { t: 'auto'; id: string; cmd: AutoCommand }
 
 export interface MicStatus {
   /** Chi ha il microfono aperto (null = nessuno). */
@@ -69,3 +96,4 @@ export type ToPanel =
   | { t: 'reply'; id: string; ok: boolean; data?: unknown; error?: string }
   | { t: 'alarms'; alarms: { key: string; since: string; message: string }[] }
   | { t: 'mic'; mic: MicStatus }
+  | { t: 'autonoma'; state: AutoState }

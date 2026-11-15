@@ -15,7 +15,11 @@
  *   GET  /                pagine del pannello
  *   POST /api/login, POST /api/logout, GET /api/io
  *   GET/POST /api/utenti, DELETE /api/utenti/<nome>   (solo amministratori)
- *   WS   /ws/pannello     stato della regia e comandi
+ *   WS   /ws/pannello     stato della regia e comandi, microfono, diretta autonoma
+ *   PUT  /api/autonoma/carica?nome=<file>   carica un brano nella libreria del server (conduttori)
+ *
+ * Libreria del server copiata dalla regia (token): GET /api/libreria, PUT /api/libreria?id=regia/...,
+ *   DELETE /api/libreria?id=regia/..., POST /api/libreria/dati (titoli e volumi corretti)
  *
  * Con CERTIFICATO_TLS e CHIAVE_TLS (per esempio quelli di AzuraCast) la porta pubblica usa HTTPS.
  * Porta interna 8091 (solo rete Docker): POST /internal/event da Liquidsoap.
@@ -34,6 +38,8 @@ import { Notifier } from './notifier.ts'
 import { Relay } from './relay.ts'
 import { can, ROLES, Users, type PublicUser, type Role } from './users.ts'
 import { VoiceHub, voiceSockets, weriftFactory } from './voce.ts'
+import { AUDIO_EXT, Library } from './libreria.ts'
+import { AutonomousPlayer } from './autonoma.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -98,15 +104,7 @@ function portRange(v: string): [number, number] {
   return a > 0 && b >= a && b < 65536 ? [a, b] : [40000, 40049]
 }
 
-async function setVoiceOnAir(on: boolean): Promise<boolean> {
-  const r = await fetch(`${LIQUIDSOAP}/voce`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ on }),
-    signal: AbortSignal.timeout(3000)
-  }).catch(() => null)
-  return !!r?.ok
-}
+const setVoiceOnAir = (on: boolean): Promise<boolean> => lqPost('/voce', { on })
 
 if (env('MICROFONO_REMOTO', 'si') !== 'no') {
   const [vHost, vPort] = env('VOCE_LIQUIDSOAP', 'liquidsoap:41030').split(':')
@@ -148,6 +146,92 @@ if (users.count() === 0) {
 
 let lastStudio: Record<string, unknown> | null = null
 let lastMetadata: { artist: string; title: string; at: string } | null = null
+
+// ---------- diretta autonoma (musica dalla libreria del server) ----------
+
+const MUSIC_DIR = env('CARTELLA_MUSICA', '/musica')
+const UPLOAD_DIR = join(MUSIC_DIR, 'caricati')
+const MAX_UPLOAD_BYTES = 300 * 1024 * 1024
+const library = new Library(MUSIC_DIR, join(DATA_DIR, 'libreria.json'))
+
+async function lqPost(path: string, body: unknown = {}): Promise<boolean> {
+  const r = await fetch(`${LIQUIDSOAP}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(5000)
+  }).catch(() => null)
+  return !!r?.ok
+}
+
+const auto = new AutonomousPlayer(library, {
+  setActive: (on) => lqPost('/autonoma', { on }),
+  push: (uri) => lqPost('/autonoma/aggiungi', { uri }),
+  skip: () => lqPost('/autonoma/salta')
+})
+auto.onChange = (st) => relay.setAuto(st)
+auto.onActive = (on, by) => {
+  alarms.setAutonomous(on)
+  const text = on
+    ? `📻 Diretta autonoma avviata${by ? ` da ${by}` : ''}: il ponte suona la libreria del server al posto della regia.`
+    : `🏠 Diretta autonoma fermata${by ? ` da ${by}` : ''}.`
+  console.log(`[autonoma] ${text}`)
+  void notifier.send(text)
+}
+relay.auto = auto
+// all'avvio la diretta autonoma è ferma: se Liquidsoap era rimasto acceso la spegniamo
+setTimeout(() => void lqPost('/autonoma', { on: false }), 3000)
+const rescan = (): void =>
+  void library
+    .scan()
+    .then((n) => {
+      console.log(`[autonoma] libreria del server: ${n} brani`)
+      relay.setAuto(auto.state())
+    })
+    .catch((e: unknown) => console.error(`[autonoma] scansione: ${e instanceof Error ? e.message : String(e)}`))
+rescan()
+setInterval(rescan, 30 * 60_000)
+
+/** Nome di file sicuro per i brani caricati dal pannello. */
+function safeName(name: string): string | null {
+  const base = name.split(/[\\/]/).pop() ?? ''
+  const ext = extname(base).toLowerCase()
+  if (!AUDIO_EXT.has(ext)) return null
+  const stem = base
+    .slice(0, -ext.length)
+    .replace(/[^\p{L}\p{N} ._()&'-]/gu, '_')
+    .trim()
+    .slice(0, 150)
+  return stem ? `${stem}${ext}` : null
+}
+
+/** Percorso nella libreria per un brano della regia: "regia/<cartella>/<...>/<file>", senza "..". */
+function studioPath(id: string): string | null {
+  const parts = id.split('/')
+  if (parts[0] !== 'regia' || parts.length < 2) return null
+  if (parts.some((p) => !p || p === '.' || p === '..' || p.startsWith('.') || /[\\\0]/.test(p))) return null
+  if (!AUDIO_EXT.has(extname(id).toLowerCase())) return null
+  return join(MUSIC_DIR, ...parts)
+}
+
+async function saveUpload(req: IncomingMessage, file: string): Promise<string> {
+  const dir = dirname(file)
+  await mkdir(dir, { recursive: true })
+  const tmp = join(dir, `.${file.slice(dir.length + 1)}.part`)
+  let size = 0
+  req.on('data', (c: Buffer) => {
+    size += c.length
+    if (size > MAX_UPLOAD_BYTES) req.destroy(new Error('file troppo grande (massimo 300 MB)'))
+  })
+  try {
+    await pipeline(req, createWriteStream(tmp))
+  } catch (e) {
+    await rm(tmp, { force: true })
+    throw e
+  }
+  await rename(tmp, file)
+  return file
+}
 
 // ---------- utilità HTTP ----------
 
@@ -322,6 +406,20 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       res.setHeader('Set-Cookie', 'sessione=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0')
       return json(res, 200, { ok: true })
     }
+    if (req.method === 'PUT' && url.pathname === '/api/autonoma/carica') {
+      const me = sessionUser(req)
+      if (!me) return json(res, 401, { error: 'accesso richiesto' })
+      if (!can(me.role, 'comandare')) return json(res, 403, { error: 'il tuo ruolo non permette di caricare brani' })
+      if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+      const name = safeName(url.searchParams.get('nome') ?? '')
+      if (!name) return json(res, 400, { error: 'formato non supportato (mp3, m4a, aac, flac, ogg, opus, wav)' })
+      const file = await saveUpload(req, join(UPLOAD_DIR, name))
+      const t = await library.addFile(file)
+      library.save()
+      relay.setAuto(auto.state())
+      console.log(`[autonoma] ${me.name} ha caricato ${t.id}`)
+      return json(res, 200, { track: { id: t.id, title: t.title, artist: t.artist, duration: t.duration } })
+    }
     if (url.pathname === '/api/io' || url.pathname.startsWith('/api/utenti')) {
       const me = sessionUser(req)
       if (!me) return json(res, 401, { error: 'accesso richiesto' })
@@ -386,6 +484,42 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         'Content-Disposition': `attachment; filename="${name}"`
       })
       return void createReadStream(file).pipe(res)
+    }
+    if (url.pathname === '/api/libreria' || url.pathname === '/api/libreria/dati') {
+      if (req.method === 'GET') {
+        return json(res, 200, library.all().filter((t) => t.id.startsWith('regia/')).map((t) => ({ id: t.id, size: t.size })))
+      }
+      if (req.method === 'POST' && url.pathname === '/api/libreria/dati') {
+        const body = await readJson(req, 16 * 1024 * 1024)
+        const list = Array.isArray(body.tracks) ? (body.tracks as Record<string, unknown>[]) : []
+        let n = 0
+        for (const m of list) {
+          if (library.setMeta(String(m.id), { title: String(m.title ?? ''), artist: String(m.artist ?? ''), duration: Number(m.duration), gainDb: Number(m.gainDb) })) n++
+        }
+        library.save()
+        return json(res, 200, { ok: true, updated: n })
+      }
+      const id = url.searchParams.get('id') ?? ''
+      const file = studioPath(id)
+      if (!file) return json(res, 400, { error: 'percorso non valido' })
+      if (req.method === 'PUT') {
+        await saveUpload(req, file)
+        const q = url.searchParams
+        const t = await library.addFile(file, {
+          title: q.get('titolo') ?? undefined,
+          artist: q.get('artista') ?? undefined,
+          duration: Number(q.get('durata')),
+          gainDb: Number(q.get('guadagno'))
+        })
+        library.save()
+        return json(res, 200, { ok: true, id: t.id, size: t.size })
+      }
+      if (req.method === 'DELETE') {
+        await rm(file, { force: true })
+        library.remove(id)
+        library.save()
+        return json(res, 200, { ok: true })
+      }
     }
     if (req.method === 'GET' && url.pathname === '/api/stato') {
       const ls = await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
@@ -465,7 +599,8 @@ const internalServer = createServer(async (req, res) => {
       const body = await readJson(req)
       const kind = String(body.kind ?? '')
       console.log(`[evento] ${kind} ${body.detail ?? ''}`)
-      alarms.onEvent(kind, String(body.detail ?? ''))
+      if (kind === 'autonoma_brano') auto.onTrackStart(String(body.detail ?? ''))
+      else alarms.onEvent(kind, String(body.detail ?? ''))
       return json(res, 200, { ok: true })
     }
     return json(res, 404, { error: 'non trovato' })

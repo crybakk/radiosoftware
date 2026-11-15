@@ -1,7 +1,8 @@
 /** Smista i messaggi tra la regia (una sola) e i pannelli remoti (quanti si vuole). */
-import type { FromPanel, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio } from './protocol.ts'
+import type { AutoState, FromPanel, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio } from './protocol.ts'
 import { can, type PublicUser } from './users.ts'
 import type { VoiceHub } from './voce.ts'
+import type { AutonomousPlayer } from './autonoma.ts'
 
 export interface Peer {
   send(data: string): void
@@ -28,6 +29,9 @@ export class Relay {
   onStudioChange: (connected: boolean) => void = () => {}
   /** Microfono remoto (WebRTC); null se non attivo sul ponte. */
   voice: VoiceHub | null = null
+  /** Diretta autonoma dal server; null se non attiva sul ponte. */
+  auto: AutonomousPlayer | null = null
+  private autoState: (ToPanel & { t: 'autonoma' }) | null = null
 
   constructor(token: string) {
     this.token = token
@@ -112,6 +116,7 @@ export class Relay {
     this.sendTo(peer, { t: 'hello', user, studio: this.studio !== null, state: this.state })
     this.sendTo(peer, this.alarms)
     this.sendTo(peer, this.mic)
+    if (this.autoState) this.sendTo(peer, this.autoState)
     return {
       message: (raw: string) => {
         let msg: FromPanel
@@ -132,6 +137,16 @@ export class Relay {
             ? voice.open(peer, user.name, String(msg.sdp), host).then((sdp) => reply(true, undefined, { sdp }))
             : voice.setMic(peer, msg.on === true).then(() => reply(true))
           done.catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
+          return
+        }
+        if (msg.t === 'auto') {
+          const auto = this.auto
+          if (!auto || !msg.cmd) return reply(false, 'diretta autonoma non attiva sul ponte')
+          if (msg.cmd.type !== 'search' && !can(user.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la diretta autonoma')
+          auto
+            .run(msg.cmd, user.name)
+            .then((data) => reply(true, undefined, data))
+            .catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
           return
         }
         if (msg.t !== 'cmd' || !msg.cmd) return
@@ -169,6 +184,11 @@ export class Relay {
   setAlarms(alarms: { key: string; since: string; message: string }[]): void {
     this.alarms = { t: 'alarms', alarms }
     this.broadcast(this.alarms)
+  }
+
+  setAuto(state: AutoState): void {
+    this.autoState = { t: 'autonoma', state }
+    this.broadcast(this.autoState)
   }
 
   setMic(mic: MicStatus): void {
