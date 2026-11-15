@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, fase 8 (programmi, registrazione automatica delle puntate, puntate on demand con le API di AzuraCast, pagine pubbliche ascolta e podcast, repliche).
+**Ultimo aggiornamento:** 15/11/2026, statistiche degli ascoltatori (pannello e regia), dopo la fase 8 (programmi, puntate on demand, repliche, titolo in onda per l'app).
 
 ## Indice
 
@@ -29,6 +29,7 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
     - [Dirette video su YouTube e Facebook](#dirette-video-su-youtube-e-facebook)
     - [Programmi e puntate on demand](#programmi-e-puntate-on-demand)
     - [Repliche](#repliche)
+    - [Statistiche degli ascoltatori](#statistiche-degli-ascoltatori)
 13. [Allarmi e notifiche](#13-allarmi-e-notifiche)
 14. [Backup e ripristino](#14-backup-e-ripristino)
 15. [Problemi comuni](#15-problemi-comuni)
@@ -523,6 +524,28 @@ Una puntata pubblicata si può rimandare in onda dalla regia:
 L'audio arriva in streaming dal server, quindi la regia deve essere collegata a internet (circa 58 MB all'ora sul
 4G). Nel registro la replica compare come flusso esterno: la musica dentro le repliche non entra nel report SIAE.
 
+### Statistiche degli ascoltatori
+
+Ogni minuto il server legge quanti ascoltatori ci sono sull'**Icecast principale** e su quello **secondario**, e
+tiene lo storico per **un anno**. Si vedono in due posti, con gli stessi dati:
+
+- **pannello**: il numero in alto (🎧) sono gli ascoltatori adesso; toccandolo (o menu **☰ → Ascoltatori**) si
+  aprono le statistiche;
+- **regia**: scheda **Ascoltatori** (serve il collegamento al ponte con il token).
+
+Scegli **Giorno** o **Settimana** (da lunedì) e la data, con ◀ ▶ per spostarti. Trovi:
+
+- **adesso**, **picco** (con l'ora), **media** e **ore di ascolto** (ascoltatori × ore: 10 persone per un'ora = 10);
+- il grafico dell'andamento (media ogni 10 minuti nel giorno, ogni ora nella settimana): passandoci sopra vedi
+  media, picco e la divisione tra principale e secondario;
+- la **media per ora del giorno**, per capire le fasce più ascoltate;
+- la tabella **per programma** (dalle fasce dei programmi): media, picco e ore di ascolto.
+
+**Icecast secondario:** il server prova prima la pagina pubblica `status-json.xsl` di quel server. Se è chiusa,
+metti nel `.env` del server `ICECAST_ESTERNO_ADMIN_UTENTE` e `ICECAST_ESTERNO_ADMIN_PASSWORD` (le credenziali di
+amministrazione di quell'Icecast) e riavvia. Se non si riesce a leggere, le statistiche contano solo il principale
+e la pagina lo dice.
+
 ## 13. Allarmi e notifiche
 
 Il ponte avvisa via Telegram e/o email (da configurare nel `.env` del server; la scheda **Collegamento** ha
@@ -575,6 +598,7 @@ Il ponte tiene gli ultimi 14.
 | "Ricerca fermata: MusicBrainz non raggiungibile" | la regia non ha internet o MusicBrainz è in manutenzione: riprova più tardi, riparte da dove era rimasta |
 | Nelle esterne non riconosce nessun brano | la regia non ha ancora mandato le impronte: controlla "Impronte audio" in Libreria e "impronte sul server" nella sezione Libreria sul server |
 | Troppi brani sconosciuti che erano parlato | premi **Non è musica**: vengono tolti dall'archivio |
+| Le statistiche non contano il secondario | pagina `status-json.xsl` del secondario chiusa: imposta `ICECAST_ESTERNO_ADMIN_UTENTE` e `ICECAST_ESTERNO_ADMIN_PASSWORD` |
 | Un programma non si registra | controlla che "Registra da solo" sia acceso e le fasce (giorni e orari); l'ora è quella italiana del server |
 | L'app non trova le puntate | il nome breve della stazione in Programmi → Impostazioni è diverso da quello che usa l'app; oppure il programma è nascosto |
 | "replica … non disponibile" nella regia | il programma non ha puntate pubblicate, è nascosto, oppure la regia non raggiunge il ponte |
@@ -584,7 +608,6 @@ Il ponte tiene gli ultimi 14.
 
 Prossime fasi (l'ordine può cambiare):
 
-- statistiche degli ascoltatori lette dagli Icecast (principale e secondario);
 - FluidStream, se un giorno servirà;
 - bot Telegram per etichettare più in fretta i brani sconosciuti delle esterne;
 - download automatico di notiziari, voce sintetica;
@@ -604,3 +627,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Riconoscimento dei brani nelle dirette esterne con le impronte della libreria; brani sconosciuti da ascoltare ed etichettare nel pannello; i brani caricati dal pannello scendono in regia e vengono catalogati come Artista\Titolo |
 | 15/11/2026 | Programmi dal pannello con fasce e copertina; registrazione automatica delle puntate, revisione e pubblicazione; pagine `podcast.html` e `ascolta.html`; API dei podcast come AzuraCast per l'app; repliche dal pannello e con gli eventi |
 | 15/11/2026 | Titolo in onda, ultimi brani e ascoltatori agli indirizzi `/api/nowplaying` di AzuraCast, per l'app |
+| 15/11/2026 | Statistiche degli ascoltatori nel pannello e nella regia (scheda Ascoltatori): adesso, picco, media, ore di ascolto, grafici del giorno e della settimana, per ora e per programma; storico di un anno |

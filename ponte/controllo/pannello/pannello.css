@@ -161,3 +161,26 @@ main { display: grid; gap: 12px; padding: 12px; max-width: 1100px; margin: 0 aut
 .ep-list li { font-size: 14px; }
 .rec { color: var(--red); font-weight: 700; }
 @media (max-width: 600px) { .cut { grid-template-columns: 1fr; } .ep-list { margin-left: 0 !important; } }
+
+/* ascoltatori */
+.pill.listeners { background: transparent; cursor: pointer; border-color: #3987e5; color: #bfdbfe; padding: 6px 8px; }
+.stats-bar { margin-bottom: 10px; }
+.stats-bar button.on { background: var(--accent); border-color: var(--accent); color: white; }
+.stats-bar input[type=date] { width: auto; padding: 4px 8px; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 600px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+.tile { background: var(--panel2); border-radius: 10px; padding: 10px 12px; }
+.tile .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile .l { color: var(--muted); font-size: 12px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; }
+.chart text { fill: var(--muted); font-size: 11px; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .line { fill: none; stroke: #3987e5; stroke-width: 2; }
+.chart .area { fill: #3987e5; opacity: 0.15; }
+.chart .bar { fill: #3987e5; }
+.chart .bar.dim { opacity: 0.45; }
+.chart .cross { stroke: var(--muted); stroke-width: 1; }
+.chart .dot { fill: #3987e5; stroke: var(--panel); stroke-width: 2; }
+.tip { position: absolute; pointer-events: none; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 12px; white-space: nowrap; z-index: 2; }
+.tip b { display: block; font-size: 14px; }

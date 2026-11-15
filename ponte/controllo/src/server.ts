@@ -25,6 +25,7 @@
  *   GET/PUT /api/video/logo   immagine delle dirette video su YouTube e Facebook (conduttori)
  *   GET/POST /api/sconosciuti, GET /api/sconosciuti/clip?id=   brani non riconosciuti nelle esterne (etichette)
  *
+ * Statistiche degli ascoltatori: GET /api/ascoltatori?periodo=giorno|settimana&data=AAAA-MM-GG (pannello o token)
  * Titolo in onda come AzuraCast (senza accesso): GET /api/nowplaying, /api/nowplaying/<stazione>,
  *   /api/nowplaying_static/<stazione>.json, /api/station/<stazione>/playlist.m3u|pls, GET /api/logo
  * Programmi e puntate on demand: vedi programmiApi.ts (API pubbliche come quelle dei podcast di AzuraCast,
@@ -61,6 +62,7 @@ import { FpStore, parseFpFile, UnknownStore } from './riconoscimento.ts'
 import { EsterneRecognition } from './esterne.ts'
 import { activeSlot, Programs } from './programmi.ts'
 import { apiNowPlaying, icecastListeners, NowPlaying } from './nowplaying.ts'
+import { ListenerLog, period, readSecondary, report, type SecondaryConfig } from './ascoltatori.ts'
 import { Recorder } from './puntate.ts'
 import { handleProgramApi } from './programmiApi.ts'
 
@@ -297,15 +299,53 @@ if (env('REGISTRAZIONE_PUNTATE', 'si') !== 'no') {
 
 const ICECAST_INTERNO = env('ICECAST_INTERNO', 'http://icecast:8000')
 const MOUNT = env('ICECAST_MOUNT', '/radio.mp3')
-let icecastCache = { at: 0, listeners: 0, online: true }
-async function icecastStatus(): Promise<{ listeners: number; online: boolean }> {
-  if (Date.now() - icecastCache.at < 15_000) return icecastCache
+let icecastCache = { at: 0, listeners: 0, online: true, reachable: false }
+async function icecastStatus(fresh = false): Promise<{ listeners: number; online: boolean; reachable: boolean }> {
+  if (!fresh && Date.now() - icecastCache.at < 15_000) return icecastCache
   const st = await fetch(`${ICECAST_INTERNO}/status-json.xsl`, { signal: AbortSignal.timeout(3000) })
     .then((r) => r.json())
     .catch(() => null)
   // Icecast non raggiungibile: si dice "in onda" (il ponte manda sempre qualcosa) e 0 ascoltatori
-  icecastCache = { at: Date.now(), ...(st ? icecastListeners(st, MOUNT) : { listeners: 0, online: true }) }
+  icecastCache = { at: Date.now(), reachable: !!st, ...(st ? icecastListeners(st, MOUNT) : { listeners: 0, online: true }) }
   return icecastCache
+}
+
+// ---------- statistiche degli ascoltatori (ogni minuto, storico di un anno) ----------
+
+const listenerLog = new ListenerLog(join(DATA_DIR, 'ascoltatori'))
+const secondaryIcecast: SecondaryConfig = {
+  host: env('ICECAST_ESTERNO_HOST'),
+  port: num('ICECAST_ESTERNO_PORTA', 8000),
+  mount: env('ICECAST_ESTERNO_MOUNT', '/radio.mp3'),
+  adminUser: env('ICECAST_ESTERNO_ADMIN_UTENTE', 'admin'),
+  adminPassword: env('ICECAST_ESTERNO_ADMIN_PASSWORD')
+}
+let secondaryWarned = false
+async function sampleListeners(): Promise<void> {
+  const ice = await icecastStatus(true)
+  // senza l'Icecast principale non si scrive nulla: meglio un buco che uno zero falso
+  if (!ice.reachable) return
+  const b = await readSecondary(secondaryIcecast)
+  if (secondaryIcecast.host && b === null && !secondaryWarned) {
+    secondaryWarned = true
+    console.log('[ascoltatori] Icecast secondario non leggibile: pagina status-json.xsl chiusa? Imposta ICECAST_ESTERNO_ADMIN_PASSWORD')
+  }
+  listenerLog.add({ t: Date.now(), a: ice.listeners, b })
+}
+setInterval(() => void sampleListeners().catch(() => {}), 60_000)
+setTimeout(() => void sampleListeners().catch(() => {}), 10_000)
+listenerLog.prune()
+setInterval(() => listenerLog.prune(), 24 * 3600_000)
+
+function listenerReport(url: URL): Record<string, unknown> {
+  const kind = url.searchParams.get('periodo') === 'settimana' ? 'settimana' : 'giorno'
+  const p = period(kind, url.searchParams.get('data') ?? '')
+  return {
+    now: listenerLog.latest(),
+    secondary: !!secondaryIcecast.host,
+    periodo: kind,
+    ...report(listenerLog.read(p.from, p.to), p.from, p.to, p.step, programs.list())
+  }
 }
 
 async function handleNowPlaying(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
@@ -609,6 +649,12 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       return json(res, 404, { error: 'non trovato' })
     }
     if (!url.pathname.startsWith('/api/')) return json(res, 404, { error: 'non trovato' })
+
+    // --- statistiche degli ascoltatori (pannello con accesso, regia con il token) ---
+    if (req.method === 'GET' && url.pathname === '/api/ascoltatori') {
+      if (!sessionUser(req) && !authorized(req)) return json(res, 401, { error: 'accesso richiesto' })
+      return json(res, 200, listenerReport(url))
+    }
 
     // --- titolo in onda e ascolto (pubblici, come AzuraCast) ---
     if (await handleNowPlaying(req, res, url)) return

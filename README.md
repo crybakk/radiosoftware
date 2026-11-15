@@ -59,6 +59,7 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 - Le registrazioni si rivedono dal pannello (inizio, fine, titolo, descrizione) e si pubblicano; solo streaming, niente download.
 - Pagine `podcast.html` e `ascolta.html`; API dei podcast uguali a quelle di AzuraCast per l'app della radio.
 - Repliche: pulsante nel pannello e azione degli eventi "Replica di un programma" (ultima puntata pubblicata).
+- Titolo in onda agli indirizzi `/api/nowplaying` di AzuraCast; statistiche degli ascoltatori (Icecast principale e secondario, un anno) nel pannello e nella regia.
 
 ## Installazione su Windows
 

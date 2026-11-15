@@ -1,4 +1,5 @@
 /** Dialogo con il servizio di controllo del ponte (HTTP + token). */
+import type { Report, Sample } from '../../ponte/controllo/src/ascoltatori.ts'
 
 export interface PonteAlarm {
   key: string
@@ -161,6 +162,12 @@ export class PonteClient {
     return (await (await this.request('GET', `/api/registro?${q}`, undefined, undefined, 60_000)).json()) as ServerPlay[]
   }
 
+  /** Statistiche degli ascoltatori di un giorno o di una settimana (data AAAA-MM-GG). */
+  async listenerStats(periodo: 'giorno' | 'settimana', data: string): Promise<ListenerStats> {
+    const q = new URLSearchParams({ periodo, data })
+    return (await (await this.request('GET', `/api/ascoltatori?${q}`, undefined, undefined, 30_000)).json()) as ListenerStats
+  }
+
   /** Programmi del server con le puntate pubblicate (dalla più recente), per le repliche. */
   async listPrograms(): Promise<PonteProgram[]> {
     const list = (await (await this.request('GET', '/api/programmi/regia')).json()) as PonteProgram[]
@@ -172,6 +179,13 @@ export class PonteClient {
     const r = await this.request('GET', `/api/backup/${encodeURIComponent(name)}`, undefined, undefined, 5 * 60_000)
     return new Uint8Array(await r.arrayBuffer())
   }
+}
+
+export type ListenerStats = Report & {
+  now: Sample | null
+  /** Icecast secondario configurato sul server. */
+  secondary: boolean
+  periodo: 'giorno' | 'settimana'
 }
 
 export interface PonteProgram {

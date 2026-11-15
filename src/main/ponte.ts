@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { RadioDb } from '../core/db'
-import { backupDue, PonteClient, type PonteAlarm, type PonteBackup, type PonteProgram, type PonteState } from '../core/ponteClient'
+import { backupDue, PonteClient, type PonteAlarm, type PonteBackup, type ListenerStats, type PonteProgram, type PonteState } from '../core/ponteClient'
 import { pickReplay } from '../core/eventActions'
 import type { PonteSettings, Track } from '../core/types'
 import { Uplink, type UplinkStatus } from '../core/uplink'
@@ -246,6 +246,12 @@ export class PonteService {
     const c = this.client()
     if (!c) throw new Error('Ponte non configurato: servono indirizzo e token')
     return c.state()
+  }
+
+  async listenerStats(periodo: 'giorno' | 'settimana', data: string): Promise<ListenerStats> {
+    const c = this.client()
+    if (!c) throw new Error('Ponte non configurato: servono indirizzo e token')
+    return c.listenerStats(periodo, data)
   }
 
   /** Programmi del server con le puntate pubblicate (repliche). */
