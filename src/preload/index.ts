@@ -18,10 +18,16 @@ const api: RadioApi = {
   getTrack: call('getTrack'),
   getTracks: call('getTracks'),
   updateTrack: call('updateTrack'),
-  mediaUrl: (t) => (/^https?:\/\//i.test(t.path) ? `media://stream/${encodeURIComponent(t.path)}` : `media://track/${t.id}`),
+  mediaUrl: (t) =>
+    /^https?:\/\//i.test(t.path)
+      ? `media://stream/${encodeURIComponent(t.path)}`
+      : t.id < 0
+        ? `media://file/${encodeURIComponent(t.path)}`
+        : `media://track/${t.id}`,
   listGenres: call('listGenres'),
   expandEvent: call('expandEvent'),
   choosePath: call('choosePath'),
+  newsTest: call('newsTest'),
   getSettings: call('getSettings'),
   saveSettings: call('saveSettings'),
   listEvents: call('listEvents'),

@@ -11,6 +11,8 @@ export interface EventEffects {
   now(): Date
   /** Puntata da mandare in replica (dal server); null se non c'è. */
   replay?(programId: string, episodeId?: string): Promise<Track | null>
+  /** Notiziario da mandare in onda (scaricato al momento); track null = niente, note spiega perché. */
+  news?(sourceId: string): Promise<{ track: Track | null; note: string }>
 }
 
 /** Estrae i percorsi da una playlist M3U/M3U8 o PLS. I percorsi relativi sono rispetto alla playlist. */
@@ -72,6 +74,19 @@ export function replayTrack(program: { title: string }, episode: { title: string
   const t = streamTrack(episode.path, episode.length / 60, `Replica: ${episode.title}`)
   const seconds = Math.max(1, Math.round(episode.length))
   return { ...t, artist: program.title, duration: seconds, cueOut: seconds, mixPoint: seconds }
+}
+
+/** Brano "virtuale" per un notiziario scaricato (file locale, non entra nella libreria). */
+export function newsTrack(name: string, item: { file: string; title: string; duration: number; publishedAt: number }): Track {
+  const seconds = Math.max(1, Math.round(item.duration || 300))
+  return {
+    ...streamTrack(item.file, seconds / 60, item.title || name),
+    kind: 'news',
+    artist: name,
+    duration: seconds,
+    cueOut: seconds,
+    mixPoint: seconds
+  }
 }
 
 /** Sceglie la puntata da replicare: quella indicata o la più recente. */
@@ -179,6 +194,17 @@ export async function expandEvent(db: RadioDb, event: ScheduledEvent, fx: EventE
         }
         if (t) front.push(t)
         else steps.push({ kind: 'error', message: `replica di "${a.title || a.programId}" non disponibile: ${why}` })
+        break
+      }
+      case 'news': {
+        let r: { track: Track | null; note: string } = { track: null, note: 'notiziari non disponibili' }
+        try {
+          if (fx.news) r = await fx.news(a.sourceId)
+        } catch (err) {
+          r = { track: null, note: err instanceof Error ? err.message : String(err) }
+        }
+        if (r.track) front.push(r.track)
+        else steps.push({ kind: 'error', message: `notiziario "${a.title || a.sourceId}": ${r.note}` })
         break
       }
       case 'command':
