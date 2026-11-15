@@ -1,4 +1,5 @@
 import { analyzeFile } from '../core/analyzer'
+import { fingerprintFile } from '../core/fingerprintFile'
 import type { RadioDb } from '../core/db'
 import { scanLibrary, type ScanProgress } from '../core/scanner'
 import type { LibraryStatus } from '../shared/api'
@@ -10,6 +11,7 @@ import type { LibraryStatus } from '../shared/api'
 export class LibraryService {
   private scanning: ScanProgress | null = null
   private analyzing = false
+  private fingerprinting = false
   private stopRequested = false
   private listeners = new Set<(s: LibraryStatus) => void>()
 
@@ -23,7 +25,15 @@ export class LibraryService {
   }
 
   status(): LibraryStatus {
-    return { ...this.db.libraryStats(), scanning: this.scanning, analyzing: this.analyzing }
+    const fp = this.db.fingerprintStats()
+    return {
+      ...this.db.libraryStats(),
+      scanning: this.scanning,
+      analyzing: this.analyzing,
+      fingerprints: fp.done,
+      fingerprintTotal: fp.total,
+      fingerprinting: this.fingerprinting
+    }
   }
 
   private emit(): void {
@@ -81,6 +91,41 @@ export class LibraryService {
       }
     } finally {
       this.analyzing = false
+      this.emit()
+    }
+    await this.fingerprintAll()
+  }
+
+  /**
+   * Impronte audio della musica (per riconoscere i brani nelle dirette esterne), dopo l'analisi.
+   * Circa mezzo secondo a brano, un brano alla volta.
+   */
+  async fingerprintAll(): Promise<void> {
+    if (this.fingerprinting || this.analyzing || !this.ffmpegPath) return
+    this.fingerprinting = true
+    this.stopRequested = false
+    this.emit()
+    let lastEmit = 0
+    try {
+      for (;;) {
+        const batch = this.db.pendingFingerprint(20)
+        if (!batch.length || this.stopRequested) break
+        for (const t of batch) {
+          if (this.stopRequested) break
+          try {
+            this.db.saveFingerprint(t.id, await fingerprintFile(this.ffmpegPath, t.path))
+          } catch {
+            // file illeggibile: niente impronta finché il file non cambia
+            this.db.saveFingerprint(t.id, null)
+          }
+          if (Date.now() - lastEmit > 1000) {
+            lastEmit = Date.now()
+            this.emit()
+          }
+        }
+      }
+    } finally {
+      this.fingerprinting = false
       this.emit()
     }
   }

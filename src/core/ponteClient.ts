@@ -124,6 +124,37 @@ export class PonteClient {
     return ((await r.json()) as { updated: number }).updated
   }
 
+  /** Impronte audio già sul server: id e numero di valori. */
+  async listFingerprints(): Promise<{ id: string; n: number }[]> {
+    return (await (await this.request('GET', '/api/impronte', undefined, undefined, 60_000)).json()) as { id: string; n: number }[]
+  }
+
+  /** Più impronte in un corpo solo: [lunghezza u32 LE][file impronta]… */
+  async uploadFingerprints(body: Uint8Array): Promise<number> {
+    const r = await this.request('PUT', '/api/impronte', new Blob([body as Uint8Array<ArrayBuffer>]), 'application/octet-stream', 5 * 60_000)
+    return ((await r.json()) as { saved: number }).saved
+  }
+
+  async deleteFingerprints(ids: string[]): Promise<void> {
+    await this.request('DELETE', '/api/impronte', JSON.stringify({ ids }), 'application/json', 60_000)
+  }
+
+  /** Brani caricati dal pannello sul server, da scaricare in regia. */
+  async listUploaded(): Promise<UploadedTrack[]> {
+    return (await (await this.request('GET', '/api/caricati', undefined, undefined, 60_000)).json()) as UploadedTrack[]
+  }
+
+  async downloadUploaded(id: string, signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+    const r = await this.request('GET', `/api/caricati/file?${new URLSearchParams({ id })}`, undefined, undefined, 60 * 60_000, signal)
+    if (!r.body) throw new PonteError('risposta vuota dal ponte')
+    return r.body
+  }
+
+  /** Il brano scaricato prende sul server il percorso che ha in regia (così non si ricarica). */
+  async moveUploaded(from: string, to: string): Promise<void> {
+    await this.request('POST', '/api/caricati/sposta', JSON.stringify({ da: from, a: to }), 'application/json', 60_000)
+  }
+
   /** Brani suonati dal server (diretta autonoma, musica di riserva) con inizio in [from, to). */
   async listPlays(from: Date, to: Date): Promise<ServerPlay[]> {
     const q = new URLSearchParams({ da: from.toISOString(), a: to.toISOString() })
@@ -136,6 +167,14 @@ export class PonteClient {
   }
 }
 
+export interface UploadedTrack {
+  id: string
+  size: number
+  title: string
+  artist: string
+  duration: number
+}
+
 /** Voce del registro del server (vedi ponte/controllo/src/registro.ts). */
 export interface ServerPlay {
   at: string
@@ -144,6 +183,9 @@ export interface ServerPlay {
   title: string
   artist: string
   duration: number
+  /** Solo per i brani sconosciuti etichettati dal pannello. */
+  composer?: string
+  publisher?: string
 }
 
 export interface LibraryMeta {

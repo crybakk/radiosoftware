@@ -85,6 +85,11 @@ app.whenReady().then(() => {
     win?.webContents.send('serverSyncStatus', st)
   )
   const mb = new MusicBrainzService(db, (st) => win?.webContents.send('mbStatus', st))
+  // brani caricati dal pannello e scaricati in regia: analisi, impronta e MusicBrainz da soli
+  serverSync.onCatalogued = (ids) => {
+    void library.analyzeAll()
+    void mb.lookup(ids)
+  }
 
   // brani suonati dal server (diretta autonoma, riserva) → registro di trasmissione
   let serverPlaysError: string | null = null

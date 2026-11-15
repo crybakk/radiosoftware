@@ -92,6 +92,43 @@ class FakeClient {
     this.meta.push(...list)
     return list.length
   }
+  uploaded: { id: string; size: number; title: string; artist: string; duration: number; data: Uint8Array }[] = []
+  moved: [string, string][] = []
+  fps = new Map<string, number>()
+  fpMeta: Record<string, unknown>[] = []
+  async listUploaded() {
+    return this.uploaded.map(({ data: _d, ...u }) => u)
+  }
+  async downloadUploaded(id: string) {
+    const u = this.uploaded.find((x) => x.id === id)!
+    return new Blob([u.data as Uint8Array<ArrayBuffer>]).stream()
+  }
+  async moveUploaded(from: string, to: string) {
+    this.moved.push([from, to])
+    this.uploaded = this.uploaded.filter((u) => u.id !== from)
+  }
+  async listFingerprints() {
+    return [...this.fps].map(([id, n]) => ({ id, n }))
+  }
+  async uploadFingerprints(body: Uint8Array) {
+    let o = 0
+    let n = 0
+    const dv = new DataView(body.buffer, body.byteOffset)
+    while (o < body.length) {
+      const len = dv.getUint32(o, true)
+      const rec = body.subarray(o + 4, o + 4 + len)
+      const nl = rec.indexOf(10)
+      const meta = JSON.parse(new TextDecoder().decode(rec.subarray(0, nl)))
+      this.fpMeta.push(meta)
+      this.fps.set(meta.id, (len - nl - 1) / 4)
+      o += 4 + len
+      n++
+    }
+    return n
+  }
+  async deleteFingerprints(ids: string[]) {
+    for (const id of ids) this.fps.delete(id)
+  }
 }
 
 describe('copia della libreria sul server', () => {
@@ -136,6 +173,31 @@ describe('copia della libreria sul server', () => {
     expect(res).toMatch(/Inviati 1 brani.*ne restano 1.*limite di 3 MB/)
     expect(c.meta.map((m) => m.id)).toEqual(['regia/Musica/d.mp3'])
     expect(JSON.parse(readFileSync(join(dir, 'libreria-server.json'), 'utf8')).bytes).toBe(3 * 1024 * 1024)
+  })
+
+  it('scarica i brani caricati dal pannello in Artista/Titolo e manda le impronte', async () => {
+    const c = new FakeClient()
+    db.saveSettings({ ponte: { ...db.getSettings().ponte, libraryDailyMb: 100 } })
+    c.uploaded.push({ id: 'caricati/registrazione_01.mp3', size: 5, title: 'Canzone: nuova?', artist: 'Band Locale', duration: 180, data: new Uint8Array([1, 2, 3, 4, 5]) })
+    // un brano con l'impronta, uno vecchio sul server da togliere
+    const withFp = db.searchTracks({ text: 'Albachiara' }).tracks[0]
+    db.saveFingerprint(withFp.id, new Uint8Array(16))
+    c.fps.set('regia/Musica/sparito.mp3', 3)
+    const catalogued: number[] = []
+    const sync = new ServerLibrarySync(db, dir, () => c as unknown as PonteClient, () => {})
+    sync.onCatalogued = (ids) => catalogued.push(...ids)
+    const res = await sync.syncNow(true)
+    const file = join(music, 'Band Locale', 'Canzone nuova.mp3')
+    expect(readFileSync(file)).toEqual(Buffer.from([1, 2, 3, 4, 5]))
+    expect(c.moved).toEqual([['caricati/registrazione_01.mp3', 'regia/Musica/Band Locale/Canzone nuova.mp3']])
+    const t = db.findByPath(file)!
+    expect(t).toMatchObject({ kind: 'music', title: 'Canzone: nuova?', artist: 'Band Locale' })
+    expect(catalogued).toEqual([t.id])
+    expect(res).toMatch(/Scaricati e catalogati 1 brani/)
+    expect([...c.fps]).toEqual([['regia/Musica/Rock/a.mp3', 4]])
+    expect(c.fpMeta[0]).toMatchObject({ title: 'Albachiara', artist: 'Vasco' })
+    // la volta dopo non si rimanda nulla
+    expect(await sync.syncNow(true)).not.toMatch(/impronte/)
   })
 
   it('non svuota il server se la libreria sembra scollegata', async () => {

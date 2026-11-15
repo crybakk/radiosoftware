@@ -62,6 +62,22 @@ export class MusicBrainzService {
     return this.status()
   }
 
+  /** Cerca subito pochi brani precisi (per esempio appena scaricati dal server), anche senza la ricerca completa. */
+  async lookup(ids: number[]): Promise<void> {
+    if (this.running) return // la ricerca completa li troverà (sono tornati in coda)
+    for (const id of ids) {
+      const t = this.db.getTrack(id)
+      if (!t) continue
+      try {
+        const r = await this.mb.find(t)
+        this.db.saveMb(t.id, r?.recordingId ?? '', r ?? {})
+      } catch {
+        // resta in coda per la prossima ricerca
+      }
+    }
+    this.emit(true)
+  }
+
   async start(): Promise<void> {
     if (this.running) return
     this.running = true

@@ -62,12 +62,18 @@ export function ServerLibrarySection({
         escludere a mano qualsiasi brano. La prima volta copia la selezione su un disco USB e portala sul server (vedi la guida);
         dopo, la regia invia da sola solo i brani nuovi o cambiati.
       </p>
+      <p className="hint">
+        Nelle stesse ore la regia manda al server le impronte audio di tutta la musica (per riconoscere i brani nelle
+        dirette esterne, circa 5 KB a brano) e scarica i brani caricati dal pannello, catalogandoli nella prima cartella
+        della musica come Artista\Titolo. Tutto rientra nel limite di MB del giorno.
+      </p>
       {st && (
         <div className="link-status">
           <strong>
             {st.selected} brani nella selezione ({(st.selectedMb / 1024).toFixed(1)} GB), {st.excluded} esclusi
           </strong>
           {st.onServer != null && <span className="info-line">sul server: {st.onServer}</span>}
+          {st.fingerprintsOnServer != null && <span className="info-line">impronte sul server: {st.fingerprintsOnServer}</span>}
           {st.toUpload != null && (
             <span className="info-line">
               da inviare: {st.toUpload} ({st.toUploadMb} MB)

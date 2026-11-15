@@ -47,6 +47,12 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 - Il registro comprende anche i brani suonati dal server (diretta autonoma e musica di riserva), scaricati dal ponte.
 - Autori, editore, ISWC e ISRC completati con MusicBrainz (solo i campi vuoti) ed elenco della musica con dati mancanti.
 
+**Fase 7b – riconoscimento nelle esterne** (in prova):
+
+- Impronte audio di tutta la libreria calcolate in regia e mandate al server; durante le dirette esterne il server riconosce i brani e li mette nel registro.
+- Brani sconosciuti: 20 secondi di audio da etichettare dal pannello, poi riconosciuti da soli.
+- I brani caricati dal pannello scendono in regia e vengono catalogati come Artista\Titolo.
+
 ## Installazione su Windows
 
 Ogni push compila l'installer in GitHub Actions: apri la scheda **Actions** del repository, l'ultima esecuzione di "Test e build Windows", e scarica l'artefatto **RadioRegia-Setup-Windows**.
