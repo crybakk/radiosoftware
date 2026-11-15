@@ -53,6 +53,8 @@ if [[ ! -f .env ]]; then
   imposta CONTROLLO_TOKEN "$(openssl rand -hex 24)"
   imposta ESTERNA_PASSWORD "$(openssl rand -hex 8)"
   imposta PANNELLO_ADMIN_PASSWORD "$(openssl rand -base64 12 | tr -d '/+=' | cut -c1-12)"
+  # il microfono remoto funziona anche dalla rete di casa
+  imposta WEBRTC_INDIRIZZI "$(hostname -I | awk '{print $1}')"
   echo "Creato .env con frase segreta, token e password delle esterne generati a caso."
 else
   echo ".env esistente: non lo modifico."
@@ -104,6 +106,7 @@ cat <<FINE
      UDP $(leggi SRT_PORT)                  (audio dalla regia)
      TCP $(leggi CONTROLLO_PORTA)                  (allarmi, titoli, backup)
      TCP $(leggi ESTERNA_PORTA)                  (dirette esterne)
+     UDP $(leggi WEBRTC_PORTE)      (microfono remoto dal pannello)
 
 Questi valori restano in $CARTELLA_PONTE/.env (sudo cat $CARTELLA_PONTE/.env).
 FINE

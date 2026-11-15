@@ -1,6 +1,7 @@
 /** Smista i messaggi tra la regia (una sola) e i pannelli remoti (quanti si vuole). */
-import type { FromPanel, FromStudio, RemoteState, ToPanel, ToStudio } from './protocol.ts'
+import type { FromPanel, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio } from './protocol.ts'
 import { can, sameSecret, type PublicUser } from './users.ts'
+import type { VoiceHub } from './voce.ts'
 
 export interface Peer {
   send(data: string): void
@@ -23,7 +24,10 @@ export class Relay {
   private seq = 0
   private token: string
   private alarms: ToPanel & { t: 'alarms' } = { t: 'alarms', alarms: [] }
+  private mic: ToPanel & { t: 'mic' } = { t: 'mic', mic: { user: null, onAir: false } }
   onStudioChange: (connected: boolean) => void = () => {}
+  /** Microfono remoto (WebRTC); null se non attivo sul ponte. */
+  voice: VoiceHub | null = null
 
   constructor(token: string) {
     this.token = token
@@ -111,17 +115,20 @@ export class Relay {
   // ---------- pannelli ----------
 
   /**
-   * Nuovo pannello. `current` (facoltativo) restituisce l'utente aggiornato della sessione:
+   * Nuovo pannello. `host` = nome con cui il browser ha aperto il pannello (serve al microfono).
+   * `current` (facoltativo) restituisce l'utente aggiornato della sessione:
    * a ogni comando si ricontrolla il ruolo, e senza sessione valida la connessione si chiude.
    */
   attachPanel(
     peer: Peer,
     user: PublicUser,
+    host?: string,
     current?: () => PublicUser | null
   ): { message: (raw: string) => void; close: () => void } {
     this.panels.set(peer, user)
     this.sendTo(peer, { t: 'hello', user, studio: this.studio !== null, state: this.state })
     this.sendTo(peer, this.alarms)
+    this.sendTo(peer, this.mic)
     return {
       message: (raw: string) => {
         let msg: FromPanel
@@ -131,10 +138,23 @@ export class Relay {
           return
         }
         if (typeof msg !== 'object' || msg === null || Array.isArray(msg)) return
-        if (msg.t !== 'cmd' || typeof msg.id !== 'string' || typeof msg.cmd !== 'object' || msg.cmd === null) return
-        const reply = (ok: boolean, error?: string): void => this.sendTo(peer, { t: 'reply', id: msg.id, ok, error })
+        if (msg.t === 'rtc-close') return this.voice?.close(peer)
+        if (typeof msg.id !== 'string') return
+        const reply = (ok: boolean, error?: string, data?: unknown): void =>
+          this.sendTo(peer, { t: 'reply', id: msg.id, ok, error, data })
         const now = current ? current() : user
         if (!now) return peer.close(4003, 'sessione chiusa')
+        if (msg.t === 'rtc-offer' || msg.t === 'mic') {
+          if (!can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di andare in onda')
+          const voice = this.voice
+          if (!voice) return reply(false, 'microfono remoto non attivo sul ponte')
+          const done = msg.t === 'rtc-offer'
+            ? voice.open(peer, now.name, String(msg.sdp), host).then((sdp) => reply(true, undefined, { sdp }))
+            : voice.setMic(peer, msg.on === true).then(() => reply(true))
+          done.catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
+          return
+        }
+        if (msg.t !== 'cmd' || typeof msg.cmd !== 'object' || msg.cmd === null) return
         // la ricerca è una lettura: la può fare anche chi non comanda
         if (msg.cmd.type !== 'search' && !can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la regia')
         if (!this.studio) return reply(false, 'regia scollegata')
@@ -151,6 +171,7 @@ export class Relay {
       },
       close: () => {
         this.panels.delete(peer)
+        this.voice?.close(peer)
         for (const [id, p] of this.pending) {
           if (p.panel !== peer) continue
           clearTimeout(p.timer)
@@ -171,6 +192,11 @@ export class Relay {
   setAlarms(alarms: { key: string; since: string; message: string }[]): void {
     this.alarms = { t: 'alarms', alarms }
     this.broadcast(this.alarms)
+  }
+
+  setMic(mic: MicStatus): void {
+    this.mic = { t: 'mic', mic }
+    this.broadcast(this.mic)
   }
 
   private sendTo(peer: Peer, m: ToPanel): void {

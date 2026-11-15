@@ -33,6 +33,7 @@ import { Alarms, DEFAULT_ALARM_CONFIG, type AlarmKey } from './alarms.ts'
 import { Notifier } from './notifier.ts'
 import { Relay } from './relay.ts'
 import { can, ROLES, sameSecret, Users, type PublicUser, type Role } from './users.ts'
+import { VoiceHub, voiceSockets, weriftFactory } from './voce.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -89,6 +90,51 @@ const relay = new Relay(TOKEN)
 relay.onStudioChange = (c) => console.log(`[regia] canale di controllo ${c ? 'collegato' : 'scollegato'}`)
 // segnale di vita a livello di applicazione: la regia capisce se il canale è ancora vivo
 setInterval(() => relay.pingStudio(), 15_000)
+
+// ---------- microfono remoto (WebRTC) ----------
+
+function portRange(v: string): [number, number] {
+  const m = /^(\d+)\s*-\s*(\d+)$/.exec(v.trim())
+  const a = m ? Number(m[1]) : 40000
+  const b = m ? Number(m[2]) : 40049
+  return a > 0 && b >= a && b < 65536 ? [a, b] : [40000, 40049]
+}
+
+async function setVoiceOnAir(on: boolean): Promise<boolean> {
+  const r = await fetch(`${LIQUIDSOAP}/voce`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ on }),
+    signal: AbortSignal.timeout(3000)
+  }).catch(() => null)
+  return !!r?.ok
+}
+
+if (env('MICROFONO_REMOTO', 'si') !== 'no') {
+  const [vHost, vPort] = env('VOCE_LIQUIDSOAP', 'liquidsoap:41030').split(':')
+  const sockets = voiceSockets({ host: vHost, port: Number(vPort) || 41030 }, num('RITORNO_VOCE_PORTA', 41040), (pkt) =>
+    voice.sendReturn(pkt)
+  )
+  const voice: VoiceHub = new VoiceHub({
+    factory: weriftFactory({
+      portRange: portRange(env('WEBRTC_PORTE', '40000-40049')),
+      stun: env('WEBRTC_STUN', 'stun:stun.l.google.com:19302'),
+      addresses: env('WEBRTC_INDIRIZZI')
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean)
+    }),
+    sendVoice: (pkt) => sockets.sendVoice(pkt),
+    setOnAir: setVoiceOnAir
+  })
+  voice.onChange = (m) => {
+    console.log(`[microfono] ${m.user ? `${m.user}, ${m.onAir ? 'IN ONDA' : 'fuori onda'}` : 'chiuso'}`)
+    relay.setMic(m)
+  }
+  relay.voice = voice
+  // all'avvio il microfono è chiuso: se Liquidsoap era rimasto con la voce aperta la togliamo
+  setTimeout(() => void setVoiceOnAir(false), 3000)
+}
 
 await mkdir(DATA_DIR, { recursive: true })
 const users = new Users(join(DATA_DIR, 'utenti.json'), join(DATA_DIR, 'sessioni.json'))
@@ -462,6 +508,7 @@ publicServer.on('upgrade', (req, socket, head) => {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
         return socket.destroy()
       }
+      const host = (req.headers.host ?? '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '')
       return wss.handleUpgrade(req, socket, head, (ws) => {
         const set = panelSockets.get(token) ?? new Set<WebSocket>()
         panelSockets.set(token, set)
@@ -472,7 +519,7 @@ publicServer.on('upgrade', (req, socket, head) => {
         })
         // a ogni comando si usa il ruolo attuale della sessione (cambiato, scaduta, utente eliminato)
         const current = (): PublicUser | null => users.session(token)
-        wire(ws, relay.attachPanel(ws, me, current), () => current() !== null)
+        wire(ws, relay.attachPanel(ws, me, host || undefined, current), () => current() !== null)
       })
     }
     socket.destroy()

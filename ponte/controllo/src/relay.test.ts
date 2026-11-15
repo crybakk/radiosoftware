@@ -124,7 +124,7 @@ describe('smistamento tra pannello e regia', () => {
     const s = connectStudio(r)
     const panel = new FakePeer()
     let now: PublicUser | null = { name: 'anna', role: 'conduttore' }
-    const ph = r.attachPanel(panel, { name: 'anna', role: 'conduttore' }, () => now)
+    const ph = r.attachPanel(panel, { name: 'anna', role: 'conduttore' }, undefined, () => now)
     ph.message(JSON.stringify({ t: 'cmd', id: 'p1', cmd: { type: 'stop' } }))
     expect(s.p.last('cmd')).toMatchObject({ cmd: { type: 'stop' } })
     s.p.sent = []
