@@ -211,14 +211,28 @@ Let's Encrypt gratuito, rinnovato in automatico).
 
 1. **Nome di dominio**: serve un nome (per esempio `radio.esempio.it`) che punti all'IP pubblico di casa. Se l'IP
    cambia, usa un DNS dinamico (DuckDNS o quello del router).
-2. **Crea la VM**: copia `ponte/proxmox/crea-vm.sh` sul nodo Proxmox ed eseguilo come root.
-   Con indirizzo fisso (consigliato):
-   `IP=192.168.1.50/24 GATEWAY=192.168.1.1 bash crea-vm.sh`
-   Crea una VM Ubuntu 24.04 con 4 core, 4 GB di RAM e 300 GB di disco (servono per la musica), che si avvia insieme a Proxmox.
-3. **Installa**: entra nella VM (`ssh radio@192.168.1.50`), copia la cartella `ponte` ed esegui
-   `sudo DOMINIO=radio.esempio.it bash installa-server.sh` (con il tuo dominio). Alla fine stampa i valori per
-   la regia, la password del pannello e le porte da aprire. Tienili da parte.
-4. **Router di casa**: inoltra verso la VM
+2. **Chiave SSH del PC**: la VM accetta l'accesso SSH solo con una chiave, non con la password. Sul PC Windows
+   apri PowerShell e scrivi `ssh-keygen -t ed25519` (premi Invio a tutte le domande), poi
+   `type $env:USERPROFILE\.ssh\id_ed25519.pub` e copia la riga che stampa (inizia con `ssh-ed25519`).
+   Nella Shell del nodo Proxmox scrivi `nano /root/chiave-pc.pub`, incolla la riga, salva (Ctrl+O, Invio, Ctrl+X).
+3. **Crea la VM**: apri `ponte/proxmox/crea-vm.sh` su GitHub, premi **Copy raw file**, e nella Shell di Proxmox
+   crea il file con `nano crea-vm.sh` (incolla, salva). Poi eseguilo come root:
+   `CHIAVE_SSH=/root/chiave-pc.pub bash crea-vm.sh`
+   Crea una VM Ubuntu 24.04 con 4 core, 4 GB di RAM e 300 GB di disco (servono per la musica), che si avvia
+   insieme a Proxmox. Con meno spazio libero aggiungi per esempio `DISCO=200G`; con indirizzo fisso
+   `IP=192.168.1.50/24 GATEWAY=192.168.1.1`. Senza `IP=` la VM prende l'indirizzo dal router (DHCP): in quel caso,
+   sul router, fai assegnare alla VM sempre lo stesso indirizzo (sul Fritz!Box: Rete domestica → Rete → "radio" →
+   "Assegna sempre lo stesso indirizzo IPv4"), altrimenti l'inoltro delle porte smette di funzionare.
+   L'indirizzo della VM si vede sul router, oppure dalla console della VM su Proxmox (menu **Console → xterm.js**,
+   premi Invio, entra come `radio`, scrivi `ip -br a`). La console di Proxmox non incolla bene: usala solo per
+   questo e lavora via SSH dal PC.
+4. **Copia il programma nella VM**: su GitHub, pulsante **Code → Download ZIP**. Poi in PowerShell sul PC:
+   `scp $HOME\Downloads\radiosoftware-main.zip radio@<indirizzo>:` ed entra nella VM con `ssh radio@<indirizzo>`.
+   Nella VM: `sudo apt-get install -y unzip && unzip -q radiosoftware-main.zip && cd radiosoftware-main/ponte`
+5. **Installa**: `sudo DOMINIO=radio.esempio.it bash installa-server.sh` (con il tuo dominio). Alla fine stampa i
+   valori per la regia, la password del pannello e le porte da aprire. Tienili da parte (restano anche in
+   `/opt/radio-ponte/.env`).
+6. **Router di casa**: inoltra verso la VM
    - TCP 80 e 443 (HTTPS: pannello, regia, ascolto)
    - TCP 8000 (ascolto senza https, facoltativo)
    - UDP 9000 (audio dalla regia)
@@ -227,7 +241,7 @@ Let's Encrypt gratuito, rinnovato in automatico).
    - UDP 9020 (video da OBS, solo se lo usi da fuori casa)
 
    Appena le porte 80 e 443 arrivano alla VM, il certificato si attiva da solo.
-5. **Musica**: copia la selezione della libreria sul server (sezione 12, "Libreria sul server"). Serve alla
+7. **Musica**: copia la selezione della libreria sul server (sezione 12, "Libreria sul server"). Serve alla
    diretta autonoma e alla musica di riserva.
 
 Se nella VM avevi già installato AzuraCast con la versione precedente, toglilo
@@ -235,6 +249,25 @@ Se nella VM avevi già installato AzuraCast con la versione precedente, toglilo
 
 **Banda di casa:** ogni ascoltatore collegato all'Icecast principale usa 0,128 Mbit/s di upload. Con 20 Mbit/s in
 upload ci stanno circa 150 ascoltatori (il massimo si imposta con `ICECAST_MAX_ASCOLTATORI`, di base 1000: con 500 Mbit/s in upload ce ne starebbero quasi 4000).
+
+### Provare il server mentre AzuraCast è ancora acceso
+
+Le porte 80, 443 e 8000 del router possono andare a una sola macchina. Per provare il nuovo server senza
+spegnere AzuraCast:
+
+- usa un altro nome che punti all'IP di casa (per esempio `player.radio.it`) e una porta esterna libera,
+  per esempio **9443**: sul router inoltra TCP 9443 esterna → porta 443 della VM, più UDP 9000, TCP 9010 e
+  UDP 40000-40049 (AzuraCast non le usa). La 443 e la 8000 restano ad AzuraCast;
+- in `/opt/radio-ponte/.env` metti `DOMINIO=` quel nome e `ASCOLTO_URL=https://<nome>:9443/radio.mp3`,
+  poi `sudo /opt/radio-ponte/riavvia.sh`;
+- **certificato**: Let's Encrypt controlla solo la porta 80 (mai la 9443). Sposta sul router la TCP 80 verso
+  la VM per qualche minuto, finché `docker compose logs caddy` (in `/opt/radio-ponte`) scrive
+  "certificate obtained successfully", poi rimettila su AzuraCast. Il certificato dura 90 giorni: se le prove
+  durano di più, ripeti lo spostamento;
+- pannello: `https://<nome>:9443`; nella regia **Porta del servizio di controllo** 9443 con HTTPS spuntato.
+
+Quando passi al server nuovo per davvero, togli AzuraCast, inoltra 80, 443 e 8000 alla VM, rimetti il dominio
+definitivo in `DOMINIO`, svuota `ASCOLTO_URL` e riavvia.
 
 ### Ascolto e Icecast secondario
 
@@ -584,6 +617,8 @@ Il ponte tiene gli ultimi 14.
 | L'app delle esterne non si collega | porta 9010 non inoltrata, oppure mount/utente/password diversi |
 | Il pannello dice REGIA SCOLLEGATA | regia spenta o senza internet, oppure "Permetti di comandare la regia dal pannello remoto" disattivato |
 | Il pannello non si apre | porte 80 e 443 non inoltrate verso la VM |
+| "No supported authentication methods" o password rifiutata via SSH | la VM accetta solo la chiave SSH: ricrea la VM con `CHIAVE_SSH=`, oppure dalla console della VM `sudo sed -i 's/no/yes/' /etc/ssh/sshd_config.d/60-cloudimg-settings.conf` e `sudo systemctl restart ssh` |
+| `installa-server.sh` si ferma subito con errori strani (`$'\r'`) | i file sono passati da Windows con le righe in formato Windows: riscarica lo ZIP da GitHub, oppure nella cartella `ponte` esegui `find . -type f -exec sed -i 's/\r$//' {} +` |
 | "Il microfono funziona solo con il pannello aperto in HTTPS" | apri il pannello con `https://` e il nome di dominio (sezione 9) |
 | Il microfono si apre ma non si sente nulla, oppure si chiude dopo 20 secondi | porte UDP 40000-40049 non inoltrate sul router verso la VM |
 | "la libreria del server è vuota" | fai la prima copia della selezione (sezione 12, Libreria sul server) o carica brani dal pannello |
@@ -628,3 +663,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Programmi dal pannello con fasce e copertina; registrazione automatica delle puntate, revisione e pubblicazione; pagine `podcast.html` e `ascolta.html`; API dei podcast come AzuraCast per l'app; repliche dal pannello e con gli eventi |
 | 15/11/2026 | Titolo in onda, ultimi brani e ascoltatori agli indirizzi `/api/nowplaying` di AzuraCast, per l'app |
 | 15/11/2026 | Statistiche degli ascoltatori nel pannello e nella regia (scheda Ascoltatori): adesso, picco, media, ore di ascolto, grafici del giorno e della settimana, per ora e per programma; storico di un anno |
+| 15/11/2026 | Installazione su Proxmox passo passo: chiave SSH dal PC, copia del programma con lo ZIP, VM in DHCP; prove del server nuovo con AzuraCast ancora acceso (altro nome e porta 9443) |

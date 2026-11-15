@@ -18,7 +18,9 @@ BRIDGE="${BRIDGE:-vmbr0}"           # scheda di rete di Proxmox
 IP="${IP:-dhcp}"                    # "dhcp" oppure indirizzo fisso tipo 192.168.1.50/24
 GATEWAY="${GATEWAY:-}"              # obbligatorio con indirizzo fisso, es. 192.168.1.1
 UTENTE="${UTENTE:-radio}"           # utente per entrare nella VM
-CHIAVE_SSH="${CHIAVE_SSH:-/root/.ssh/authorized_keys}"   # chiavi SSH autorizzate (facoltative)
+# Chiave SSH del PC da cui entrerai nella VM (riga "ssh-ed25519 …" di id_ed25519.pub, salvata in un file).
+# Le immagini cloud di Ubuntu NON accettano la password via SSH: senza la chiave del PC si entra solo dalla console.
+CHIAVE_SSH="${CHIAVE_SSH:-/root/.ssh/authorized_keys}"
 PASSWORD="${PASSWORD:-}"            # password dell'utente; se vuota la chiede
 IMG_URL="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
 IMG="/var/tmp/noble-server-cloudimg-amd64.img"
@@ -72,7 +74,11 @@ else
   qm set "$VMID" --ipconfig0 "ip=$IP,gw=$GATEWAY"
 fi
 qm set "$VMID" --ciuser "$UTENTE" --cipassword "$PASSWORD" --ciupgrade 1
-if [[ -s "$CHIAVE_SSH" ]]; then qm set "$VMID" --sshkeys "$CHIAVE_SSH"; fi
+if [[ -s "$CHIAVE_SSH" ]]; then
+  qm set "$VMID" --sshkeys "$CHIAVE_SSH"
+else
+  echo "ATTENZIONE: nessuna chiave SSH ($CHIAVE_SSH non esiste): via SSH non si potrà entrare con la password."
+fi
 
 echo "==> Avvio la VM…"
 qm start "$VMID"
@@ -85,7 +91,10 @@ Prossimi passi:
   1. Trova l'indirizzo della VM: nella pagina della VM su Proxmox (Riepilogo) oppure con
        qm guest cmd $VMID network-get-interfaces     (dopo l'installazione)
      o dalla console: qm terminal $VMID   (esci con Ctrl+O)
-  2. Entra nella VM:  ssh $UTENTE@<indirizzo>
-  3. Copia nella VM la cartella "ponte" del progetto ed esegui:
+  2. Entra nella VM dal PC:  ssh $UTENTE@<indirizzo>
+     Funziona solo con la chiave SSH del PC (CHIAVE_SSH=…). Se dice "No supported authentication methods",
+     entra dalla console e abilita la password:
+       sudo sed -i 's/no/yes/' /etc/ssh/sshd_config.d/60-cloudimg-settings.conf && sudo systemctl restart ssh
+  3. Copia nella VM la cartella "ponte" del progetto (ZIP da GitHub + scp, vedi la guida) ed esegui:
        sudo DOMINIO=radio.esempio.it bash installa-server.sh   (con il tuo dominio)
 FINE
