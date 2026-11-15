@@ -106,6 +106,44 @@
           <p id="auto-upload" class="hint" hidden></p>
         </section>
 
+        <section class="card video" id="video-card" hidden>
+          <div class="section-title">Dirette video (YouTube, Facebook) <span id="video-badge" class="mic-who"></span></div>
+          <p class="hint" id="video-status"></p>
+          <div id="video-ctl">
+            <div class="video-opts">
+              <label class="check"><input type="radio" name="video-src" value="logo" checked /> Logo fisso</label>
+              <label class="check"><input type="radio" name="video-src" value="obs" /> Video da OBS</label>
+            </div>
+            <div class="video-opts">
+              <label class="check"><input type="checkbox" id="video-yt" /> YouTube</label>
+              <label class="check"><input type="checkbox" id="video-fb" /> Facebook</label>
+            </div>
+            <p class="hint" id="video-obs-hint" hidden></p>
+            <div class="mic-row">
+              <button id="video-start" class="primary">▶ Avvia diretta video</button>
+              <button id="video-stop" class="ghost" hidden>■ Ferma diretta video</button>
+            </div>
+            <div class="video-logo">
+              <img id="video-logo" alt="Logo delle dirette video" hidden />
+              <label class="upload">
+                <input type="file" id="video-logo-file" accept="image/png,image/jpeg" />
+                <span>⬆ Carica il logo (PNG o JPEG, ideale 1280×720)</span>
+              </label>
+            </div>
+            <details id="video-settings">
+              <summary>Impostazioni (chiavi delle dirette, ritardo)</summary>
+              <form id="video-form" class="user-form">
+                <input id="video-yt-key" type="password" placeholder="Chiave di YouTube (YouTube Studio → Trasmetti dal vivo)" autocomplete="off" />
+                <input id="video-fb-url" placeholder="Server di Facebook (lascia vuoto per quello standard)" autocomplete="off" />
+                <input id="video-fb-key" type="password" placeholder="Chiave di Facebook (Live Producer → chiave di streaming)" autocomplete="off" />
+                <label class="vol">Ritardo dell'audio rispetto al video OBS (ms) <input id="video-delay" type="number" step="100" min="-10000" max="10000" /></label>
+                <button class="primary" type="submit">Salva</button>
+                <p class="hint">Le chiavi le possono cambiare solo gli amministratori. Lascia vuoto un campo chiave per non cambiarlo.</p>
+              </form>
+            </details>
+          </div>
+        </section>
+
         <section class="card">
           <div class="section-title">In coda</div>
           <ul class="list" id="queue"></ul>

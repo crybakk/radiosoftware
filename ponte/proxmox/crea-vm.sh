@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Crea su Proxmox la VM per AzuraCast e il ponte di Radio Regia (Ubuntu 24.04 LTS, cloud-init).
+# Crea su Proxmox la VM del server della radio: ponte di Radio Regia, Icecast e Caddy (Ubuntu 24.04 LTS, cloud-init).
 # Da eseguire come root nella shell del nodo Proxmox:
 #
 #   bash crea-vm.sh
@@ -11,8 +11,8 @@ set -euo pipefail
 VMID="${VMID:-210}"
 NOME="${NOME:-radio}"
 CORES="${CORES:-4}"                 # l'N100 ha 4 core: li diamo tutti, Proxmox li condivide
-RAM_MB="${RAM_MB:-8192}"            # 8 GB alla VM, il resto dei 12 GB resta a Proxmox
-DISCO="${DISCO:-300G}"              # sistema + AzuraCast + selezione della libreria per la diretta autonoma
+RAM_MB="${RAM_MB:-4096}"            # 4 GB bastano (niente AzuraCast); il resto dei 12 GB resta a Proxmox
+DISCO="${DISCO:-300G}"              # sistema + selezione della libreria (diretta autonoma e musica di riserva)
 STORAGE="${STORAGE:-local-lvm}"     # dove mettere il disco (vedi "pvesm status")
 BRIDGE="${BRIDGE:-vmbr0}"           # scheda di rete di Proxmox
 IP="${IP:-dhcp}"                    # "dhcp" oppure indirizzo fisso tipo 192.168.1.50/24
@@ -58,7 +58,7 @@ qm create "$VMID" \
   --startup order=1 \
   --serial0 socket \
   --vga serial0 \
-  --description "AzuraCast e ponte di Radio Regia"
+  --description "Server della radio: ponte di Radio Regia, Icecast, Caddy"
 
 # disco di sistema dall'immagine cloud, poi ingrandito
 qm set "$VMID" --scsi0 "$STORAGE:0,import-from=$IMG,discard=on,ssd=1,iothread=1"
@@ -87,5 +87,5 @@ Prossimi passi:
      o dalla console: qm terminal $VMID   (esci con Ctrl+O)
   2. Entra nella VM:  ssh $UTENTE@<indirizzo>
   3. Copia nella VM la cartella "ponte" del progetto ed esegui:
-       sudo bash installa-server.sh
+       sudo DOMINIO=radio.esempio.it bash installa-server.sh   (con il tuo dominio)
 FINE

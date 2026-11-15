@@ -1,9 +1,10 @@
 /** Smista i messaggi tra la regia (una sola) e i pannelli remoti (quanti si vuole). */
-import type { AutoState, FromPanel, GuestInfo, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio } from './protocol.ts'
+import type { AutoState, FromPanel, GuestInfo, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio, VideoStatus } from './protocol.ts'
 import { can, type PublicUser } from './users.ts'
 import type { VoiceHub } from './voce.ts'
 import type { AutonomousPlayer } from './autonoma.ts'
 import type { Guests } from './ospiti.ts'
+import type { VideoLive } from './video.ts'
 
 export interface Peer {
   send(data: string): void
@@ -36,6 +37,9 @@ export class Relay {
   /** Ospiti collegati con un link; null se il microfono remoto è spento. */
   guests: Guests | null = null
   private guestList: ToPanel & { t: 'ospiti' } = { t: 'ospiti', guests: [] }
+  /** Dirette video verso YouTube e Facebook; null se non attive sul ponte. */
+  video: VideoLive | null = null
+  private videoState: (ToPanel & { t: 'video' }) | null = null
 
   constructor(token: string) {
     this.token = token
@@ -122,6 +126,7 @@ export class Relay {
     this.sendTo(peer, this.mic)
     if (this.autoState) this.sendTo(peer, this.autoState)
     if (this.guests) this.sendTo(peer, this.guestList)
+    if (this.videoState) this.sendTo(peer, this.videoState)
     return {
       message: (raw: string) => {
         let msg: FromPanel
@@ -152,6 +157,18 @@ export class Relay {
             .command(msg.cmd, user.name)
             .then((data) => reply(true, undefined, data))
             .catch((e: unknown) => reply(false, e instanceof Error ? e.message : String(e)))
+          return
+        }
+        if (msg.t === 'video') {
+          const video = this.video
+          if (!video || !msg.cmd) return reply(false, 'dirette video non attive sul ponte')
+          if (msg.cmd.type === 'config' && !can(user.role, 'utenti')) return reply(false, 'solo gli amministratori cambiano le chiavi delle dirette')
+          if (!can(user.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare le dirette video')
+          try {
+            reply(true, undefined, video.run(msg.cmd, user.name))
+          } catch (e) {
+            reply(false, e instanceof Error ? e.message : String(e))
+          }
           return
         }
         if (msg.t === 'auto') {
@@ -204,6 +221,11 @@ export class Relay {
   setGuests(guests: GuestInfo[]): void {
     this.guestList = { t: 'ospiti', guests }
     this.broadcast(this.guestList)
+  }
+
+  setVideo(video: VideoStatus): void {
+    this.videoState = { t: 'video', video }
+    this.broadcast(this.videoState)
   }
 
   setAuto(state: AutoState): void {

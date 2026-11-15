@@ -91,6 +91,33 @@ export type GuestCommand =
   | { type: 'kick'; id: string }
   | { type: 'air'; id: string; on: boolean }
 
+/** Dirette video verso YouTube e Facebook. */
+export type VideoSource = 'logo' | 'obs'
+export type VideoDestination = 'youtube' | 'facebook'
+
+export interface VideoStatus {
+  state: 'spenta' | 'avvio' | 'attesa_obs' | 'in_onda' | 'errore'
+  source: VideoSource | null
+  destinations: VideoDestination[]
+  since: string | null
+  by: string | null
+  error: string | null
+  detail: string
+  /** Chiavi impostate (le chiavi non escono mai dal ponte). */
+  youtube: boolean
+  facebook: boolean
+  hasLogo: boolean
+  delayMs: number
+  /** Porta UDP su cui OBS manda il video (SRT). */
+  obsPort: number
+  obsPassphrase: boolean
+}
+
+export type VideoCommand =
+  | { type: 'start'; source: VideoSource; destinations: VideoDestination[] }
+  | { type: 'stop' }
+  | { type: 'config'; youtubeKey?: string; facebookUrl?: string; facebookKey?: string; delayMs?: number }
+
 /** Regia → ponte */
 export type FromStudio =
   | { t: 'auth'; token: string }
@@ -113,6 +140,8 @@ export type FromPanel =
   | { t: 'auto'; id: string; cmd: AutoCommand }
   /** Ospiti. */
   | { t: 'guest'; id: string; cmd: GuestCommand }
+  /** Dirette video. */
+  | { t: 'video'; id: string; cmd: VideoCommand }
 
 export interface MicStatus {
   /** Chi ha il microfono aperto (null = nessuno). */
@@ -130,3 +159,4 @@ export type ToPanel =
   | { t: 'mic'; mic: MicStatus }
   | { t: 'autonoma'; state: AutoState }
   | { t: 'ospiti'; guests: GuestInfo[] }
+  | { t: 'video'; video: VideoStatus }

@@ -118,6 +118,9 @@ function connect() {
     } else if (m.t === 'ospiti') {
       guestList = m.guests
       renderGuests()
+    } else if (m.t === 'video') {
+      video = m.video
+      renderVideo()
     } else if (m.t === 'autonoma') {
       auto = m.state
       renderAuto()
@@ -615,6 +618,102 @@ $('auto-file').addEventListener('change', async (e) => {
     } catch (err) {
       msg.textContent = `${f.name}: ${err.message}`
     }
+  }
+})
+
+// ---------- dirette video ----------
+
+let video = null
+const videoCmd = (cmd) => request({ t: 'video', cmd })
+const VIDEO_STATE = {
+  spenta: 'Spenta',
+  avvio: 'In partenza…',
+  attesa_obs: 'In attesa del video da OBS: avvia la trasmissione in OBS',
+  in_onda: 'IN ONDA',
+  errore: 'Ferma per un errore'
+}
+const DEST = { youtube: 'YouTube', facebook: 'Facebook' }
+let logoShown = null
+
+function renderVideo() {
+  const card = $('video-card')
+  card.hidden = !me || !video
+  if (card.hidden) return
+  const ctl = canCommand()
+  const on = video.state !== 'spenta' && video.state !== 'errore'
+  card.classList.toggle('live', video.state === 'in_onda')
+  const badge = $('video-badge')
+  badge.textContent = video.state === 'in_onda' ? 'IN ONDA' : on ? '…' : ''
+  badge.className = `mic-who ${video.state === 'in_onda' ? 'onair' : ''}`
+  const parts = [VIDEO_STATE[video.state] || video.state]
+  if (on) {
+    parts.push(`${video.source === 'obs' ? 'video da OBS' : 'logo'} → ${video.destinations.map((d) => DEST[d]).join(' e ')}`)
+    if (video.since) parts.push(`dalle ${hhmm(video.since)}`)
+    if (video.by) parts.push(`avviata da ${video.by}`)
+  }
+  if (video.detail) parts.push(video.detail)
+  if (video.error) parts.push(`⚠ ${video.error}`)
+  $('video-status').textContent = parts.join(' · ')
+  $('video-ctl').hidden = !ctl
+  $('video-start').hidden = on
+  $('video-stop').hidden = !on
+  for (const r of document.querySelectorAll('input[name="video-src"]')) r.disabled = on
+  $('video-yt').disabled = on || !video.youtube
+  $('video-fb').disabled = on || !video.facebook
+  $('video-yt').parentElement.title = video.youtube ? '' : 'Manca la chiave di YouTube (Impostazioni qui sotto)'
+  $('video-fb').parentElement.title = video.facebook ? '' : 'Manca la chiave di Facebook (Impostazioni qui sotto)'
+  if (!video.youtube) $('video-yt').checked = false
+  if (!video.facebook) $('video-fb').checked = false
+  const obs = document.querySelector('input[name="video-src"]:checked').value === 'obs'
+  $('video-obs-hint').hidden = !obs
+  $('video-obs-hint').textContent =
+    `In OBS: Impostazioni → Stream → Servizio "Personalizzato", Server srt://${location.hostname}:${video.obsPort}` +
+    (video.obsPassphrase ? '?passphrase=<frase segreta VIDEO_OBS_PASSPHRASE>' : '') +
+    ', chiave vuota. Uscita 1280×720, x264, intervallo fotogrammi chiave 2 s, 2500-4000 kbps. Prima avvia qui, poi "Avvia trasmissione" in OBS.'
+  $('video-delay').value = video.delayMs
+  $('video-settings').hidden = me.role !== 'amministratore'
+  if (video.hasLogo && logoShown !== true) {
+    $('video-logo').src = `/api/video/logo?${Date.now()}`
+    logoShown = true
+  }
+  $('video-logo').hidden = !video.hasLogo
+}
+for (const r of document.querySelectorAll('input[name="video-src"]')) r.addEventListener('change', renderVideo)
+
+$('video-start').addEventListener('click', () => {
+  const source = document.querySelector('input[name="video-src"]:checked').value
+  const destinations = [['video-yt', 'youtube'], ['video-fb', 'facebook']].filter(([id]) => $(id).checked).map(([, d]) => d)
+  videoCmd({ type: 'start', source, destinations }).catch((e) => notice(e.message))
+})
+$('video-stop').addEventListener('click', () => videoCmd({ type: 'stop' }).catch((e) => notice(e.message)))
+
+$('video-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const cmd = { type: 'config', delayMs: Number($('video-delay').value) || 0 }
+  if ($('video-yt-key').value.trim()) cmd.youtubeKey = $('video-yt-key').value.trim()
+  if ($('video-fb-key').value.trim()) cmd.facebookKey = $('video-fb-key').value.trim()
+  if ($('video-fb-url').value.trim()) cmd.facebookUrl = $('video-fb-url').value.trim()
+  try {
+    await videoCmd(cmd)
+    $('video-yt-key').value = $('video-fb-key').value = ''
+    notice('Impostazioni delle dirette video salvate')
+  } catch (err) {
+    notice(err.message)
+  }
+})
+
+$('video-logo-file').addEventListener('change', async (e) => {
+  const f = e.target.files[0]
+  e.target.value = ''
+  if (!f) return
+  try {
+    const r = await fetch('/api/video/logo', { method: 'PUT', credentials: 'same-origin', body: f })
+    const body = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(body.error || `errore ${r.status}`)
+    logoShown = false
+    notice('Logo caricato')
+  } catch (err) {
+    notice(err.message)
   }
 })
 

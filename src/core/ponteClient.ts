@@ -17,7 +17,7 @@ export interface PonteState {
   externalConnected?: boolean
   lastHeartbeat: string | null
   reconnectsLast10Min: number
-  lastAzuracastError: string | null
+  lastIcecastError: string | null
   alarms: PonteAlarm[]
   liquidsoap: { studio?: boolean; esterna?: boolean } | null
   notifiche: string[]

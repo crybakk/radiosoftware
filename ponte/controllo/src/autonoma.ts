@@ -152,6 +152,22 @@ export class AutonomousPlayer {
     this.emit()
   }
 
+  /**
+   * Riserva del ponte: brano a caso per le uscite che non devono mai restare mute
+   * (Icecast esterno, dirette video) quando non c'è né regia né diretta autonoma.
+   * Usa la stessa memoria dei brani recenti, così non si ripetono artisti.
+   */
+  nextReserve(): string | null {
+    const t = this.lib.pickRandom(
+      this.history.map((x) => x.id),
+      this.history.slice(-RECENT_ARTISTS).map((x) => x.artist)
+    )
+    if (!t) return null
+    this.history.push(t)
+    if (this.history.length > RECENT_TRACKS) this.history.shift()
+    return annotate(this.lib.path(t), t.gainDb)
+  }
+
   private clearTimer(): void {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null

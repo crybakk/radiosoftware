@@ -1,7 +1,8 @@
 # Ponte di Radio Regia
 # Riceve il programma dalla regia via SRT, lo tratta (processore audio),
-# lo manda ad AzuraCast come sorgente live (come faceva RadioDJ) e
-# segnala al servizio di controllo collegamenti, cadute e silenzi.
+# lo manda all'Icecast principale (sullo stesso server), all'Icecast secondario esterno
+# e alle dirette video, e segnala al servizio di controllo collegamenti, cadute e silenzi.
+# Senza nessuna diretta suona da solo la libreria del server (riserva).
 #
 # Tutte le impostazioni arrivano dalle variabili d'ambiente (file .env).
 
@@ -21,11 +22,12 @@ processing = env("PROCESSORE_AUDIO", "medio")
 silence_seconds = float_of_string(default=20., env("ALLARME_SILENZIO_SECONDI", "20"))
 controllo = env("CONTROLLO_INTERNO", "http://controllo:8091")
 
-az_host = env("AZURACAST_HOST", "")
-az_port = int_of_string(default=8005, env("AZURACAST_PORTA_DJ", "8005"))
-az_mount = env("AZURACAST_MOUNT_DJ", "/")
-az_user = env("AZURACAST_DJ_UTENTE", "")
-az_password = env("AZURACAST_DJ_PASSWORD", "")
+# Icecast principale: il contenitore "icecast" accanto al ponte
+ice_main_host = env("ICECAST_HOST", "icecast")
+ice_main_port = int_of_string(default=8000, env("ICECAST_PORTA_INTERNA", "8000"))
+ice_main_mount = env("ICECAST_MOUNT", "/radio.mp3")
+ice_main_password = env("ICECAST_PASSWORD_SORGENTE", "")
+ice_bitrate = int_of_string(default=128, env("ICECAST_BITRATE", "128"))
 station_name = env("NOME_RADIO", "Radio")
 
 esterna_port = int_of_string(default=9010, env("ESTERNA_PORTA", "9010"))
@@ -86,7 +88,7 @@ studio =
 titoli = insert_metadata(studio)
 programma = titoli
 
-# --- diretta esterna (stessa app usata finora come DJ su AzuraCast) ---
+# --- diretta esterna (l'app usata finora come DJ su AzuraCast: BUTT, Larix, Luci Live…) ---
 # Quando un'app si collega qui ha la precedenza sulla regia; quando si scollega
 # si torna da soli alla regia.
 esterna_attiva = esterna_password != ""
@@ -216,7 +218,7 @@ def con_voce(programma) =
   )
 
   # le voci si aggiungono solo quando c'è un programma (regia, esterna o autonoma): senza,
-  # l'uscita verso AzuraCast resta ferma e AzuraCast passa alla sua AutoDJ
+  # va in onda la riserva del ponte
   switch(
     id="mixer_voce",
     track_sensitive=false,
@@ -263,6 +265,61 @@ uscita =
     fun () -> notify("silenzio", string(silence_seconds)),
     uscita
   )
+
+# --- riserva del ponte (flusso di emergenza): musica a caso dalla libreria del server ---
+# Va in onda quando non c'è né regia né diretta autonoma né esterna. Tutte le uscite del ponte
+# (Icecast principale, Icecast secondario, dirette video) hanno lo stesso segnale: se cade il server
+# di streaming principale gli ascoltatori passano al secondario e sentono la stessa cosa.
+# Il controllo sceglie il brano (niente artisti ripetuti) e lo passa già con il volume corretto.
+def prossimo_riserva() =
+  try
+    r = http.get(timeout=5., "#{controllo}/internal/riserva")
+    uri = string.trim(string(r))
+    if r.status_code == 200 and uri != "" then request.create(uri) else null() end
+  catch _ do
+    null()
+  end
+end
+riserva = amplify(1., override="liq_amplify", request.dynamic(id="riserva", retry_delay=10., prossimo_riserva))
+segnale =
+  fallback(
+    id="segnale",
+    track_sensitive=false,
+    transitions=[dissolvenza, dissolvenza],
+    [uscita, processa(riserva)]
+  )
+# se anche la libreria è vuota va silenzio, così le uscite restano collegate
+segnale_sicuro = mksafe(segnale)
+
+# --- Icecast secondario esterno (MP3), stesso segnale del principale ---
+ice_host = env("ICECAST_ESTERNO_HOST", "")
+if
+  ice_host != ""
+then
+  output.icecast(
+    %mp3(bitrate = ice_bitrate, samplerate = 44100),
+    id="icecast_esterno",
+    host=ice_host,
+    port=int_of_string(default=8000, env("ICECAST_ESTERNO_PORTA", "8000")),
+    mount=env("ICECAST_ESTERNO_MOUNT", "/radio.mp3"),
+    user=env("ICECAST_ESTERNO_UTENTE", "source"),
+    password=env("ICECAST_ESTERNO_PASSWORD", ""),
+    name=station_name,
+    on_connect=fun () -> notify("icecast_esterno_collegato", ""),
+    on_disconnect=fun () -> notify("icecast_esterno_scollegato", ""),
+    on_error=fun (err) -> begin notify("icecast_esterno_errore", err) 10. end,
+    segnale_sicuro
+  )
+end
+
+# --- programma per il servizio di controllo (dirette video), solo rete Docker ---
+output.harbor(
+  %mp3(bitrate = 320, samplerate = 44100),
+  id="interno",
+  port=8093,
+  mount="programma",
+  segnale_sicuro
+)
 
 # --- HTTP interno: metadati e stato (solo rete Docker, porta non pubblicata) ---
 def set_metadata(req) =
@@ -344,28 +401,24 @@ def stato(_) =
 end
 harbor.http.register.simple(port=8092, method="GET", "/stato", stato)
 
-# --- uscita verso AzuraCast ---
-# fallible=true: se la regia si scollega l'uscita si ferma, AzuraCast
-# se ne accorge e passa alla sua AutoDJ di riserva.
+# --- Icecast principale (sullo stesso server, contenitore "icecast") ---
 if
-  az_host == ""
+  ice_main_password == ""
 then
-  log.important("AZURACAST_HOST non impostato: nessuna uscita verso AzuraCast")
-  output.dummy(fallible=true, uscita)
+  log.important("ICECAST_PASSWORD_SORGENTE vuota: nessuna uscita verso l'Icecast principale")
 else
   output.icecast(
-    %mp3(bitrate = 320, samplerate = 44100),
-    id="azuracast",
-    host=az_host,
-    port=az_port,
-    mount=az_mount,
-    user=az_user,
-    password=az_password,
+    %mp3(bitrate = ice_bitrate, samplerate = 44100),
+    id="icecast_principale",
+    host=ice_main_host,
+    port=ice_main_port,
+    mount=ice_main_mount,
+    user="source",
+    password=ice_main_password,
     name=station_name,
-    fallible=true,
-    on_connect=fun () -> notify("azuracast_collegato", ""),
-    on_disconnect=fun () -> notify("azuracast_scollegato", ""),
-    on_error=fun (err) -> begin notify("azuracast_errore", err) 5. end,
-    uscita
+    on_connect=fun () -> notify("icecast_principale_collegato", ""),
+    on_disconnect=fun () -> notify("icecast_principale_scollegato", ""),
+    on_error=fun (err) -> begin notify("icecast_principale_errore", err) 5. end,
+    segnale_sicuro
   )
 end
