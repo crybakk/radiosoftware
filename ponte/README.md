@@ -24,11 +24,12 @@ senza ripetere di seguito lo stesso artista. Tutte le uscite hanno sempre lo ste
 
 ## Installazione rapida su Proxmox (VM nuova)
 
-1. Copia `proxmox/crea-vm.sh` sul nodo Proxmox ed eseguilo come root: `bash crea-vm.sh`.
+1. Copia `proxmox/crea-vm.sh` sul nodo Proxmox ed eseguilo come root: `CHIAVE_SSH=/root/chiave-pc.pub bash crea-vm.sh`
+   (`chiave-pc.pub` = la chiave pubblica SSH del PC: la VM non accetta la password via SSH).
    Crea una VM Ubuntu 24.04 con 4 core, 4 GB di RAM e 300 GB di disco (la selezione della libreria occupa
    circa 100 GB), che parte da sola insieme a Proxmox.
    Per indirizzo fisso, storage o dimensioni diverse: `IP=192.168.1.50/24 GATEWAY=192.168.1.1 STORAGE=local-lvm DISCO=200G bash crea-vm.sh`.
-2. Entra nella VM (`ssh radio@<indirizzo>`), copia la cartella `ponte` ed esegui
+2. Entra nella VM (`ssh radio@<indirizzo>`), copia la cartella `ponte` (per esempio lo ZIP del repository con `scp`) ed esegui
    `sudo DOMINIO=radio.esempio.it bash installa-server.sh` (con il tuo dominio).
    Installa Docker, genera frase segreta, token e password, avvia tutto e alla fine stampa i valori da
    inserire nella regia e le porte da aprire sul router.
