@@ -81,4 +81,26 @@ describe('MusicBrainz', () => {
     expect(waits.filter((w) => w === 1100).length).toBeGreaterThanOrEqual(1)
     expect(waits).toContain(5000)
   })
+
+  it('due ricerche insieme rispettano comunque una richiesta al secondo', async () => {
+    // orologio che avanza solo con le attese
+    let clock = 0
+    const at: number[] = []
+    const mb = new MusicBrainz({
+      now: () => clock,
+      sleep: async (ms) => {
+        const target = clock + ms
+        await new Promise((r) => setTimeout(r, 0))
+        clock = Math.max(clock, target)
+      },
+      fetch: async () => {
+        at.push(clock)
+        return Response.json({ recordings: [] })
+      }
+    })
+    await Promise.all(['A', 'B', 'C'].map((title) => mb.find({ title, artist: 'X', duration: 0 })))
+    expect(at).toHaveLength(3)
+    const sorted = [...at].sort((a, b) => a - b)
+    for (let i = 1; i < sorted.length; i++) expect(sorted[i] - sorted[i - 1]).toBeGreaterThanOrEqual(1000)
+  })
 })

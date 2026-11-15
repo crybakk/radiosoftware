@@ -90,8 +90,8 @@ export function buildFpFile(meta: FpMeta, fp: Uint32Array): Uint8Array {
 export function parseFpFile(b: Uint8Array): { meta: FpMeta; fp: Uint32Array } {
   const nl = b.indexOf(10)
   if (nl < 0) throw new Error('impronta non valida')
-  const meta = JSON.parse(Buffer.from(b.subarray(0, nl)).toString('utf8')) as FpMeta
-  if (!meta.id || typeof meta.id !== 'string') throw new Error('impronta senza id')
+  const meta = JSON.parse(Buffer.from(b.subarray(0, nl)).toString('utf8')) as FpMeta | null
+  if (!meta || typeof meta !== 'object' || !meta.id || typeof meta.id !== 'string') throw new Error('impronta senza id')
   // copia allineata a 4 byte
   const body = new Uint8Array(b.subarray(nl + 1))
   return { meta: { id: meta.id, title: String(meta.title ?? ''), artist: String(meta.artist ?? ''), duration: Number(meta.duration) || 0 }, fp: fpFromBytes(body) }

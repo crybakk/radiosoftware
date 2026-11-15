@@ -31,11 +31,15 @@ export function serverIndex(db: RadioDb): Map<string, Track> {
 export function importPlays(db: RadioDb, plays: ServerPlay[], index: Map<string, Track>): number {
   let added = 0
   for (const p of plays) {
-    if (!p.at || !p.source) continue
+    if (!p || typeof p.at !== 'string' || !p.source) continue
+    // una data illeggibile farebbe fallire ogni importazione (si riscarica sempre l'ultimo giorno): si salta
+    const at = Date.parse(p.at)
+    if (Number.isNaN(at)) continue
     const track = (p.id && index.get(p.id)) || null
     const ok = db.importPlay({
       extId: extId(p),
-      startedAt: p.at,
+      // stessa forma del registro della regia, così i confronti tra date (testo) sono giusti
+      startedAt: new Date(at).toISOString(),
       seconds: Number(p.duration) || 0,
       source: p.source,
       track,
@@ -56,6 +60,6 @@ export async function syncServerPlays(db: RadioDb, client: PonteClient, now = ne
     ? new Date(new Date(last).getTime() - OVERLAP_MS)
     : new Date(now.getTime() - FIRST_IMPORT_DAYS * 86400_000)
   const plays = await client.listPlays(from, new Date(now.getTime() + 60_000))
-  if (!plays.length) return 0
+  if (!Array.isArray(plays) || !plays.length) return 0
   return importPlays(db, plays, serverIndex(db))
 }

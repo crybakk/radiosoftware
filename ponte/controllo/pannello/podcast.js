@@ -95,8 +95,9 @@ function markCurrent() {
 $('audio').addEventListener('contextmenu', (e) => e.preventDefault())
 
 async function route() {
-  const [id, ep] = decodeURIComponent(location.hash.slice(1)).split('/')
   try {
+    // un indirizzo storpiato (per esempio "#%E0") non deve bloccare la pagina
+    const [id, ep] = decodeURIComponent(location.hash.slice(1)).split('/')
     if (id) await showProgram(id, ep)
     else await showList()
   } catch {

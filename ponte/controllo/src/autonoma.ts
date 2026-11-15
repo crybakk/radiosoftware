@@ -92,7 +92,16 @@ export class AutonomousPlayer {
     }
   }
 
-  private async start(by: string): Promise<null> {
+  private starting: Promise<null> | null = null
+  private preparing: Promise<void> | null = null
+
+  /** Doppio clic su "avvia": un solo avvio (un solo brano mandato al mixer, un solo avviso). */
+  private start(by: string): Promise<null> {
+    this.starting ??= this.doStart(by).finally(() => (this.starting = null))
+    return this.starting
+  }
+
+  private async doStart(by: string): Promise<null> {
     if (this.active) return null
     if (!this.lib.count()) throw new Error('la libreria del server è vuota')
     // prima il brano, poi l'interruttore: così si sente subito musica
@@ -146,11 +155,26 @@ export class AutonomousPlayer {
     return j ? { id: j.id, title: j.title, artist: 'Annuncio vocale', duration: j.seconds, bitrate: 128, gainDb: 0, mtime: 0, size: 0 } : null
   }
 
-  private async prepareNext(): Promise<void> {
+  /** Una preparazione alla volta (timer di fine brano e "salta" insieme): mai due brani nel mixer. */
+  private prepareNext(): Promise<void> {
+    this.preparing ??= this.doPrepareNext().finally(() => (this.preparing = null))
+    return this.preparing
+  }
+
+  private async doPrepareNext(): Promise<void> {
     if (this.prepared) return
+    // i brani in coda tolti dalla libreria nel frattempo (eliminati, spostati) si saltano:
+    // Liquidsoap non li troverebbe e la diretta resterebbe muta
+    const announce = this.announce()
+    let queued: (ServerTrack & { uid: string }) | undefined
+    while (!announce && !queued && this.queue.length) {
+      const q = this.queue.shift()!
+      const cur = this.lib.get(q.id)
+      if (cur) queued = { ...cur, uid: q.uid }
+    }
     const next =
-      this.announce() ??
-      this.queue.shift() ??
+      announce ??
+      queued ??
       this.lib.pickRandom(
         this.history.map((t) => t.id),
         this.history.slice(-RECENT_ARTISTS).map((t) => t.artist)

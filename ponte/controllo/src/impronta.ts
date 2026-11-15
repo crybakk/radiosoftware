@@ -221,7 +221,7 @@ export class FpIndex {
   }
 
   ids(): { id: string; n: number }[] {
-    return this.entries.filter(Boolean).map((e) => ({ id: e.id, n: e.fp.length }))
+    return this.entries.filter((e, i) => this.byId.get(e.id) === i).map((e) => ({ id: e.id, n: e.fp.length }))
   }
 
   put(e: FpEntry): void {
@@ -243,6 +243,11 @@ export class FpIndex {
   }
 
   private build(): void {
+    // via i posti dei brani tolti: altrimenti con il tempo (tolti e rimessi) si arriva al limite di 65.536
+    if (this.entries.length > this.byId.size) {
+      this.entries = this.entries.filter((e, i) => this.byId.get(e.id) === i)
+      this.byId = new Map(this.entries.map((e, i) => [e.id, i]))
+    }
     if (this.entries.length >= 1 << 16) throw new Error('troppe impronte per l\'indice')
     const count = new Uint32Array((1 << KEY_BITS) + 1)
     let total = 0

@@ -6,20 +6,20 @@ import { extname } from 'node:path'
 
 /** Nome valido su Windows: niente caratteri vietati, punti o spazi in fondo, nomi riservati. */
 export function safeFileName(s: string, fallback: string): string {
-  let c = s
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[. ]+$/, '')
-    .slice(0, 120)
-    .trim()
-  if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(c)) c = `${c}_`
+  const clean = (x: string): string => x.replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '')
+  // a 120 caratteri senza spezzare le lettere fatte di due parti (emoji); dopo il taglio può
+  // tornare un punto o uno spazio in fondo, che Windows non accetta
+  let c = clean([...clean(s.replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' '))].slice(0, 120).join(''))
+  // nomi riservati anche con un'estensione dopo ("CON.mp3", "nul.live.mp3")
+  c = c.replace(/^(con|prn|aux|nul|conin\$|conout\$|com\d|lpt\d)(?=\s*(\.|$))/i, '$1_')
   return c || fallback
 }
 
 /** Percorso relativo nella cartella della musica: ["Artista", "Titolo.ext"]. */
 export function catalogParts(t: { id: string; title: string; artist: string }): [string, string] {
-  const ext = extname(t.id).toLowerCase() || '.mp3'
+  // estensione dal server: solo lettere e numeri (niente ":" o altro che Windows legge in modo speciale)
+  const e = extname(t.id).toLowerCase()
+  const ext = /^\.[a-z0-9]{1,5}$/.test(e) ? e : '.mp3'
   const base = t.id.split('/').pop()?.replace(/\.[^.]+$/, '') ?? ''
   return [safeFileName(t.artist, 'Artista sconosciuto'), `${safeFileName(t.title, safeFileName(base, 'Senza titolo'))}${ext}`]
 }

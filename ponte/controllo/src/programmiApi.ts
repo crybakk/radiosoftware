@@ -20,8 +20,9 @@
  */
 import { createReadStream, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { pipeline } from 'node:stream/promises'
 import { apiEpisode, apiPodcast, type Episode, type Program, type Programs } from './programmi.ts'
-import { publishEpisode, type Recorder } from './puntate.ts'
+import { isPublishing, publishEpisode, type Recorder } from './puntate.ts'
 import { can, type PublicUser } from './users.ts'
 
 export interface ProgramApiDeps {
@@ -63,11 +64,21 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
   return text ? (JSON.parse(text) as Record<string, unknown>) : {}
 }
 
+/**
+ * Il file si legge con pipeline: se sparisce o non si legge (puntata eliminata mentre la si ascolta)
+ * la risposta si chiude invece di far cadere il server, e se l'ascoltatore se ne va il file si chiude.
+ */
+function stream(res: ServerResponse, file: string, range?: { start: number; end: number }): void {
+  pipeline(createReadStream(file, range), res).catch(() => res.destroy())
+}
+
 /** File audio o immagine, con le richieste parziali (Range) che servono ai lettori per spostarsi. */
 export function sendFile(req: IncomingMessage, res: ServerResponse, file: string, type: string, extra: Record<string, string> = {}): void {
   let size: number
   try {
-    size = statSync(file).size
+    const st = statSync(file)
+    if (!st.isFile()) throw new Error('non è un file')
+    size = st.size
   } catch {
     return json(res, 404, { error: 'file non trovato' }, extra)
   }
@@ -84,11 +95,11 @@ export function sendFile(req: IncomingMessage, res: ServerResponse, file: string
     end = Math.max(start, end)
     res.writeHead(206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1 })
     if (req.method === 'HEAD') return void res.end()
-    return void createReadStream(file, { start, end }).pipe(res)
+    return stream(res, file, { start, end })
   }
   res.writeHead(200, { ...headers, 'Content-Length': size })
   if (req.method === 'HEAD') return void res.end()
-  createReadStream(file).pipe(res)
+  stream(res, file)
 }
 
 const PUBLIC = /^\/api\/station\/([^/]+)\/public\/(podcasts|podcast\/([^/]+)(?:\/(art(?:-\d+\.\w+)?|episodes|episode\/([^/]+)(?:\/(art(?:-\d+\.\w+)?|download(?:\.\w+)?))?))?)$/
@@ -220,6 +231,7 @@ export async function handleProgramApi(req: IncomingMessage, res: ServerResponse
   const e = P.episode(id)
   if (!e) return json(res, 404, { error: 'puntata non trovata' }), true
   if (e.status === 'registrazione') return json(res, 400, { error: 'la puntata si sta ancora registrando' }), true
+  if (isPublishing(id)) return json(res, 409, { error: 'la puntata si sta pubblicando: aspetta qualche secondo' }), true
   const title = String(b.title ?? '')
   const description = String(b.description ?? '')
   switch (b.azione) {

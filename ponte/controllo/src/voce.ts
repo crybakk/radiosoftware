@@ -42,6 +42,10 @@ export class VoiceHub {
   private user: string | null = null
   private onAir = false
   private session: (RtcSession & { sendReturn(pkt: Buffer): void }) | null = null
+  /** Apertura in corso (diverso a ogni apertura): se cambia, l'apertura è stata superata o chiusa. */
+  private opening: object | null = null
+  private mixerQueue: Promise<unknown> = Promise.resolve()
+  private mixerBusy = 0
   private normalizer = new RtpNormalizer()
   onChange: (s: MicStatus) => void = () => {}
 
@@ -62,7 +66,11 @@ export class VoiceHub {
    */
   async open(owner: object, user: string, offerSdp: string, host?: string): Promise<string> {
     if (this.owner && this.owner !== owner) throw new Error(`il microfono remoto è già usato da ${this.user}`)
+    // una sola apertura alla volta: altrimenti la prima connessione resterebbe aperta senza nessuno (porte UDP occupate)
+    if (this.owner === owner && this.opening) throw new Error('il microfono si sta già aprendo: riprova tra poco')
     if (this.owner === owner) this.drop(false)
+    const ticket = {}
+    this.opening = ticket
     this.owner = owner
     this.user = user
     let session: (RtcSession & { sendReturn(pkt: Buffer): void }) | null = null
@@ -78,18 +86,20 @@ export class VoiceHub {
         }
       }, host)
     } catch (e) {
-      if (this.owner === owner) {
+      if (this.opening === ticket) {
+        this.opening = null
         this.owner = null
         this.user = null
         this.emit()
       }
       throw e
     }
-    if (this.owner !== owner) {
+    if (this.opening !== ticket) {
       // chiuso mentre si apriva
       session.close()
       throw new Error('microfono chiuso')
     }
+    this.opening = null
     this.session = session
     this.emit()
     return session.answer
@@ -97,11 +107,34 @@ export class VoiceHub {
 
   /** Mette in onda o toglie la voce; solo chi ha aperto il microfono. */
   async setMic(owner: object, on: boolean): Promise<void> {
-    if (this.owner !== owner || !this.session) throw new Error('apri prima il microfono')
-    if (!(await this.opts.setOnAir(on))) throw new Error('il mixer del ponte non risponde')
-    if (this.owner !== owner) return
+    const session = this.session
+    if (this.owner !== owner || !session) throw new Error('apri prima il microfono')
+    const ok = await this.mixer(on)
+    if (this.session !== session) {
+      // microfono chiuso mentre il mixer rispondeva (rete caduta, ospite chiuso):
+      // la voce non deve restare aperta nel mixer, con la musica abbassata
+      if (on && !this.onAir) void this.mixer(false)
+      throw new Error('microfono chiuso')
+    }
+    if (!ok) throw new Error('il mixer del ponte non risponde')
     this.onAir = on
     this.emit()
+  }
+
+  /** Comandi al mixer uno dopo l'altro: con due comandi insieme vince l'ultimo dato, non il più lento. */
+  private mixer(on: boolean): Promise<boolean> {
+    const run = async (): Promise<boolean> => {
+      try {
+        return await this.opts.setOnAir(on)
+      } catch {
+        return false
+      }
+    }
+    // nessun comando in corso: parte subito
+    const p = this.mixerBusy ? this.mixerQueue.then(run) : run()
+    this.mixerBusy++
+    this.mixerQueue = p.finally(() => this.mixerBusy--)
+    return p
   }
 
   /** Il programma senza la voce, da rimandare in cuffia al conduttore. */
@@ -119,10 +152,11 @@ export class VoiceHub {
     const wasOnAir = this.onAir
     this.session?.close()
     this.session = null
+    this.opening = null
     this.owner = null
     this.user = null
     this.onAir = false
-    if (wasOnAir) void this.opts.setOnAir(false)
+    if (wasOnAir) void this.mixer(false)
     if (notify) this.emit()
   }
 
@@ -188,7 +222,7 @@ export function weriftFactory(o: WeriftOptions): SessionFactory {
     // se il browser non si collega entro 20 secondi, si chiude
     const guard = setTimeout(() => {
       if (pc.connectionState !== 'connected') {
-        void pc.close()
+        void pc.close().catch(() => {})
         end()
       }
     }, 20_000)
@@ -198,7 +232,7 @@ export function weriftFactory(o: WeriftOptions): SessionFactory {
       await pc.setLocalDescription(await pc.createAnswer())
     } catch (e) {
       clearTimeout(guard)
-      void pc.close()
+      void pc.close().catch(() => {})
       throw new Error(`offerta del browser non valida: ${e instanceof Error ? e.message : String(e)}`)
     }
     return {
@@ -209,7 +243,7 @@ export function weriftFactory(o: WeriftOptions): SessionFactory {
       close: () => {
         clearTimeout(guard)
         ended = true
-        void pc.close()
+        void pc.close().catch(() => {})
       }
     }
   }

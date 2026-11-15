@@ -82,30 +82,38 @@ export function slug(s: string): string {
   )
 }
 
-/** Fascia in corso a quell'ora (con i minuti di margine): inizio e fine in ms, oppure null. */
+/**
+ * Fascia in corso a quell'ora (con i minuti di margine): inizio e fine in ms, oppure null.
+ * Gli orari si calcolano sul calendario locale (anche nei giorni del cambio dell'ora); se più fasce
+ * sono in corso insieme si prende quella che finisce più tardi.
+ */
 export function activeSlot(slots: Slot[], now: Date, marginMin = 0): { from: number; to: number } | null {
   const margin = marginMin * 60_000
-  // si guarda anche ieri, per le fasce che passano la mezzanotte
-  for (const back of [0, 1]) {
-    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back)
+  let best: { from: number; to: number } | null = null
+  // si guarda anche ieri, per le fasce che passano la mezzanotte, e domani, per il margine prima della mezzanotte
+  for (const back of [-1, 0, 1]) {
+    const y = now.getFullYear()
+    const m = now.getMonth()
+    const d = now.getDate() - back
+    const day = new Date(y, m, d)
     for (const s of slots) {
       if (!s.days.includes(day.getDay())) continue
       const a = minutes(s.start)
       let b = minutes(s.end)
       if (b <= a) b += 24 * 60
-      const from = day.getTime() + a * 60_000 - margin
-      const to = day.getTime() + b * 60_000 + margin
-      if (now.getTime() >= from && now.getTime() < to) return { from, to }
+      const from = new Date(y, m, d, 0, a).getTime() - margin
+      const to = new Date(y, m, d, 0, b).getTime() + margin
+      if (now.getTime() >= from && now.getTime() < to && (!best || to > best.to)) best = { from, to }
     }
   }
-  return null
+  return best
 }
 
 export function validateProgram(p: Partial<Program>): void {
   if (!p.title?.trim()) throw new Error('scrivi il nome del programma')
   for (const s of p.slots ?? []) {
     if (!HM.test(s.start) || !HM.test(s.end)) throw new Error('orari delle fasce non validi (HH:MM)')
-    if (!s.days.length) throw new Error('scegli almeno un giorno per ogni fascia')
+    if (!Array.isArray(s.days) || !s.days.some((d) => Number.isInteger(d) && d >= 0 && d <= 6)) throw new Error('scegli almeno un giorno per ogni fascia')
     if (s.start === s.end) throw new Error('una fascia deve durare almeno un minuto')
   }
 }
@@ -184,7 +192,7 @@ export class Programs {
 
   saveProgram(input: Partial<Program> & { id?: string }): Program {
     validateProgram(input)
-    const slots = (input.slots ?? []).map((s) => ({ days: [...new Set(s.days.filter((d) => d >= 0 && d <= 6))].sort(), start: s.start, end: s.end }))
+    const slots = (input.slots ?? []).map((s) => ({ days: [...new Set(s.days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort(), start: s.start, end: s.end }))
     const existing = input.id ? this.get(input.id) : undefined
     if (existing) {
       Object.assign(existing, {

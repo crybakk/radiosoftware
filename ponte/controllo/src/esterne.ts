@@ -15,6 +15,7 @@ interface Proc {
   stdio: (NodeJS.ReadableStream | NodeJS.WritableStream | null)[]
   stdin: NodeJS.WritableStream | null
   on(ev: 'exit', cb: (code: number | null) => void): void
+  on(ev: 'error', cb: (e: Error) => void): void
   kill(): void
 }
 type Spawn = (cmd: string, args: string[], opts: { stdio: ('ignore' | 'pipe')[] }) => Proc
@@ -77,7 +78,10 @@ export class EsterneRecognition {
     this.rec = new Recognizer({
       search: (q, w) => d.fp.index.search(q, w),
       onPlay: (r) => this.played(r),
-      onUnknown: (clip, fp, at, seconds) => void this.saveUnknown(clip, fp, at, seconds)
+      onUnknown: (clip, fp, at, seconds) =>
+        void this.saveUnknown(clip, fp, at, seconds).catch((e: unknown) =>
+          this.log(`brano sconosciuto non salvato: ${e instanceof Error ? e.message : String(e)}`)
+        )
     })
   }
 
@@ -104,18 +108,37 @@ export class EsterneRecognition {
   }
 
   private start(): void {
+    this.restartTimer = null
     if (!this.active || this.proc) return
     const p = this.spawn(this.ffmpeg, captureArgs(this.d.url), { stdio: ['ignore', 'pipe', 'ignore', 'pipe'] })
     this.proc = p
     const lq = new S16Reader()
     const hq = new S16Reader()
-    p.stdout?.on('data', (c: Buffer) => this.rec.push(lq.read(c)))
-    ;(p.stdio[3] as NodeJS.ReadableStream | null)?.on('data', (c: Buffer) => this.rec.pushClip(hq.read(c)))
+    // dopo lo stop arrivano ancora pezzi già letti: non vanno nel riconoscimento (ripartito da zero)
+    p.stdout?.on('data', (c: Buffer) => {
+      if (this.proc !== p) return
+      try {
+        this.rec.push(lq.read(c))
+      } catch (e) {
+        // un errore qui (disco pieno, indice) non deve far cadere il server
+        this.log(`errore nel riconoscimento: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    })
+    ;(p.stdio[3] as NodeJS.ReadableStream | null)?.on('data', (c: Buffer) => {
+      if (this.proc === p) this.rec.pushClip(hq.read(c))
+    })
+    // ffmpeg mancante o non avviabile: senza questo l'errore farebbe cadere il server
+    p.on('error', (e) => {
+      this.log(`ffmpeg non avviato: ${e.message}`)
+      if (this.proc !== p) return
+      this.proc = null
+      if (this.active && !this.restartTimer) this.restartTimer = setTimeout(() => this.start(), 5000)
+    })
     p.on('exit', () => {
       if (this.proc !== p) return
       this.proc = null
       // il flusso interno si è interrotto ma l'esterna è ancora collegata: si riprova
-      if (this.active) this.restartTimer = setTimeout(() => this.start(), 5000)
+      if (this.active && !this.restartTimer) this.restartTimer = setTimeout(() => this.start(), 5000)
     })
   }
 
@@ -145,8 +168,12 @@ export class EsterneRecognition {
     } catch (e) {
       this.log(`clip non salvato: ${e instanceof Error ? e.message : String(e)}`)
     }
-    const u = this.d.unknowns.add(at, seconds, fp, out)
-    rmSync(dir, { recursive: true, force: true })
+    let u: Unknown
+    try {
+      u = this.d.unknowns.add(at, seconds, fp, out)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
     this.log(`nuovo brano sconosciuto ${u.id} (${Math.round(seconds)} s): da etichettare dal pannello`)
     this.d.onUnknown?.(this.d.unknowns.list().filter((x) => !x.label).length, u)
   }
@@ -158,7 +185,10 @@ export class EsterneRecognition {
         ['-hide_banner', '-loglevel', 'error', '-f', 'f32le', '-ar', String(clip.rate), '-ac', '1', '-i', 'pipe:0', '-b:a', '96k', '-y', out],
         { stdio: ['pipe', 'ignore', 'ignore'] }
       )
+      p.on('error', reject)
       p.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg ha risposto ${code}`))))
+      // ffmpeg che esce prima di leggere tutto (EPIPE): ci pensa 'exit'
+      p.stdin?.on('error', () => {})
       p.stdin?.end(Buffer.from(clip.pcm.buffer, clip.pcm.byteOffset, clip.pcm.byteLength))
     })
   }

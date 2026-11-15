@@ -56,5 +56,8 @@ describe('titolo in onda come AzuraCast', () => {
     expect(icecastListeners(one, '/radio.mp3')).toEqual({ listeners: 7, online: true })
     expect(icecastListeners(many, '/radio.mp3')).toEqual({ listeners: 9, online: true })
     expect(icecastListeners({ icestats: {} }, '/radio.mp3')).toEqual({ listeners: 0, online: false })
+    // un mount con indirizzo malformato (o una voce nulla) non fa fallire /api/nowplaying
+    const bad = { icestats: { source: [null, { listenurl: 'http://[x', listeners: 3 }, { listenurl: 'http://h/radio.mp3', listeners: 4 }] } }
+    expect(icecastListeners(bad, '/radio.mp3')).toEqual({ listeners: 4, online: true })
   })
 })

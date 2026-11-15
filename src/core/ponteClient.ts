@@ -24,7 +24,15 @@ export interface PonteState {
   notifiche: string[]
 }
 
-export class PonteError extends Error {}
+export class PonteError extends Error {
+  /** Codice HTTP della risposta del ponte (assente se il ponte non è raggiungibile). */
+  constructor(
+    message: string,
+    readonly status?: number
+  ) {
+    super(message)
+  }
+}
 
 export interface PonteAddress {
   /** Solo il nome o l'IP del ponte (per SRT, che usa sempre la sua porta). */
@@ -109,10 +117,10 @@ export class PonteClient {
       const msg = e instanceof Error && e.name === 'TimeoutError' ? 'il ponte non risponde' : 'ponte non raggiungibile'
       throw new PonteError(msg)
     }
-    if (r.status === 401) throw new PonteError('token del ponte errato')
+    if (r.status === 401) throw new PonteError('token del ponte errato', 401)
     if (!r.ok) {
       const j = (await r.json().catch(() => null)) as { error?: string } | null
-      throw new PonteError(j?.error ?? `errore del ponte (HTTP ${r.status})`)
+      throw new PonteError(j?.error ?? `errore del ponte (HTTP ${r.status})`, r.status)
     }
     return r
   }

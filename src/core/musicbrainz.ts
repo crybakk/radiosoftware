@@ -155,9 +155,12 @@ export class MusicBrainz {
 
   private async get<T>(url: string, signal?: AbortSignal): Promise<T> {
     for (let attempt = 0; ; attempt++) {
-      const wait = this.last + 1100 - this.now()
-      if (wait > 0) await this.sleep(wait)
-      this.last = this.now()
+      // si prenota il turno prima di aspettare: due ricerche insieme (ricerca completa e brani appena
+      // scaricati) non partono nello stesso istante
+      const now = this.now()
+      const at = Math.max(now, this.last + 1100)
+      this.last = at
+      if (at > now) await this.sleep(at - now)
       let r: Response
       try {
         r = await this.fetchFn(url, {

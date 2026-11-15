@@ -66,7 +66,7 @@ export class Guests {
 
   private save(): void {
     const tmp = `${this.o.file}.tmp`
-    writeFileSync(tmp, JSON.stringify([...this.invites.values()]))
+    writeFileSync(tmp, JSON.stringify([...this.invites.values()]), { mode: 0o600 })
     renameSync(tmp, this.o.file)
   }
 

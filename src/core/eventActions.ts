@@ -41,11 +41,14 @@ export function parsePlaylist(text: string, playlistPath: string): string[] {
   return out
 }
 
+let lastStreamId = 0
+
 /** Brano "virtuale" per un flusso esterno: suona per `minutes` minuti. */
 export function streamTrack(url: string, minutes: number, title: string): Track {
   const seconds = Math.max(1, minutes) * 60
   return {
-    id: -Date.now(),
+    // negativo e sempre diverso, anche per due flussi creati nello stesso millisecondo
+    id: (lastStreamId = Math.min(-Date.now(), lastStreamId - 1)),
     path: url.trim(),
     kind: 'program',
     title: title.trim() || 'Flusso esterno',
