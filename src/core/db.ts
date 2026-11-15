@@ -242,6 +242,12 @@ export class RadioDb {
     // v0.7: completamento dei dati con MusicBrainz
     if (!cols.includes('mb_recording_id')) this.db.exec("ALTER TABLE tracks ADD COLUMN mb_recording_id TEXT NOT NULL DEFAULT ''")
     if (!cols.includes('mb_checked_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN mb_checked_at TEXT')
+    // v0.8: impronta audio per il riconoscimento nelle dirette esterne
+    // (in una tabella a parte: le impronte pesano e non servono alle altre letture dei brani)
+    if (!cols.includes('fp_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN fp_at TEXT')
+    this.db.exec(
+      'CREATE TABLE IF NOT EXISTS fingerprints (track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE, fp BLOB NOT NULL)'
+    )
     // v0.7: brani suonati dal server (diretta autonoma, riserva) importati nel registro, una volta sola
     const logCols = (this.db.prepare('PRAGMA table_info(play_log)').all() as Row[]).map((r) => String(r.name))
     if (!logCols.includes('ext_id')) this.db.exec('ALTER TABLE play_log ADD COLUMN ext_id TEXT')
@@ -348,7 +354,7 @@ export class RadioDb {
              composer=CASE WHEN composer='' THEN ? ELSE composer END,
              publisher=CASE WHEN publisher='' THEN ? ELSE publisher END,
              isrc=CASE WHEN isrc='' THEN ? ELSE isrc END,
-             duration=?, bitrate=?, sample_rate=?, file_size=?, file_mtime=?, analyzed_at=NULL
+             duration=?, bitrate=?, sample_rate=?, file_size=?, file_mtime=?, analyzed_at=NULL, fp_at=NULL
            WHERE id=?`
         )
         .run(
@@ -703,6 +709,8 @@ export class RadioDb {
     track: Track | null
     title: string
     artist: string
+    composer?: string
+    publisher?: string
   }): boolean {
     const t = p.track
     const end = new Date(new Date(p.startedAt).getTime() + p.seconds * 1000).toISOString()
@@ -721,8 +729,8 @@ export class RadioDb {
         p.source,
         t?.title || p.title,
         t?.artist || p.artist,
-        t?.composer ?? '',
-        t?.publisher ?? '',
+        t?.composer || p.composer || '',
+        t?.publisher || p.publisher || '',
         t?.isrc ?? '',
         t?.iswc ?? '',
         t?.siaeCode ?? '',
@@ -735,6 +743,50 @@ export class RadioDb {
   lastServerPlay(): string | null {
     const r = this.db.prepare('SELECT MAX(started_at) AS m FROM play_log WHERE ext_id IS NOT NULL').get() as Row
     return r.m == null ? null : String(r.m)
+  }
+
+  // ---------- impronte audio ----------
+
+  /** Musica senza impronta (da calcolare). */
+  pendingFingerprint(limit = 20): Track[] {
+    return (
+      this.db
+        .prepare("SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND fp_at IS NULL ORDER BY id LIMIT ?")
+        .all(limit) as Row[]
+    ).map(rowToTrack)
+  }
+
+  fingerprintStats(): { done: number; total: number } {
+    const r = this.db
+      .prepare(
+        "SELECT COUNT(*) AS total, SUM(CASE WHEN fp_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1"
+      )
+      .get() as Row
+    return { done: Number(r.done ?? 0), total: Number(r.total ?? 0) }
+  }
+
+  /** fp vuoto = file illeggibile (non si riprova finché il file non cambia). */
+  saveFingerprint(id: number, fp: Uint8Array | null): void {
+    if (fp && fp.length) this.db.prepare('INSERT OR REPLACE INTO fingerprints(track_id, fp) VALUES (?, ?)').run(id, fp)
+    else this.db.prepare('DELETE FROM fingerprints WHERE track_id = ?').run(id)
+    this.db.prepare("UPDATE tracks SET fp_at = datetime('now') WHERE id = ?").run(id)
+  }
+
+  /** Brani di musica con l'impronta (senza leggerla): per decidere cosa mandare al server. */
+  fingerprinted(): { track: Track; bytes: number }[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT t.*, length(f.fp) AS fp_bytes FROM tracks t JOIN fingerprints f ON f.track_id = t.id
+           WHERE t.kind = 'music' AND t.enabled = 1 AND t.fp_at IS NOT NULL`
+        )
+        .all() as Row[]
+    ).map((r) => ({ track: rowToTrack(r), bytes: Number(r.fp_bytes) }))
+  }
+
+  getFingerprint(id: number): Uint8Array | null {
+    const r = this.db.prepare('SELECT fp FROM fingerprints WHERE track_id = ?').get(id) as Row | undefined
+    return r ? (r.fp as Uint8Array) : null
   }
 
   // ---------- MusicBrainz ----------
@@ -777,6 +829,11 @@ export class RadioDb {
          WHERE id = ?`
       )
       .run(recordingId, fill.composer ?? '', fill.publisher ?? '', fill.isrc ?? '', fill.iswc ?? '', id)
+  }
+
+  /** Rimette in coda per MusicBrainz un brano preciso (per esempio appena scaricato dal server). */
+  mbRequeue(id: number): void {
+    this.db.prepare('UPDATE tracks SET mb_checked_at = NULL WHERE id = ?').run(id)
   }
 
   /** Rimette in coda per MusicBrainz i brani già cercati ma ancora incompleti. */

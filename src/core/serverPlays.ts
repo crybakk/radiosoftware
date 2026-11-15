@@ -40,7 +40,9 @@ export function importPlays(db: RadioDb, plays: ServerPlay[], index: Map<string,
       source: p.source,
       track,
       title: p.title ?? '',
-      artist: p.artist ?? ''
+      artist: p.artist ?? '',
+      composer: p.composer ?? '',
+      publisher: p.publisher ?? ''
     })
     if (ok) added++
   }

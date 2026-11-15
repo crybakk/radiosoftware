@@ -6,12 +6,15 @@
  *   un limite di MB al giorno, perché il 4G della regia non è illimitato.
  * - Titoli corretti e volume misurato vengono mandati al server, anche per i file copiati a mano.
  */
-import { createReadStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { copyFile, mkdir, rename, stat } from 'node:fs/promises'
+import { createReadStream, createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
+import { catalogParts, withCounter } from '../core/catalog'
+import { readFileInfo } from '../core/scanner'
 import type { RadioDb } from '../core/db'
-import { PonteError, type LibraryMeta, type PonteClient } from '../core/ponteClient'
+import { PonteError, type LibraryMeta, type PonteClient, type UploadedTrack } from '../core/ponteClient'
 import { exclusionReason, gainFor, onServer, planSync, serverId, type SyncItem } from '../core/serverLibrary'
 import type { Track } from '../core/types'
 
@@ -29,6 +32,8 @@ export interface ServerSyncStatus {
   lastRun: string | null
   lastError: string | null
   lastResult: string | null
+  /** Impronte audio sul server (null = non ancora controllato). */
+  fingerprintsOnServer: number | null
 }
 
 export interface ServerTrackRow {
@@ -66,8 +71,11 @@ export class ServerLibrarySync {
     progress: '',
     lastRun: null,
     lastError: null,
-    lastResult: null
+    lastResult: null,
+    fingerprintsOnServer: null
   }
+  /** Brani appena scaricati dal server e catalogati (per avviare analisi, impronte e MusicBrainz). */
+  onCatalogued: (trackIds: number[]) => void = () => {}
   private abort: AbortController | null = null
   private budgetFile: string
   private lastMetaDay = ''
@@ -241,6 +249,11 @@ export class ServerLibrarySync {
         this.lastMetaDay = today()
       }
 
+      // brani caricati dal pannello: scendono in regia e vengono catalogati
+      const down = await this.downloadUploaded(c, ac.signal, manual)
+      // impronte audio per il riconoscimento nelle esterne
+      const fpSent = await this.syncFingerprints(c, manual)
+
       const pending = plan.upload
       this.emit({
         onServer: remote.length - removed,
@@ -278,6 +291,9 @@ export class ServerLibrarySync {
         })
       }
       const result =
+        (down.done ? `Scaricati e catalogati ${down.done} brani caricati dal pannello. ` : '') +
+        (down.left ? `Ne restano da scaricare ${down.left}. ` : '') +
+        (fpSent ? `Inviate ${fpSent} impronte audio. ` : '') +
         `Inviati ${sent} brani (${Math.round(sentBytes / MB)} MB)` +
         (removed ? `, tolti ${removed}` : '') +
         (pending.length - sent ? `; ne restano ${pending.length - sent}${stopReason ? ` (${stopReason})` : ''}` : '; il server è allineato') +
@@ -292,6 +308,115 @@ export class ServerLibrarySync {
       this.abort = null
       this.emit({ running: null, progress: '', uploadedTodayMb: Math.round(this.budget().bytes / MB) })
     }
+  }
+  /**
+   * Brani caricati dal pannello sul server: si scaricano nella prima cartella della musica come
+   * "Artista/Titolo.ext", si aggiungono alla libreria e sul server prendono il percorso della regia,
+   * così non tornano indietro con l'invio notturno. Rispettano il limite di MB del giorno.
+   */
+  async downloadUploaded(c: PonteClient, signal: AbortSignal, manual: boolean): Promise<{ done: number; left: number }> {
+    const folders = this.db.listFolders()
+    const root = folders.find((f) => f.kind === 'music')
+    if (!root) return { done: 0, left: 0 }
+    const list: UploadedTrack[] = await c.listUploaded()
+    let done = 0
+    for (const [i, u] of list.entries()) {
+      if (signal.aborted) return { done, left: list.length - i }
+      const p = this.db.getSettings().ponte
+      if (!manual && !inWindow(new Date().getHours(), p.librarySyncFrom, p.librarySyncTo)) return { done, left: list.length - i }
+      if (this.budget().bytes + u.size > p.libraryDailyMb * MB) return { done, left: list.length - i }
+      const [dir, name] = catalogParts(u)
+      // stesso nome già usato da un file diverso: "Titolo (2).mp3"
+      let target = ''
+      for (let n = 1; n < 100; n++) {
+        const t = join(root.path, dir, withCounter(name, n))
+        const st = await stat(t).catch(() => null)
+        if (!st || st.size === u.size) {
+          target = t
+          break
+        }
+      }
+      if (!target) continue
+      this.emit({ progress: `scarico dal server: ${u.artist} - ${u.title}` })
+      if (!existsSync(target)) {
+        await mkdir(dirname(target), { recursive: true })
+        const body = await c.downloadUploaded(u.id, signal)
+        const part = `${target}.part`
+        try {
+          await pipeline(Readable.fromWeb(body as import('node:stream/web').ReadableStream<Uint8Array>), createWriteStream(part))
+          await rename(part, target)
+        } catch (e) {
+          await rm(part, { force: true })
+          throw e
+        }
+        this.addBudget(u.size)
+      }
+      // nella libreria della regia, con i dati del server se il file non ha i tag
+      const info = await readFileInfo(target, 'music')
+      if (!info.title || info.title === name.replace(/\.[^.]+$/, '')) info.title = u.title || info.title
+      if (!info.artist) info.artist = u.artist
+      const st = await stat(target)
+      const id = this.db.upsertScanned({ ...info, size: st.size, mtime: st.mtimeMs })
+      this.db.mbRequeue(id)
+      const sid = serverId(target, folders)
+      if (sid) await c.moveUploaded(u.id, sid)
+      this.onCatalogued([id])
+      done++
+    }
+    return { done, left: 0 }
+  }
+
+  /** Allinea le impronte audio del server a quelle della regia (solo i brani cambiati o mancanti). */
+  async syncFingerprints(c: PonteClient, manual: boolean): Promise<number> {
+    const folders = this.db.listFolders()
+    const local = new Map<string, { track: Track; n: number }>()
+    for (const { track, bytes } of this.db.fingerprinted()) {
+      const id = serverId(track.path, folders)
+      if (id && !local.has(id)) local.set(id, { track, n: bytes / 4 })
+    }
+    const remote = await c.listFingerprints()
+    const there = new Map(remote.map((r) => [r.id, r.n]))
+    const toRemove = remote.filter((r) => !local.has(r.id)).map((r) => r.id)
+    if (toRemove.length > 50 && toRemove.length > remote.length * MAX_REMOVE_SHARE) {
+      throw new Error(`l'invio toglierebbe ${toRemove.length} impronte dal server su ${remote.length}: controlla che le cartelle della libreria siano collegate`)
+    }
+    if (toRemove.length) await c.deleteFingerprints(toRemove)
+    const todo = [...local.entries()].filter(([id, l]) => there.get(id) !== l.n)
+    let sent = 0
+    let batch: Uint8Array[] = []
+    let batchBytes = 0
+    const flush = async (): Promise<void> => {
+      if (!batch.length) return
+      const body = new Uint8Array(batchBytes)
+      let o = 0
+      for (const b of batch) {
+        body.set(b, o)
+        o += b.length
+      }
+      sent += await c.uploadFingerprints(body)
+      this.addBudget(batchBytes)
+      batch = []
+      batchBytes = 0
+      this.emit({ progress: `impronte audio inviate: ${sent} di ${todo.length}` })
+    }
+    for (const [id, { track }] of todo) {
+      const p = this.db.getSettings().ponte
+      if (!manual && !inWindow(new Date().getHours(), p.librarySyncFrom, p.librarySyncTo)) break
+      if (this.budget().bytes + batchBytes > p.libraryDailyMb * MB) break
+      const fp = this.db.getFingerprint(track.id)
+      if (!fp) continue
+      const head = new TextEncoder().encode(`${JSON.stringify({ id, title: track.title, artist: track.artist, duration: Math.round(track.duration) })}\n`)
+      const rec = new Uint8Array(4 + head.length + fp.length)
+      new DataView(rec.buffer).setUint32(0, head.length + fp.length, true)
+      rec.set(head, 4)
+      rec.set(fp, 4 + head.length)
+      batch.push(rec)
+      batchBytes += rec.length
+      if (batchBytes > 2 * MB) await flush()
+    }
+    await flush()
+    this.emit({ fingerprintsOnServer: remote.length - toRemove.length + todo.filter(([id]) => !there.has(id)).length })
+    return sent
   }
 }
 

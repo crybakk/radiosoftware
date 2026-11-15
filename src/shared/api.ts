@@ -15,6 +15,10 @@ export interface LibraryStatus {
   pendingAnalysis: number
   scanning: ScanProgress | null
   analyzing: boolean
+  /** Impronte audio calcolate sulla musica (riconoscimento nelle esterne). */
+  fingerprints: number
+  fingerprintTotal: number
+  fingerprinting: boolean
 }
 
 /** Funzioni che il processo principale offre all'interfaccia (window.radio). */

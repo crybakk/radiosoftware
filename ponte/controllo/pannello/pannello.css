@@ -128,3 +128,10 @@ main { display: grid; gap: 12px; padding: 12px; max-width: 1100px; margin: 0 aut
 #video-settings { margin-top: 12px; }
 #video-settings summary { cursor: pointer; color: var(--muted); }
 .video.live { border-color: var(--red); }
+
+/* brani sconosciuti delle esterne */
+.unk-item { flex-direction: column; align-items: stretch !important; gap: 6px !important; }
+.unk-item audio { width: 100%; }
+.unk-form { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.unk-form .row { grid-column: 1 / -1; display: flex; gap: 8px; }
+@media (max-width: 600px) { .unk-form { grid-template-columns: 1fr; } }

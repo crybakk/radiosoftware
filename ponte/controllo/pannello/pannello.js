@@ -93,6 +93,7 @@ function showApp() {
   $('users-btn').hidden = me.role !== 'amministratore'
   $('readonly').hidden = canCommand()
   connect()
+  loadUnknowns()
 }
 
 // ---------- canale in tempo reale ----------
@@ -777,6 +778,99 @@ $('user-form').addEventListener('submit', async (e) => {
     $('user-msg').textContent = err.message
   }
 })
+
+// ---------- brani sconosciuti delle dirette esterne ----------
+
+function unkDate(iso) {
+  return new Date(iso).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function unkItem(u) {
+  const li = el('li', 'unk-item')
+  const head = el('div', 'unk-head')
+  const times = u.heard.length > 1 ? ` · sentito ${u.heard.length} volte` : ''
+  head.append(el('b', null, u.label ? `${u.label.artist} - ${u.label.title}` : `Sentito il ${unkDate(u.heard[0])}`))
+  head.append(el('span', 'hint', ` ${Math.round(u.seconds / 60)} min${times}`))
+  const audio = el('audio')
+  audio.controls = true
+  audio.preload = 'none'
+  audio.src = `/api/sconosciuti/clip?id=${encodeURIComponent(u.id)}`
+  li.append(head, audio)
+  if (!canCommand()) return li
+  const form = el('form', 'unk-form')
+  const field = (name, ph, value) => {
+    const i = el('input')
+    i.name = name
+    i.placeholder = ph
+    i.value = value || ''
+    i.autocomplete = 'off'
+    return i
+  }
+  const l = u.label || {}
+  form.append(
+    field('title', 'Titolo', l.title),
+    field('artist', 'Interprete', l.artist),
+    field('composer', 'Autori, separati da virgola (per la SIAE)', l.composer),
+    field('publisher', 'Editore (se lo sai)', l.publisher)
+  )
+  const row = el('div', 'row')
+  row.append(el('button', 'primary', u.label ? 'Salva le modifiche' : 'Salva'))
+  row.append(
+    button('Non è musica', 'Era parlato o rumore: lo toglie dall\'archivio', async (e) => {
+      e.preventDefault()
+      if (!confirm('Togliere questo audio dall\'archivio? Non sarà più riconosciuto.')) return
+      try {
+        drawUnknowns((await api('/api/sconosciuti', { method: 'POST', body: JSON.stringify({ id: u.id, azione: 'scarta' }) })).items)
+      } catch (err) {
+        notice(err.message)
+      }
+    }, 'ghost')
+  )
+  form.append(row)
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const data = Object.fromEntries(new FormData(form))
+    try {
+      drawUnknowns((await api('/api/sconosciuti', { method: 'POST', body: JSON.stringify({ id: u.id, ...data }) })).items)
+      notice('Salvato: da ora il brano viene riconosciuto e va nel report SIAE')
+    } catch (err) {
+      notice(err.message)
+    }
+  })
+  li.append(form)
+  return li
+}
+
+let unkInfo = { attivo: false, ultimo: null }
+function drawUnknowns(items) {
+  const todo = items.filter((u) => !u.label)
+  const done = items.filter((u) => u.label)
+  // non ridisegnare mentre si sta scrivendo un'etichetta
+  if (document.activeElement && $('unk-card').contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return
+  $('unk-list').replaceChildren(...todo.map(unkItem))
+  $('unk-done').replaceChildren(...done.map(unkItem))
+  $('unk-done-box').hidden = !done.length
+  $('unk-done-title').textContent = `Già etichettati (${done.length})`
+  $('unk-badge').textContent = todo.length ? `${todo.length} da etichettare` : ''
+  const last = unkInfo.ultimo ? ` Ultimo riconosciuto: ${unkInfo.ultimo.artist} - ${unkInfo.ultimo.title} (${hhmm(unkInfo.ultimo.at)}).` : ''
+  $('unk-status').textContent =
+    (unkInfo.attivo ? 'Diretta esterna in corso: il server sta riconoscendo i brani.' : 'Il server riconosce i brani durante le dirette esterne.') +
+    last +
+    (todo.length
+      ? ' Ascolta i brani qui sotto e scrivi titolo e interprete: dalla volta dopo saranno riconosciuti da soli.'
+      : ' Nessun brano da etichettare.')
+}
+
+async function loadUnknowns() {
+  try {
+    const r = await api('/api/sconosciuti')
+    unkInfo = { attivo: r.attivo, ultimo: r.ultimo }
+    drawUnknowns(r.items)
+  } catch {
+    // pannello non ancora collegato: si riprova al prossimo giro
+  }
+}
+setInterval(() => !$('app').hidden && loadUnknowns(), 60_000)
 
 setInterval(() => state && studio && renderNow(), 250)
 start()

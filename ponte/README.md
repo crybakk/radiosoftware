@@ -233,6 +233,12 @@ Quando l'app si collega, il ponte passa alla diretta esterna con una breve disso
 torna alla regia (o alla musica di riserva). Le due cose arrivano anche come notifica. Nel frattempo la regia
 può restare accesa: il suo audio arriva al ponte ma non va in onda.
 
+Durante l'esterna il servizio di controllo ascolta il programma (flusso interno di Liquidsoap) e riconosce i
+brani con le impronte audio mandate dalla regia (cartella dati `impronte/`); quelli riconosciuti vanno nel
+registro del server come "esterna". I tratti non riconosciuti di almeno un minuto finiscono in `sconosciuti/`
+(20 secondi di audio + impronta), da etichettare nel pannello. `RICONOSCIMENTO=no` lo spegne.
+Memoria: con 20.000 brani l'indice delle impronte occupa circa 300 MB.
+
 ## Allarmi
 
 | Allarme | Quando |

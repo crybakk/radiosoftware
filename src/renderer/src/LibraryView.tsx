@@ -84,6 +84,18 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
                 </div>
               </div>
             )}
+            {status.fingerprintTotal > 0 && (
+              <div>
+                Impronte audio per riconoscere i brani nelle esterne: {status.fingerprints} di {status.fingerprintTotal}
+                {status.fingerprinting ? ' (in corso)' : ''}
+                <div className="progress thin">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${(status.fingerprints / Math.max(1, status.fingerprintTotal)) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>

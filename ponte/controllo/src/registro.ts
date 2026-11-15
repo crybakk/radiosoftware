@@ -1,6 +1,5 @@
 /**
- * Registro dei brani suonati dal server (diretta autonoma, musica di riserva, e in futuro le esterne
- * riconosciute). La regia lo scarica e lo unisce al suo registro di trasmissione per il report SIAE.
+ * Registro dei brani suonati dal server (diretta autonoma, musica di riserva, esterne riconosciute). La regia lo scarica e lo unisce al suo registro di trasmissione per il report SIAE.
  * Un file JSON per riga, in ordine di tempo; si tengono 400 giorni.
  */
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -16,6 +15,9 @@ export interface ServerPlay {
   title: string
   artist: string
   duration: number
+  /** Solo per i brani sconosciuti etichettati dal pannello (gli altri li conosce la regia). */
+  composer?: string
+  publisher?: string
 }
 
 const KEEP_DAYS = 400
@@ -37,7 +39,9 @@ export class PlayLog {
       id: p.id,
       title: p.title,
       artist: p.artist,
-      duration: Math.round(p.duration * 10) / 10
+      duration: Math.round(p.duration * 10) / 10,
+      ...(p.composer ? { composer: p.composer } : {}),
+      ...(p.publisher ? { publisher: p.publisher } : {})
     }
     appendFileSync(this.file, `${JSON.stringify(entry)}\n`)
     return entry

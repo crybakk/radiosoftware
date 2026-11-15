@@ -7,7 +7,10 @@
  *   PUT  /api/backup      copia del database della regia
  *   GET  /api/backup      elenco copie;  GET /api/backup/<nome> scarica una copia
  *   GET  /api/stato       stato del ponte e allarmi attivi
- *   GET  /api/registro?da=<ISO>&a=<ISO>   brani suonati dal server (diretta autonoma, riserva) per il report SIAE
+ *   GET  /api/registro?da=<ISO>&a=<ISO>   brani suonati dal server (diretta autonoma, riserva, esterne riconosciute)
+ *   GET/PUT/DELETE /api/impronte   impronte audio della libreria della regia (riconoscimento nelle esterne)
+ *   GET  /api/caricati, GET /api/caricati/file?id=, POST /api/caricati/sposta   brani caricati dal pannello,
+ *        che la regia scarica e cataloga
  *   POST /api/test-notifica  invia una notifica di prova
  *   GET  /health          senza token, per i controlli automatici
  *   WS   /ws/regia        canale in tempo reale con la regia (autenticazione col token nel primo messaggio)
@@ -20,6 +23,7 @@
  *   GET  /ospite.html?t=<link>, WS /ws/ospite?t=<link>   pagina e canale degli ospiti (link creato dal pannello)
  *   PUT  /api/autonoma/carica?nome=<file>   carica un brano nella libreria del server (conduttori)
  *   GET/PUT /api/video/logo   immagine delle dirette video su YouTube e Facebook (conduttori)
+ *   GET/POST /api/sconosciuti, GET /api/sconosciuti/clip?id=   brani non riconosciuti nelle esterne (etichette)
  *
  * Libreria del server copiata dalla regia (token): GET /api/libreria, PUT /api/libreria?id=regia/...,
  *   DELETE /api/libreria?id=regia/..., POST /api/libreria/dati (titoli e volumi corretti)
@@ -48,6 +52,8 @@ import { AUDIO_EXT, Library } from './libreria.ts'
 import { AutonomousPlayer } from './autonoma.ts'
 import { VideoLive } from './video.ts'
 import { PlayLog, type PlaySource } from './registro.ts'
+import { FpStore, parseFpFile, UnknownStore } from './riconoscimento.ts'
+import { EsterneRecognition } from './esterne.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -216,6 +222,33 @@ const logPlay = (source: PlaySource, file: string): void => {
   playLog.add({ source, id: t.id, title: t.title, artist: t.artist, duration: t.duration })
 }
 auto.onPlay = (t) => playLog.add({ source: 'autonoma', id: t.id, title: t.title, artist: t.artist, duration: t.duration })
+// ---------- riconoscimento dei brani nelle dirette esterne ----------
+
+const fpStore = new FpStore(join(DATA_DIR, 'impronte'))
+const unknowns = new UnknownStore(join(DATA_DIR, 'sconosciuti'), fpStore.index)
+let lastUnknownAlert = 0
+const esterne = new EsterneRecognition({
+  fp: fpStore,
+  unknowns,
+  playLog,
+  url: env('RICONOSCIMENTO_AUDIO_URL', 'http://liquidsoap:8093/programma'),
+  onUnknown: (n) => {
+    // un avviso ogni tanto, non a ogni brano
+    if (Date.now() - lastUnknownAlert < 30 * 60_000) return
+    lastUnknownAlert = Date.now()
+    void notifier.send(`🎵 Diretta esterna: ${n} ${n === 1 ? 'brano sconosciuto' : 'brani sconosciuti'} da etichettare nel pannello (Brani sconosciuti).`)
+  }
+})
+const riconoscimentoAttivo = env('RICONOSCIMENTO', 'si') !== 'no'
+// se il controllo riparte durante un'esterna, si riprende l'ascolto
+setTimeout(() => {
+  if (!riconoscimentoAttivo) return
+  void fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
+    .then((r) => r.json() as Promise<{ esterna?: boolean }>)
+    .then((st) => esterne.setActive(!!st.esterna))
+    .catch(() => {})
+}, 4000)
+
 // all'avvio la diretta autonoma è ferma: se Liquidsoap era rimasto acceso la spegniamo
 setTimeout(() => void lqPost('/autonoma', { on: false }), 3000)
 const rescan = (): void =>
@@ -337,7 +370,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(data)
 }
 
-async function readJson(req: IncomingMessage, limit = 64 * 1024): Promise<Record<string, unknown>> {
+async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const c of req) {
@@ -345,7 +378,11 @@ async function readJson(req: IncomingMessage, limit = 64 * 1024): Promise<Record
     if (size > limit) throw new Error('richiesta troppo grande')
     chunks.push(c as Buffer)
   }
-  const text = Buffer.concat(chunks).toString('utf8')
+  return Buffer.concat(chunks)
+}
+
+async function readJson(req: IncomingMessage, limit = 64 * 1024): Promise<Record<string, unknown>> {
+  const text = (await readBody(req, limit)).toString('utf8')
   return text ? (JSON.parse(text) as Record<string, unknown>) : {}
 }
 
@@ -535,6 +572,47 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         return json(res, 200, { ok: true })
       }
     }
+    if (url.pathname === '/api/sconosciuti' || url.pathname === '/api/sconosciuti/clip') {
+      const me = sessionUser(req)
+      if (!me) return json(res, 401, { error: 'accesso richiesto' })
+      if (req.method === 'GET' && url.pathname === '/api/sconosciuti') {
+        return json(res, 200, { items: unknowns.list(), attivo: esterne.isActive(), ultimo: esterne.last })
+      }
+      if (req.method === 'GET') {
+        const f = unknowns.clipFile(url.searchParams.get('id') ?? '')
+        const st = f ? await stat(f).catch(() => null) : null
+        if (!f || !st) return json(res, 404, { error: 'audio non trovato' })
+        res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': st.size, 'Cache-Control': 'no-store' })
+        return void createReadStream(f).pipe(res)
+      }
+      if (req.method === 'POST') {
+        if (!can(me.role, 'comandare')) return json(res, 403, { error: 'il tuo ruolo non permette di etichettare i brani' })
+        if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+        const body = await readJson(req, 8192)
+        const id = String(body.id ?? '')
+        if (body.azione === 'scarta') {
+          unknowns.discard(id)
+          console.log(`[riconoscimento] ${me.name} ha scartato ${id}`)
+          return json(res, 200, { items: unknowns.list() })
+        }
+        const had = unknowns.get(id)?.label
+        const u = unknowns.setLabel(id, {
+          title: String(body.title ?? ''),
+          artist: String(body.artist ?? ''),
+          composer: String(body.composer ?? ''),
+          publisher: String(body.publisher ?? '')
+        })
+        // la prima volta: nel registro vanno tutti i passaggi già sentiti
+        if (!had && u.label) {
+          for (const at of u.heard) {
+            playLog.add({ at, source: 'esterna', id: u.id, title: u.label.title, artist: u.label.artist, duration: u.seconds, composer: u.label.composer, publisher: u.label.publisher })
+          }
+        }
+        console.log(`[riconoscimento] ${me.name} ha etichettato ${id}: ${u.label?.artist} - ${u.label?.title}`)
+        return json(res, 200, { items: unknowns.list() })
+      }
+      return json(res, 404, { error: 'non trovato' })
+    }
     if (url.pathname === '/api/io' || url.pathname.startsWith('/api/utenti')) {
       const me = sessionUser(req)
       if (!me) return json(res, 401, { error: 'accesso richiesto' })
@@ -639,6 +717,57 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         return json(res, 200, { ok: true })
       }
     }
+    if (url.pathname === '/api/impronte') {
+      if (req.method === 'GET') return json(res, 200, fpStore.list())
+      if (req.method === 'PUT') {
+        // più impronte in un corpo solo: [lunghezza u32][file impronta] ...
+        const body = await readBody(req, 64 * 1024 * 1024)
+        let o = 0
+        let n = 0
+        while (o + 4 <= body.length) {
+          const len = body.readUInt32LE(o)
+          o += 4
+          if (len > 4 * 1024 * 1024 || o + len > body.length) return json(res, 400, { error: 'impronte non valide' })
+          const { meta, fp } = parseFpFile(body.subarray(o, o + len))
+          o += len
+          if (!/^regia\//.test(meta.id)) return json(res, 400, { error: `percorso non valido: ${meta.id}` })
+          fpStore.put(meta, fp)
+          n++
+        }
+        return json(res, 200, { ok: true, saved: n })
+      }
+      if (req.method === 'DELETE') {
+        const body = await readJson(req, 16 * 1024 * 1024)
+        const ids = Array.isArray(body.ids) ? body.ids.map(String) : []
+        for (const id of ids) fpStore.remove(id)
+        return json(res, 200, { ok: true, removed: ids.length })
+      }
+    }
+    if (req.method === 'GET' && url.pathname === '/api/caricati') {
+      return json(res, 200, library.all().filter((t) => t.id.startsWith('caricati/')).map((t) => ({ id: t.id, size: t.size, title: t.title, artist: t.artist, duration: t.duration })))
+    }
+    if (req.method === 'GET' && url.pathname === '/api/caricati/file') {
+      const t = library.get(url.searchParams.get('id') ?? '')
+      if (!t || !t.id.startsWith('caricati/')) return json(res, 404, { error: 'brano non trovato' })
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': t.size })
+      return void createReadStream(library.path(t)).pipe(res)
+    }
+    if (req.method === 'POST' && url.pathname === '/api/caricati/sposta') {
+      // la regia l'ha scaricato e catalogato: il file prende il percorso che avrà dalla regia, così non si ricarica
+      const body = await readJson(req)
+      const t = library.get(String(body.da ?? ''))
+      const dest = studioPath(String(body.a ?? ''))
+      if (!t || !t.id.startsWith('caricati/')) return json(res, 404, { error: 'brano non trovato' })
+      if (!dest) return json(res, 400, { error: 'percorso non valido' })
+      await mkdir(dirname(dest), { recursive: true })
+      await rename(library.path(t), dest)
+      library.remove(t.id)
+      const moved = await library.addFile(dest, { title: t.title, artist: t.artist, duration: t.duration, gainDb: t.gainDb })
+      library.save()
+      relay.setAuto(auto.state())
+      console.log(`[libreria] ${t.id} spostato in ${moved.id} (catalogato dalla regia)`)
+      return json(res, 200, { ok: true, id: moved.id, size: moved.size })
+    }
     if (req.method === 'GET' && url.pathname === '/api/registro') {
       if (!authorized(req)) return json(res, 401, { error: 'token non valido' })
       const from = new Date(url.searchParams.get('da') ?? '')
@@ -741,7 +870,11 @@ const internalServer = createServer(async (req, res) => {
       console.log(`[evento] ${kind} ${body.detail ?? ''}`)
       if (kind === 'autonoma_brano') auto.onTrackStart(String(body.detail ?? ''))
       else if (kind === 'riserva_brano') logPlay('riserva', String(body.detail ?? ''))
-      else alarms.onEvent(kind, String(body.detail ?? ''))
+      else {
+        if (riconoscimentoAttivo && kind === 'esterna_collegata') esterne.setActive(true)
+        if (kind === 'esterna_scollegata') esterne.setActive(false)
+        alarms.onEvent(kind, String(body.detail ?? ''))
+      }
       return json(res, 200, { ok: true })
     }
     return json(res, 404, { error: 'non trovato' })

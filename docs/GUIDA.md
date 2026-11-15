@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, fase 7a (report SIAE trimestrale, brani suonati dal server nel registro, dati da MusicBrainz).
+**Ultimo aggiornamento:** 15/11/2026, fase 7b (riconoscimento dei brani nelle dirette esterne, brani sconosciuti da etichettare, brani caricati dal pannello che scendono in regia).
 
 ## Indice
 
@@ -20,6 +20,7 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
     - [Ascolto e Icecast secondario](#ascolto-e-icecast-secondario)
 10. [Collegare la regia al ponte](#10-collegare-la-regia-al-ponte)
 11. [Dirette esterne](#11-dirette-esterne)
+    - [Riconoscimento dei brani nelle esterne](#riconoscimento-dei-brani-nelle-esterne)
 12. [Pannello remoto e utenti](#12-pannello-remoto-e-utenti)
     - [Microfono dal pannello](#microfono-dal-pannello)
     - [Ospiti in diretta](#ospiti-in-diretta)
@@ -279,6 +280,26 @@ Quando l'app si collega va in onda lei, con una breve dissolvenza. Quando si sco
 (o la musica di riserva, se la regia è spenta).
 Ricevi una notifica all'inizio e alla fine.
 
+### Riconoscimento dei brani nelle esterne
+
+Durante una diretta esterna il server ascolta il programma e riconosce i brani, così finiscono nel registro
+(fonte **Esterna**) e nel report SIAE senza scrivere nulla a mano. Solo nelle esterne: gli altri brani la regia li
+conosce già.
+
+- **Come riconosce:** confronta l'audio con le **impronte audio** della libreria della regia. Nessun servizio
+  esterno: le impronte le calcola la regia (scheda **Libreria**, riga "Impronte audio", circa mezzo secondo a brano)
+  e le manda al server di notte insieme alla libreria (circa 5 KB a brano, la prima volta circa 100 MB per
+  20.000 brani, dentro il limite di MB del giorno). Funziona anche con la regia spenta.
+- Un brano è riconosciuto dopo circa 20 secondi, anche se qualcuno ci parla sopra un po'. Riconosce anche i brani
+  esclusi dalla selezione del server (live, sotto 192 kbps), perché le impronte sono di tutta la musica.
+- **Brani sconosciuti:** se per almeno un minuto non riconosce nulla, il server salva **20 secondi di audio** e
+  te lo segnala (notifica Telegram/email, al massimo una ogni mezz'ora). Nel **pannello**, sezione
+  **Brani sconosciuti delle esterne**, lo ascolti e scrivi titolo, interprete, autori ed editore: da quel momento
+  viene riconosciuto da solo e i passaggi già sentiti vanno nel registro. Se era parlato o rumore, premi
+  **Non è musica**. Etichettare serve almeno il ruolo conduttore.
+- Il brano sconosciuto entra nel registro solo dopo che lo hai etichettato.
+- Per spegnere il riconoscimento: `RICONOSCIMENTO=no` nel file `.env` del server, poi `riavvia.sh`.
+
 ## 12. Pannello remoto e utenti
 
 Il pannello remoto comanda la regia dal browser, da qualsiasi posto: telefono, tablet o computer.
@@ -405,6 +426,17 @@ subito, ma rispetta il limite del giorno. Ogni giorno manda anche al server i ti
 Se un giorno la regia vedesse sparire troppi brani (per esempio il disco della musica scollegato), si ferma e non
 toglie nulla dal server.
 
+Nelle stesse ore la regia:
+
+- manda le **impronte audio** di tutta la musica, per il riconoscimento nelle esterne (sezione 11);
+- **scarica i brani caricati dal pannello** e li cataloga nella prima cartella della musica come
+  `Artista\Titolo.mp3` (se il nome è già usato da un altro file: `Titolo (2).mp3`). Poi da sola li legge, li
+  analizza, calcola l'impronta e cerca autori e codici su MusicBrainz. Sul server il brano passa nella libreria
+  della regia, così non viene rimandato indietro.
+
+Tutto avviene solo con **Invia da solo** acceso (o con **Invia ora i brani nuovi**) e rientra nel limite di MB del
+giorno.
+
 ### Dirette video su YouTube e Facebook
 
 YouTube e Facebook vogliono un video: dal pannello, sezione **Dirette video**, mandi la radio con un'immagine.
@@ -482,6 +514,8 @@ Il ponte tiene gli ultimi 14.
 | "OBS manda 1920x1080" | in OBS, Impostazioni → Video: risoluzione di uscita 1280×720 |
 | "manca la chiave di YouTube/Facebook" | un amministratore deve inserirla nelle impostazioni delle dirette video |
 | "Ricerca fermata: MusicBrainz non raggiungibile" | la regia non ha internet o MusicBrainz è in manutenzione: riprova più tardi, riparte da dove era rimasta |
+| Nelle esterne non riconosce nessun brano | la regia non ha ancora mandato le impronte: controlla "Impronte audio" in Libreria e "impronte sul server" nella sezione Libreria sul server |
+| Troppi brani sconosciuti che erano parlato | premi **Non è musica**: vengono tolti dall'archivio |
 | Nel report mancano i brani della notte | il ponte non era raggiungibile quando hai aperto il report: premi **Aggiorna** con il ponte collegato |
 
 ## 16. In arrivo
@@ -490,8 +524,9 @@ Prossime fasi (l'ordine può cambiare):
 
 - statistiche degli ascoltatori lette dagli Icecast (principale e secondario);
 - FluidStream, se un giorno servirà;
-- riconoscimento dei brani durante le dirette esterne, con archivio dei brani sconosciuti da etichettare dal pannello (fase 7b), poi un bot Telegram per etichettarli più in fretta;
-- registrazione della messa in onda e podcast, download automatico di notiziari, voce sintetica;
+- bot Telegram per etichettare più in fretta i brani sconosciuti delle esterne;
+- registrazione della messa in onda, puntate dei programmi da ascoltare on demand e repliche da mandare in onda quando serve;
+- download automatico di notiziari, voce sintetica;
 - rotazioni generate dall'AI a partire da una descrizione del palinsesto.
 
 ## 17. Modifiche alla guida
@@ -505,3 +540,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Ospiti in diretta con un link: sala d'attesa, fai entrare, in onda, fino a 3 insieme, ritorno in cuffia per tutti |
 | 15/11/2026 | Server senza AzuraCast: Icecast principale e HTTPS automatico (Caddy) nella stessa VM; regia sulla porta 443; Icecast secondario con lo stesso segnale; musica di riserva quando nessuno è in diretta; dirette video su YouTube e Facebook (logo o OBS, massimo 720p) |
 | 15/11/2026 | Report SIAE trimestrale in CSV per il portale; brani della diretta autonoma e della riserva nel registro; autori, editore, ISWC e ISRC da MusicBrainz; elenco della musica con dati mancanti |
+| 15/11/2026 | Riconoscimento dei brani nelle dirette esterne con le impronte della libreria; brani sconosciuti da ascoltare ed etichettare nel pannello; i brani caricati dal pannello scendono in regia e vengono catalogati come Artista\Titolo |
