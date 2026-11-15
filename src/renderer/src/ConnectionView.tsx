@@ -29,6 +29,11 @@ function since(iso: string | null): string {
   return `da ${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`
 }
 
+function panelUrl(p: PonteSettings): string {
+  const h = p.host.trim().replace(/\/+$/, '')
+  return /^https?:\/\//i.test(h) ? h : `${p.controlHttps ? 'https' : 'http'}://${h}:${p.controlPort}`
+}
+
 function sizeMb(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
@@ -54,6 +59,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
     return () => clearInterval(t)
   }, [])
 
+  const configured = !!radio.settings.ponte.host && !!radio.settings.ponte.controlToken
   const dirty = JSON.stringify(draft) !== JSON.stringify(radio.settings.ponte)
   const set = <K extends keyof PonteSettings>(k: K, v: PonteSettings[K]): void => setDraft({ ...draft, [k]: v })
   const num = (k: keyof PonteSettings, min: number, max: number) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -82,8 +88,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
     setMsg(null)
   }
 
-  const configured = !!radio.settings.ponte.host && !!radio.settings.ponte.controlToken
-
+  
   return (
     <div className="settings-view">
       <section className="panel">
@@ -107,6 +112,16 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           {!!up?.reconnects && <span className="info-line">riconnessioni: {up.reconnects}</span>}
         </div>
         {radio.captureError && <div className="banner error inline-banner">{radio.captureError}</div>}
+        {radio.settings.ponte.remoteControl && configured && (
+          <div className="link-status">
+            <span className={`dot ${st?.remote.state === 'collegato' ? 'ok' : st?.remote.state === 'spento' ? 'off' : 'warn'}`} />
+            <strong>Pannello remoto</strong>
+            <span>{st?.remote.message}</span>
+            <span className="info-line">
+              indirizzo: {panelUrl(radio.settings.ponte)}
+            </span>
+          </div>
+        )}
         <p className="hint">
           Se il collegamento cade, la regia riprova da sola. Nel frattempo AzuraCast manda in onda la sua AutoDJ di riserva.
         </p>
@@ -305,6 +320,14 @@ export function ConnectionView({ radio }: { radio: Radio }) {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={draft.controlHttps} onChange={(e) => set('controlHttps', e.target.checked)} />
+            <span>Il servizio di controllo usa HTTPS (certificato di AzuraCast)</span>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={draft.remoteControl} onChange={(e) => set('remoteControl', e.target.checked)} />
+            <span>Permetti di comandare la regia dal pannello remoto</span>
           </label>
           <label className="check">
             <input type="checkbox" checked={draft.sendMetadata} onChange={(e) => set('sendMetadata', e.target.checked)} />

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { PonteStatus } from '../main/ponte'
+import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { LibraryStatus, RadioApi } from '../shared/api'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,6 +45,17 @@ const api: RadioApi = {
   ponteTestNotification: call('ponteTestNotification'),
   ponteRestore: call('ponteRestore'),
   restoredFrom: call('restoredFrom'),
+  sendRemoteState: (state: RemoteState) => ipcRenderer.send('remote:state', state),
+  onRemoteCommand: (cb: (cmd: RemoteCommand, by: string) => Promise<unknown>) => {
+    const listener = (_e: unknown, id: number, cmd: RemoteCommand, by: string): void => {
+      cb(cmd, by).then(
+        (data) => ipcRenderer.send('remote:reply', id, true, data ?? null, ''),
+        (e: unknown) => ipcRenderer.send('remote:reply', id, false, null, e instanceof Error ? e.message : String(e))
+      )
+    }
+    ipcRenderer.on('remote:command', listener)
+    return () => ipcRenderer.removeListener('remote:command', listener)
+  },
   onPonteStatus: (cb: (s: PonteStatus) => void) => {
     const listener = (_e: unknown, s: PonteStatus): void => cb(s)
     ipcRenderer.on('ponteStatus', listener)

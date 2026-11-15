@@ -4,6 +4,7 @@ import type { RadioDb } from '../core/db'
 import { backupDue, PonteClient, type PonteAlarm, type PonteBackup, type PonteState } from '../core/ponteClient'
 import type { PonteSettings, Track } from '../core/types'
 import { Uplink, type UplinkStatus } from '../core/uplink'
+import { RemoteLink, remoteTrack, remoteUrl, type RemoteCommand, type RemoteLinkStatus, type RemoteState } from '../core/remote'
 
 export interface StudioReport {
   mode: 'auto' | 'manual'
@@ -14,6 +15,7 @@ export interface StudioReport {
 
 export interface PonteStatus {
   uplink: UplinkStatus
+  remote: RemoteLinkStatus
   /** Il servizio di controllo risponde? null = non configurato. */
   controlOk: boolean | null
   controlError: string | null
@@ -49,7 +51,12 @@ export class PonteService {
   private sampleRate = 0
   private capturing = false
   private report: StudioReport = { mode: 'manual', onAir: false, artist: '', title: '' }
-  private status: Omit<PonteStatus, 'uplink'> = {
+  private remote: RemoteLink
+  /** Esegue nell'interfaccia i comandi che riguardano la messa in onda. */
+  runInUi: (cmd: RemoteCommand, by: string) => Promise<unknown> = async () => {
+    throw new Error('regia non pronta')
+  }
+  private status: Omit<PonteStatus, 'uplink' | 'remote'> = {
     controlOk: null,
     controlError: null,
     alarms: [],
@@ -68,6 +75,14 @@ export class PonteService {
     this.dataDir = dataDir
     this.uplink = new Uplink(ffmpegPath ?? 'ffmpeg')
     this.uplink.onStatus(() => this.emit())
+    this.remote = new RemoteLink(
+      async (cmd, by) => {
+        // la ricerca la fa direttamente il database, il resto lo esegue il motore di messa in onda
+        if (cmd.type === 'search') return this.db.searchTracks({ text: String(cmd.q ?? ''), limit: 50 }).tracks.map(remoteTrack)
+        return this.runInUi(cmd, by)
+      },
+      () => this.emit()
+    )
     this.lastBackupFile = join(dataDir, 'ultimo-backup.txt')
     try {
       this.status.lastBackup = readFileSync(this.lastBackupFile, 'utf8').trim() || null
@@ -82,7 +97,7 @@ export class PonteService {
   }
 
   getStatus(): PonteStatus {
-    return { ...this.status, uplink: this.uplink.getStatus() }
+    return { ...this.status, uplink: this.uplink.getStatus(), remote: this.remote.getStatus() }
   }
 
   private emit(): void {
@@ -93,7 +108,7 @@ export class PonteService {
   private client(): PonteClient | null {
     const p = this.settings
     if (!p || !p.host.trim() || !p.controlToken) return null
-    return new PonteClient(p.host, p.controlPort, p.controlToken)
+    return new PonteClient(p.host, p.controlPort, p.controlToken, p.controlHttps)
   }
 
   private srtHost(): string {
@@ -108,6 +123,8 @@ export class PonteService {
   applySettings(p: PonteSettings): void {
     this.settings = p
     this.syncUplink()
+    if (p.remoteControl && p.host.trim() && p.controlToken) this.remote.start(remoteUrl(p.host, p.controlPort, p.controlHttps), p.controlToken)
+    else this.remote.stop()
     if (!this.timer) {
       this.timer = setInterval(() => void this.tick(), HEARTBEAT_MS)
       void this.tick()
@@ -139,6 +156,11 @@ export class PonteService {
 
   setReport(r: StudioReport): void {
     this.report = r
+  }
+
+  /** Stato della regia per il pannello remoto. */
+  sendRemoteState(state: RemoteState): void {
+    this.remote.sendState({ ...state, uplink: this.uplink.getStatus().state })
   }
 
   /** Un brano è andato in onda: titolo ad AzuraCast (non per jingle e spot). */
@@ -235,5 +257,6 @@ export class PonteService {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
     this.uplink.stop()
+    this.remote.stop()
   }
 }

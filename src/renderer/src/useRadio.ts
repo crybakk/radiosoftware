@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS } from '../../core/types'
 import type { PonteStatus } from '../../main/ponte'
 import { PreviewPlayer, WebAudioBackend } from './audio'
 import { UplinkCapture } from './uplinkCapture'
+import { executeRemote, toRemoteState } from '../../core/remote'
 
 const api = window.radio
 
@@ -56,6 +57,30 @@ export function useRadio() {
   useEffect(() => {
     void api.ponteReport(main)
   }, [main.mode, main.onAir, main.artist, main.title]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // pannello remoto: stato inviato a ogni cambiamento e ogni secondo, comandi eseguiti sul motore
+  const cartsRef = useRef(cartTracks)
+  cartsRef.current = cartTracks
+  useEffect(() => {
+    const push = (): void => api.sendRemoteState(toRemoteState(engine.snapshot(), cartsRef.current, ''))
+    const unsub = engine.subscribe(push)
+    const t = setInterval(push, 1000)
+    return () => {
+      unsub()
+      clearInterval(t)
+    }
+  }, [engine])
+  useEffect(
+    () =>
+      api.onRemoteCommand((cmd) =>
+        executeRemote(engine, cmd, {
+          getTrack: (id) => api.getTrack(id),
+          search: async (q) => (await api.search({ text: q, limit: 50 })).tracks,
+          carts: () => cartsRef.current
+        })
+      ),
+    [engine]
+  )
 
   // cattura dell'audio da inviare: segue le impostazioni del ponte
   const captureKey = JSON.stringify([settings.ponte.enabled, settings.ponte.source, settings.ponte.inputDeviceId])

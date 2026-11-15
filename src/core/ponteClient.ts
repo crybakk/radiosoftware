@@ -29,10 +29,10 @@ export class PonteClient {
   private base: string
   private token: string
 
-  constructor(host: string, port: number, token: string) {
+  constructor(host: string, port: number, token: string, https = false) {
     const h = host.trim().replace(/\/+$/, '')
     // si può scrivere anche l'indirizzo completo (https://ponte.esempio.it:8443)
-    this.base = /^https?:\/\//i.test(h) ? h : `http://${h}:${port}`
+    this.base = /^https?:\/\//i.test(h) ? h : `${https ? 'https' : 'http'}://${h}:${port}`
     this.token = token
   }
 

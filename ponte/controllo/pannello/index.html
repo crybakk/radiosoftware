@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111418" />
+    <title>Regia remota</title>
+    <link rel="stylesheet" href="pannello.css" />
+  </head>
+  <body>
+    <section id="login" class="login" hidden>
+      <form id="login-form" class="card">
+        <h1>Regia remota</h1>
+        <label>Nome <input id="login-name" autocomplete="username" required /></label>
+        <label>Password <input id="login-password" type="password" autocomplete="current-password" required /></label>
+        <button class="primary" type="submit">Entra</button>
+        <p id="login-error" class="error" hidden></p>
+      </form>
+    </section>
+
+    <section id="app" hidden>
+      <header class="top">
+        <div id="lamp" class="lamp">FERMO</div>
+        <div id="studio" class="pill off">REGIA…</div>
+        <div class="spacer"></div>
+        <button id="mode" class="mode" disabled>…</button>
+        <button id="menu-btn" class="ghost" aria-label="Menu">☰</button>
+      </header>
+      <nav id="menu" class="menu" hidden>
+        <span id="who"></span>
+        <button id="users-btn" class="ghost" hidden>Utenti</button>
+        <button id="logout" class="ghost">Esci</button>
+      </nav>
+
+      <div id="alarms" class="banner error" hidden></div>
+      <div id="notice" class="banner warn" hidden></div>
+      <div id="readonly" class="banner info" hidden>Con il tuo ruolo puoi vedere la regia ma non comandarla.</div>
+
+      <main id="main">
+        <section class="card now" id="now">
+          <div class="now-kind" id="now-kind"></div>
+          <div class="now-title" id="now-title">Nessun brano in onda</div>
+          <div class="now-artist" id="now-artist"></div>
+          <div class="progress"><div class="progress-fill" id="now-progress"></div></div>
+          <div class="now-times"><span id="now-pos">0:00</span><span id="now-rem" class="remaining"></span></div>
+        </section>
+
+        <section class="transport">
+          <button class="big play" data-cmd="play">▶ PLAY</button>
+          <button class="big next" data-cmd="next">⏭ AVANTI</button>
+          <button class="big stop" data-cmd="stop">■ STOP</button>
+        </section>
+
+        <section class="card">
+          <div class="section-title">In coda</div>
+          <ul class="list" id="queue"></ul>
+        </section>
+
+        <section class="card">
+          <div class="section-title">Cerca nella libreria</div>
+          <form id="search-form" class="search">
+            <input id="search-q" placeholder="Titolo o artista" autocomplete="off" />
+            <button type="submit">Cerca</button>
+          </form>
+          <ul class="list" id="results"></ul>
+        </section>
+
+        <section class="card">
+          <div class="section-title">Jingle <button class="small ghost" data-cmd="stopCarts">Ferma jingle</button></div>
+          <div class="carts" id="carts"></div>
+        </section>
+      </main>
+
+      <section id="users" class="card users" hidden>
+        <div class="section-title">Utenti del pannello <button class="small ghost" id="users-close">Chiudi</button></div>
+        <table class="table">
+          <thead><tr><th>Nome</th><th>Ruolo</th><th></th></tr></thead>
+          <tbody id="users-list"></tbody>
+        </table>
+        <form id="user-form" class="user-form">
+          <div class="section-title">Nuovo utente o cambio password</div>
+          <input id="u-name" placeholder="Nome" required />
+          <select id="u-role">
+            <option value="conduttore">Conduttore: comanda la regia</option>
+            <option value="ospite">Ospite: vede soltanto</option>
+            <option value="amministratore">Amministratore: comanda e gestisce gli utenti</option>
+          </select>
+          <input id="u-pass" type="password" placeholder="Password (almeno 8 caratteri)" autocomplete="new-password" />
+          <button class="primary" type="submit">Salva</button>
+          <p class="hint">Per cambiare solo il ruolo di un utente esistente lascia vuota la password.</p>
+          <p id="user-msg" class="hint"></p>
+        </form>
+      </section>
+    </section>
+    <script src="pannello.js"></script>
+  </body>
+</html>

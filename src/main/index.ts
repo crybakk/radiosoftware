@@ -11,6 +11,7 @@ import type { ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
 import { LibraryService } from './library'
 import { serveFile } from './media'
 import { applyPendingRestore, PonteService, type StudioReport } from './ponte'
+import type { RemoteCommand, RemoteState } from '../core/remote'
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'media', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }
@@ -215,6 +216,37 @@ app.whenReady().then(() => {
   })
   handle('restoredFrom', () => restoredFrom)
   ipcMain.on('uplink:pcm', (_e, pcm: Uint8Array) => ponte.writePcm(pcm))
+  ipcMain.on('remote:state', (_e, state: RemoteState) => ponte.sendRemoteState(state))
+  // comandi dal pannello remoto: li esegue l'interfaccia, che ha il motore di messa in onda
+  const waiting = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+  let remoteSeq = 0
+  ipcMain.on('remote:reply', (_e, id: number, ok: boolean, data: unknown, error: string) => {
+    const w = waiting.get(id)
+    if (!w) return
+    waiting.delete(id)
+    if (ok) w.resolve(data)
+    else w.reject(new Error(error))
+  })
+  ponte.runInUi = (cmd: RemoteCommand, by: string) =>
+    new Promise((resolve, reject) => {
+      if (!win) return reject(new Error('regia non pronta'))
+      const id = ++remoteSeq
+      const timer = setTimeout(() => {
+        waiting.delete(id)
+        reject(new Error('la regia non ha risposto'))
+      }, 8000)
+      waiting.set(id, {
+        resolve: (v) => {
+          clearTimeout(timer)
+          resolve(v)
+        },
+        reject: (e) => {
+          clearTimeout(timer)
+          reject(e)
+        }
+      })
+      win.webContents.send('remote:command', id, cmd, by)
+    })
   ponte.onStatus((s) => win?.webContents.send('ponteStatus', s))
 
   library.onStatus((s) => win?.webContents.send('libraryStatus', s))
