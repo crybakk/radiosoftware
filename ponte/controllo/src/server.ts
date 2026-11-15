@@ -43,10 +43,11 @@ import { createReadStream, createWriteStream, existsSync, readFileSync } from 'n
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
-import { dirname, extname, join } from 'node:path'
+import { dirname, extname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { pipeline } from 'node:stream/promises'
+import { Transform } from 'node:stream'
 import { randomBytes } from 'node:crypto'
 import { Alarms, DEFAULT_ALARM_CONFIG, type AlarmKey } from './alarms.ts'
 import { Notifier } from './notifier.ts'
@@ -368,12 +369,17 @@ const esterne = new EsterneRecognition({
   }
 })
 const riconoscimentoAttivo = env('RICONOSCIMENTO', 'si') !== 'no'
-// se il controllo riparte durante un'esterna, si riprende l'ascolto
+// se il controllo riparte durante un'esterna, si riprende l'ascolto; regia ed esterna già collegate
+// non sono "scollegate" (Liquidsoap avvisa solo dei cambiamenti)
 setTimeout(() => {
-  if (!riconoscimentoAttivo) return
   void fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
-    .then((r) => r.json() as Promise<{ esterna?: boolean }>)
-    .then((st) => esterne.setActive(!!st.esterna))
+    .then((r) => r.json() as Promise<{ studio?: boolean; esterna?: boolean }>)
+    .then((st) => {
+      alarms.sync(!!st?.studio, !!st?.esterna)
+      // anche la diretta esterna in corso torna "live" per /api/nowplaying
+      if (st?.esterna) esternaSince ??= Date.now()
+      if (riconoscimentoAttivo) esterne.setActive(!!st?.esterna)
+    })
     .catch(() => {})
 }, 4000)
 
@@ -551,8 +557,9 @@ async function saveLogo(req: IncomingMessage): Promise<void> {
       : null
   if (!kind) throw new Error("l'immagine deve essere PNG o JPEG")
   const file = LOGO_FILES[kind]
-  await writeFile(`${file}.tmp`, data)
-  await rename(`${file}.tmp`, file)
+  const tmp = `${file}.${randomBytes(6).toString('hex')}.tmp`
+  await writeFile(tmp, data)
+  await rename(tmp, file)
   await rm(kind === 'png' ? LOGO_FILES.jpg : LOGO_FILES.png, { force: true })
 }
 
@@ -578,23 +585,65 @@ function studioPath(id: string): string | null {
   return join(MUSIC_DIR, ...parts)
 }
 
-async function saveUpload(req: IncomingMessage, file: string): Promise<string> {
-  const dir = dirname(file)
-  await mkdir(dir, { recursive: true })
-  const tmp = join(dir, `.${file.slice(dir.length + 1)}.part`)
+/** Errore con il codice HTTP da rispondere (altrimenti 400). */
+class HttpError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+/**
+ * Riceve il corpo della richiesta in un file provvisorio, al massimo `max` byte; restituisce i byte ricevuti.
+ * Oltre il limite si risponde 413 col motivo (la richiesta non si distrugge, se no chi carica vede solo
+ * "connessione interrotta"); il file provvisorio si toglie sempre in caso di errore.
+ */
+async function receiveFile(req: IncomingMessage, tmp: string, max: number, tooBig: string): Promise<number> {
+  if (Number(req.headers['content-length']) > max) throw new HttpError(413, tooBig)
   let size = 0
-  req.on('data', (c: Buffer) => {
-    size += c.length
-    if (size > MAX_UPLOAD_BYTES) req.destroy(new Error('file troppo grande (massimo 300 MB)'))
+  const limit = new Transform({
+    transform(c: Buffer, _enc, cb) {
+      size += c.length
+      if (size > max) cb(new HttpError(413, tooBig))
+      else cb(null, c)
+    }
   })
+  req.on('error', (e) => limit.destroy(e))
+  // 4G caduto a metà: il file provvisorio non resta
+  req.on('close', () => {
+    if (!req.complete) limit.destroy(new Error('caricamento interrotto'))
+  })
+  req.pipe(limit)
   try {
-    await pipeline(req, createWriteStream(tmp))
+    await pipeline(limit, createWriteStream(tmp))
   } catch (e) {
+    req.unpipe(limit)
+    req.resume()
     await rm(tmp, { force: true })
     throw e
   }
+  return size
+}
+
+async function saveUpload(req: IncomingMessage, file: string): Promise<string> {
+  const dir = dirname(file)
+  await mkdir(dir, { recursive: true })
+  // nome provvisorio unico: due caricamenti dello stesso file insieme non si mescolano
+  const tmp = join(dir, `.${file.slice(dir.length + 1)}.${randomBytes(6).toString('hex')}.part`)
+  await receiveFile(req, tmp, MAX_UPLOAD_BYTES, 'file troppo grande (massimo 300 MB)')
   await rename(tmp, file)
   return file
+}
+
+/** Mette nella libreria un file appena ricevuto; se non si riesce il file si toglie (niente file orfani). */
+async function addUploaded(file: string, meta?: Parameters<Library['addFile']>[1]): Promise<Awaited<ReturnType<Library['addFile']>>> {
+  try {
+    return await library.addFile(file, meta)
+  } catch (e) {
+    await rm(file, { force: true })
+    throw e
+  }
 }
 
 // ---------- utilità HTTP ----------
@@ -744,17 +793,7 @@ async function saveBackup(req: IncomingMessage): Promise<string> {
   const name = `radio-${stamp}.db`
   // nome provvisorio unico: due invii nello stesso secondo non si mescolano
   const tmp = join(BACKUP_DIR, `.${name}.${randomBytes(6).toString('hex')}.part`)
-  let size = 0
-  req.on('data', (c: Buffer) => {
-    size += c.length
-    if (size > MAX_BACKUP_BYTES) req.destroy(new Error('backup troppo grande'))
-  })
-  try {
-    await pipeline(req, createWriteStream(tmp))
-  } catch (e) {
-    await rm(tmp, { force: true })
-    throw e
-  }
+  const size = await receiveFile(req, tmp, MAX_BACKUP_BYTES, 'backup troppo grande')
   if (size < 100) {
     await rm(tmp, { force: true })
     throw new Error('backup vuoto')
@@ -853,7 +892,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       const name = safeName(url.searchParams.get('nome') ?? '')
       if (!name) return json(res, 400, { error: 'formato non supportato (mp3, m4a, aac, flac, ogg, opus, wav)' })
       const file = await saveUpload(req, join(UPLOAD_DIR, name))
-      const t = await library.addFile(file)
+      const t = await addUploaded(file)
       library.save()
       relay.setAuto(auto.state())
       console.log(`[autonoma] ${me.name} ha caricato ${t.id}`)
@@ -950,7 +989,10 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       const artist = String(body.artist ?? '').slice(0, 300)
       const title = String(body.title ?? '').slice(0, 300)
       lastMetadata = { artist, title, at: new Date().toISOString() }
-      nowPlaying.set({ artist, title, duration: Number(body.duration) || 0, at: Date.now(), source: 'regia' })
+      // con la diretta esterna o la autonoma in onda la regia non si sente: il suo brano non è "in onda"
+      if (esternaSince === null && !auto.state().active) {
+        nowPlaying.set({ artist, title, duration: Number(body.duration) || 0, at: Date.now(), source: 'regia' })
+      }
       const r = await fetch(`${LIQUIDSOAP}/metadata`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1001,7 +1043,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       if (req.method === 'PUT') {
         await saveUpload(req, file)
         const q = url.searchParams
-        const t = await library.addFile(file, {
+        const t = await addUploaded(file, {
           title: q.get('titolo') ?? undefined,
           artist: q.get('artista') ?? undefined,
           duration: Number(q.get('durata')),
@@ -1059,6 +1101,19 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       const dest = studioPath(String(body.a ?? ''))
       if (!t || !t.id.startsWith('caricati/')) return json(res, 404, { error: 'brano non trovato' })
       if (!dest) return json(res, 400, { error: 'percorso non valido' })
+      // non si sovrascrive un brano della regia già sul server (diverso da questo)
+      const [from, there] = await Promise.all([stat(library.path(t)).catch(() => null), stat(dest).catch(() => null)])
+      if (!from) return json(res, 404, { error: 'brano non trovato' })
+      if (there && !(there.dev === from.dev && there.ino === from.ino)) {
+        if (there.size !== from.size) return json(res, 409, { error: 'esiste già un brano diverso con quel percorso' })
+        // stesso brano già arrivato dalla regia: la copia caricata non serve più
+        await rm(library.path(t), { force: true })
+        library.remove(t.id)
+        const existing = library.get(dest.slice(MUSIC_DIR.length + 1).split(sep).join('/')) ?? (await library.addFile(dest))
+        library.save()
+        relay.setAuto(auto.state())
+        return json(res, 200, { ok: true, id: existing.id, size: existing.size })
+      }
       await mkdir(dirname(dest), { recursive: true })
       await rename(library.path(t), dest)
       library.remove(t.id)
@@ -1095,13 +1150,18 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
   } catch (e) {
     // risposta già iniziata (per esempio un backup in download): non si può che chiuderla
     if (res.headersSent) return void res.destroy()
-    return json(res, 400, { error: e instanceof Error ? e.message : String(e) })
+    const status = e instanceof HttpError ? e.status : 400
+    // corpo troppo grande: il resto non si legge, la connessione si chiude dopo la risposta
+    return json(res, status, { error: e instanceof Error ? e.message : String(e) }, status === 413 ? { Connection: 'close' } : {})
   }
 }
 
 const onRequest = (req: IncomingMessage, res: ServerResponse): void =>
   void handlePublic(req, res).catch(() => res.destroy())
 const publicServer = certs ? createHttpsServer(certs, onRequest) : createServer(onRequest)
+// Node chiude ogni richiesta che dura più di 5 minuti: troppo poco per backup e brani caricati via 4G
+// (300 MB a 5 Mbit/s ≈ 8 minuti). Le intestazioni hanno comunque il loro limite (headersTimeout).
+publicServer.requestTimeout = 3 * 3600_000
 
 if (tls) {
   // il certificato può essere rinnovato da fuori: lo ricarichiamo ogni 12 ore
@@ -1114,6 +1174,9 @@ if (tls) {
 // ---------- WebSocket: regia e pannelli ----------
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 })
+// connessioni degli ospiti aperte per indirizzo (una famiglia dietro lo stesso router ne usa poche)
+const MAX_GUEST_SOCKETS_PER_IP = 10
+const guestSockets = new Map<string, number>()
 
 /** `valid` (facoltativo) si ricontrolla a ogni segnale di vita: se diventa falso la connessione si chiude. */
 function wire(ws: WebSocket, h: { message: (raw: string) => void; close: () => void }, valid?: () => boolean): void {
@@ -1179,8 +1242,21 @@ publicServer.on('upgrade', (req, socket, head) => {
         socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
         return socket.destroy()
       }
+      // chi ha un link non può aprire connessioni senza fine (memoria del server)
+      const ip = clientIp(req)
+      if ((guestSockets.get(ip) ?? 0) >= MAX_GUEST_SOCKETS_PER_IP) {
+        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n')
+        return socket.destroy()
+      }
       const g = guests
       const host = (req.headers.host ?? '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '')
+      guestSockets.set(ip, (guestSockets.get(ip) ?? 0) + 1)
+      const release = (): void => {
+        const n = (guestSockets.get(ip) ?? 1) - 1
+        if (n > 0) guestSockets.set(ip, n)
+        else guestSockets.delete(ip)
+      }
+      socket.once('close', release)
       return wss.handleUpgrade(req, socket, head, (ws) => wire(ws, g.attach(ws, invite, host || undefined)))
     }
     socket.destroy()

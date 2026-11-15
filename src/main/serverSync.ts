@@ -9,7 +9,7 @@
 import { createReadStream, createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { Readable } from 'node:stream'
+import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { catalogParts, withCounter } from '../core/catalog'
 import { NotAudioError, readFileInfo } from '../core/scanner'
@@ -49,6 +49,8 @@ export interface ServerTrackRow {
 const MB = 1024 * 1024
 /** Se la selezione chiede di togliere troppi brani dal server, meglio fermarsi e chiedere. */
 const MAX_REMOVE_SHARE = 0.2
+/** Il server non accetta file più grandi di così (MAX_UPLOAD_BYTES in ponte/controllo/src/server.ts). */
+export const SERVER_MAX_FILE = 300 * MB
 
 const today = (d = new Date()): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -111,11 +113,16 @@ export class ServerLibrarySync {
     const folders = this.db.listFolders()
     const items: SyncItem[] = []
     let excluded = 0
+    // due file della regia con lo stesso percorso sul server (cartelle con lo stesso nome, ".x" e "_x"):
+    // si tiene il primo, altrimenti ogni notte si ricaricherebbero a vicenda
+    const seen = new Set<string>()
     for (const { track, size, choice } of this.db.musicForServer()) {
       if (!track.enabled) continue
       const id = onServer(track, choice, s.ponte.libraryMinKbps) ? serverId(track.path, folders) : null
-      if (id) items.push({ id, size, track })
-      else excluded++
+      if (id && !seen.has(id)) {
+        seen.add(id)
+        items.push({ id, size, track })
+      } else excluded++
     }
     return { items, excluded }
   }
@@ -188,6 +195,8 @@ export class ServerLibrarySync {
           copied++
           bytes += it.size
         } catch (e) {
+          // niente file a metà sul disco (finirebbero sul server con rsync)
+          await rm(`${target}.part`, { force: true }).catch(() => {})
           failed++
           if ((e as NodeJS.ErrnoException).code === 'ENOSPC') throw new Error('disco pieno')
         }
@@ -263,6 +272,10 @@ export class ServerLibrarySync {
       let sent = 0
       let sentBytes = 0
       let stopReason = ''
+      // file che il server non accetterà mai: si saltano, senza bloccare quelli dopo
+      let tooBig = 0
+      let refused = 0
+      let refusedMsg = ''
       for (const it of pending) {
         if (ac.signal.aborted) {
           stopReason = 'interrotto'
@@ -273,14 +286,35 @@ export class ServerLibrarySync {
           stopReason = 'fuori dalle ore di invio'
           break
         }
+        if (it.size > SERVER_MAX_FILE || it.size > p.libraryDailyMb * MB) {
+          tooBig++
+          continue
+        }
         if (this.budget().bytes + it.size > p.libraryDailyMb * MB) {
           stopReason = `raggiunto il limite di ${p.libraryDailyMb} MB per oggi`
           break
         }
         if (!existsSync(it.track.path)) continue
         this.emit({ progress: `invio ${sent + 1} di ${pending.length}: ${it.track.artist} - ${it.track.title}` })
-        const body = Readable.toWeb(createReadStream(it.track.path)) as ReadableStream<Uint8Array>
-        await c.uploadLibraryFile(meta(it), body, ac.signal)
+        // i byte partiti contano nel limite del giorno anche se il 4G cade a metà
+        let read = 0
+        const file = createReadStream(it.track.path)
+        file.on('data', (chunk) => (read += chunk.length))
+        const body = Readable.toWeb(file) as ReadableStream<Uint8Array>
+        try {
+          await c.uploadLibraryFile(meta(it), body, ac.signal)
+        } catch (e) {
+          file.destroy()
+          if (read) this.addBudget(read)
+          // il server ha risposto di no (percorso o file non validi): si passa al prossimo;
+          // se invece non risponde (4G, ponte spento) ci si ferma e si riprova la volta dopo
+          if (e instanceof PonteError && e.status !== undefined && e.status >= 400 && e.status < 500 && e.status !== 401) {
+            refused++
+            refusedMsg = e.message
+            continue
+          }
+          throw e
+        }
         this.addBudget(it.size)
         sent++
         sentBytes += it.size
@@ -296,7 +330,13 @@ export class ServerLibrarySync {
         (fpSent ? `Inviate ${fpSent} impronte audio. ` : '') +
         `Inviati ${sent} brani (${Math.round(sentBytes / MB)} MB)` +
         (removed ? `, tolti ${removed}` : '') +
-        (pending.length - sent ? `; ne restano ${pending.length - sent}${stopReason ? ` (${stopReason})` : ''}` : '; il server è allineato') +
+        (pending.length - sent - tooBig - refused
+          ? `; ne restano ${pending.length - sent - tooBig - refused}${stopReason ? ` (${stopReason})` : ''}`
+          : tooBig || refused
+            ? ''
+            : '; il server è allineato') +
+        (tooBig ? `; ${tooBig} saltati perché troppo grandi (oltre ${Math.round(Math.min(SERVER_MAX_FILE, s.ponte.libraryDailyMb * MB) / MB)} MB)` : '') +
+        (refused ? `; ${refused} rifiutati dal server (${refusedMsg})` : '') +
         '.'
       this.emit({ lastResult: result, lastRun: new Date().toISOString() })
       return result
@@ -338,18 +378,29 @@ export class ServerLibrarySync {
       }
       if (!target) continue
       this.emit({ progress: `scarico dal server: ${u.artist} - ${u.title}` })
+      let downloaded = false
       if (!existsSync(target)) {
         await mkdir(dirname(target), { recursive: true })
         const body = await c.downloadUploaded(u.id, signal)
         const part = `${target}.part`
+        let got = 0
+        const count = new Transform({
+          transform(chunk: Buffer, _enc, done) {
+            got += chunk.length
+            done(null, chunk)
+          }
+        })
         try {
-          await pipeline(Readable.fromWeb(body as import('node:stream/web').ReadableStream<Uint8Array>), createWriteStream(part))
+          await pipeline(Readable.fromWeb(body as import('node:stream/web').ReadableStream<Uint8Array>), count, createWriteStream(part))
           await rename(part, target)
         } catch (e) {
           await rm(part, { force: true })
+          // anche un download interrotto ha consumato il 4G
+          if (got) this.addBudget(got)
           throw e
         }
-        this.addBudget(u.size)
+        this.addBudget(got || u.size)
+        downloaded = true
       }
       // nella libreria della regia, con i dati del server se il file non ha i tag
       let info: Awaited<ReturnType<typeof readFileInfo>>
@@ -366,8 +417,19 @@ export class ServerLibrarySync {
       const st = await stat(target)
       const id = this.db.upsertScanned({ ...info, size: st.size, mtime: st.mtimeMs })
       this.db.mbRequeue(id)
+      // caricato apposta per il server: resta sul server anche se la regola lo escluderebbe
+      // (per esempio sotto i 192 kbps), altrimenti l'invio dopo lo toglierebbe
+      if (downloaded) this.db.setServerChoice(id, true)
       const sid = serverId(target, folders)
-      if (sid) await c.moveUploaded(u.id, sid)
+      if (sid) {
+        try {
+          await c.moveUploaded(u.id, sid)
+        } catch (e) {
+          // 409: sul server c'è già un file diverso con quel nome; il brano resta in regia, si va avanti
+          if (!(e instanceof PonteError && e.status === 409)) throw e
+          this.emit({ progress: `sul server esiste già un file diverso: ${sid}` })
+        }
+      }
       this.onCatalogued([id])
       done++
     }

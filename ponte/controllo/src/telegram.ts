@@ -111,12 +111,19 @@ export class LabelBot {
 
   private async call(method: string, body: unknown, timeoutMs = 15_000, signal?: AbortSignal): Promise<any> {
     const isForm = body instanceof FormData
-    const r = await this.fetch(`https://api.telegram.org/bot${this.d.token}/${method}`, {
-      method: 'POST',
-      headers: isForm ? undefined : { 'Content-Type': 'application/json' },
-      body: isForm ? body : JSON.stringify(body),
-      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs)
-    })
+    let r: Response
+    try {
+      r = await this.fetch(`https://api.telegram.org/bot${this.d.token}/${method}`, {
+        method: 'POST',
+        headers: isForm ? undefined : { 'Content-Type': 'application/json' },
+        body: isForm ? body : JSON.stringify(body),
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs)
+      })
+    } catch (e) {
+      // gli errori di rete possono contenere l'indirizzo, cioè il token: nel log non deve finire
+      const msg = e instanceof Error ? e.message : String(e)
+      throw new Error(this.d.token ? msg.split(this.d.token).join('***') : msg)
+    }
     const j = (await r.json().catch(() => null)) as { ok?: boolean; result?: unknown; description?: string } | null
     if (!r.ok || !j?.ok) throw new Error(j?.description ?? `HTTP ${r.status}`)
     return j.result

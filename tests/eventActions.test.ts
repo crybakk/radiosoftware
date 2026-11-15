@@ -120,3 +120,13 @@ describe('azioni degli eventi', () => {
     expect(applyProfile(tracks, { ...profile, yearFrom: 2000 })).toHaveLength(30)
   })
 })
+
+describe('flussi esterni', () => {
+  it('due flussi creati nello stesso millisecondo hanno id diversi', async () => {
+    const { streamTrack } = await import('../src/core/eventActions')
+    const a = streamTrack('http://x/a', 5, 'A')
+    const b = streamTrack('http://x/b', 5, 'B')
+    expect(a.id).toBeLessThan(0)
+    expect(b.id).not.toBe(a.id)
+  })
+})

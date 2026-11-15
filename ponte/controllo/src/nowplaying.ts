@@ -52,7 +52,13 @@ export class NowPlaying {
 export function icecastListeners(status: unknown, mount: string): { listeners: number; online: boolean } {
   const src = (status as { icestats?: { source?: unknown } })?.icestats?.source
   const list = (Array.isArray(src) ? src : src ? [src] : []) as { listenurl?: string; listeners?: number }[]
-  const m = list.find((x) => typeof x.listenurl === 'string' && new URL(x.listenurl, 'http://x').pathname === mount)
+  const m = list.find((x) => {
+    try {
+      return typeof x.listenurl === 'string' && new URL(x.listenurl, 'http://x').pathname === mount
+    } catch {
+      return false // indirizzo malformato: non è il nostro mount
+    }
+  })
   return { listeners: Number(m?.listeners) || 0, online: !!m }
 }
 

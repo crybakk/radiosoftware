@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -64,5 +64,30 @@ describe('orario del backup', () => {
     expect(backupDue(at(10), 4, at(4, 1))).toBe(false)
     expect(backupDue(at(10), 4, at(23, 0, 13))).toBe(true)
     expect(backupDue(at(10), -1, null)).toBe(false)
+  })
+})
+
+describe('backup automatico', () => {
+  it('se non riesce non si riprova a ogni segnale di vita (15 s), ma dopo un po\'', async () => {
+    const { vi } = await import('vitest')
+    const { PonteService } = await import('../src/main/ponte')
+    const { DEFAULT_PONTE } = await import('../src/core/types')
+    const hb = vi.spyOn(PonteClient.prototype, 'heartbeat').mockResolvedValue([])
+    const up = vi.spyOn(PonteClient.prototype, 'uploadBackup').mockRejectedValue(new Error('ponte non raggiungibile'))
+    const db = { backupTo: (p: string) => writeFileSync(p, 'SQLite format 3\0') }
+    const svc = new PonteService(db as never, mkdtempSync(join(tmpdir(), 'regia-')), null)
+    try {
+      svc.applySettings({ ...DEFAULT_PONTE, host: '127.0.0.1', controlToken: 'x', remoteControl: false, backupHour: 0 })
+      const tick = (): Promise<void> => (svc as unknown as { tick: () => Promise<void> }).tick()
+      await tick()
+      await tick()
+      await tick()
+      expect(up).toHaveBeenCalledTimes(1)
+      expect(svc.getStatus().backupError).toMatch(/non raggiungibile/)
+    } finally {
+      svc.stop()
+      hb.mockRestore()
+      up.mockRestore()
+    }
   })
 })

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -8,8 +8,8 @@ import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import { activeSlot, Programs, slug } from './programmi.ts'
-import { handleProgramApi, type ProgramApiDeps } from './programmiApi.ts'
-import { publishEpisode, Recorder, type Proc } from './puntate.ts'
+import { handleProgramApi, sendFile, type ProgramApiDeps } from './programmiApi.ts'
+import { isPublishing, publishEpisode, Recorder, type Proc } from './puntate.ts'
 import type { PublicUser } from './users.ts'
 
 const tmp = (): string => mkdtempSync(join(tmpdir(), 'programmi-'))
@@ -34,6 +34,40 @@ describe('fasce orarie', () => {
     expect(activeSlot(slots, at('2026-11-21T00:30:00'))).not.toBeNull()
     expect(activeSlot(slots, at('2026-11-21T01:00:00'))).toBeNull()
     expect(activeSlot(slots, at('2026-11-20T00:30:00'))).toBeNull()
+  })
+  it('il margine vale anche prima di una fascia che inizia a mezzanotte', () => {
+    // lunedì 16/11 00:00-01:00: con 2 minuti di margine si parte domenica alle 23:58
+    const mezzanotte = [{ days: [1], start: '00:00', end: '01:00' }]
+    const s = activeSlot(mezzanotte, at('2026-11-15T23:59:00'), 2)
+    expect(s).not.toBeNull()
+    expect(new Date(s!.from).toTimeString().slice(0, 5)).toBe('23:58')
+    expect(activeSlot(mezzanotte, at('2026-11-15T23:57:00'), 2)).toBeNull()
+  })
+  it('con più fasce in corso prende quella che finisce più tardi', () => {
+    const s = activeSlot([{ days: [1], start: '21:00', end: '22:00' }, { days: [1], start: '22:00', end: '23:00' }], at('2026-11-16T21:59:00'), 2)!
+    expect(new Date(s.to).toTimeString().slice(0, 5)).toBe('23:02')
+  })
+  it('nei giorni del cambio dell\'ora gli orari restano quelli dell\'orologio', () => {
+    const tz = process.env.TZ
+    process.env.TZ = 'Europe/Rome'
+    try {
+      // domenica 29/03/2026 (ora legale) e domenica 25/10/2026 (ora solare)
+      for (const day of ['2026-03-29', '2026-10-25']) {
+        const sl = [{ days: [0], start: '21:00', end: '22:00' }]
+        const s = activeSlot(sl, new Date(`${day}T21:30:00`))
+        expect(s).not.toBeNull()
+        expect(new Date(s!.from).toTimeString().slice(0, 5)).toBe('21:00')
+        expect(new Date(s!.to).toTimeString().slice(0, 5)).toBe('22:00')
+        expect(activeSlot(sl, new Date(`${day}T22:30:00`))).toBeNull()
+      }
+    } finally {
+      if (tz === undefined) delete process.env.TZ
+      else process.env.TZ = tz
+    }
+  })
+  it('una fascia senza giorni validi non si salva', () => {
+    const p = new Programs(tmp())
+    expect(() => p.saveProgram({ title: 'X', slots: [{ days: [9, -1], start: '10:00', end: '11:00' }] })).toThrow(/giorno/)
   })
 })
 
@@ -132,6 +166,75 @@ describe('registrazione automatica', () => {
     expect(readFileSync(p.rawFile(id))[8000]).toBe(2)
   }, 10_000)
 
+  it('fasce attaccate: una sola registrazione', async () => {
+    clock = at('2026-11-16T20:59:00').getTime()
+    const p = new Programs(tmp())
+    p.saveProgram({ title: 'Sera', slots: [{ days: [1], start: '21:00', end: '22:00' }, { days: [1], start: '22:00', end: '23:00' }] })
+    const spawned: FakeProc[] = []
+    const rec = new Recorder({ programs: p, url: 'x', now: () => clock, spawn: () => (spawned.push(new FakeProc()), spawned.at(-1)!), seconds: async () => 0, log: () => {} })
+    rec.tick()
+    clock = at('2026-11-16T22:01:00').getTime()
+    rec.tick()
+    clock = at('2026-11-16T22:05:00').getTime()
+    rec.tick()
+    expect(spawned).toHaveLength(1)
+    expect(rec.recording()).toHaveLength(1)
+    expect(new Date(rec.recording()[0].to).toTimeString().slice(0, 5)).toBe('23:02')
+    await rec.stop()
+  })
+
+  it('disco pieno, ffmpeg mancante o ostinato: il server non cade', async () => {
+    clock = at('2026-11-16T21:10:00').getTime()
+    const dir = tmp()
+    // il file della registrazione non si può scrivere (qui è una cartella)
+    class Broken extends Programs {
+      override rawFile(id: string): string {
+        const f = join(this.dir, 'registrazioni', id)
+        mkdirSync(f, { recursive: true })
+        return f
+      }
+    }
+    const p = new Broken(dir)
+    p.saveProgram({ title: 'Sera', slots: [{ days: [1], start: '21:00', end: '22:00' }] })
+    const logs: string[] = []
+    const rec = new Recorder({ programs: p, url: 'x', now: () => clock, spawn: () => new FakeProc(), seconds: async () => { throw new Error('illeggibile') }, log: (s) => logs.push(s) })
+    rec.tick()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(logs.some((l) => l.includes('non si scrive'))).toBe(true)
+    await rec.stop()
+    expect(rec.recording()).toHaveLength(0)
+
+    // ffmpeg che non esiste
+    const q = new Programs(tmp())
+    q.saveProgram({ title: 'Sera', slots: [{ days: [1], start: '21:00', end: '22:00' }] })
+    const rec2 = new Recorder({ programs: q, url: 'x', now: () => clock, ffmpeg: '/non/esiste/ffmpeg', seconds: async () => 0, log: () => {} })
+    rec2.tick()
+    await new Promise((r) => setTimeout(r, 100))
+    await rec2.stop()
+
+    // ffmpeg che non si ferma: dopo 3 secondi si chiude per forza, e quello che scrive dopo non va nel file
+    const z = new Programs(tmp())
+    z.saveProgram({ title: 'Sera', slots: [{ days: [1], start: '21:00', end: '22:00' }] })
+    const stubborn = new FakeProc()
+    const signals: (string | undefined)[] = []
+    stubborn.kill = (sig?: string) => void signals.push(sig)
+    const rec3 = new Recorder({ programs: z, url: 'x', now: () => clock, spawn: () => stubborn, seconds: async () => 0, log: () => {} })
+    rec3.tick()
+    await rec3.stop()
+    expect(signals).toEqual([undefined, 'SIGKILL'])
+    stubborn.stdout.write(Buffer.alloc(100))
+    await new Promise((r) => setTimeout(r, 50))
+
+    // l'archivio non si salva: tick non lancia
+    const w = new Programs(tmp())
+    w.saveProgram({ title: 'Sera', slots: [{ days: [1], start: '21:00', end: '22:00' }] })
+    w.startRecording = () => {
+      throw new Error('ENOSPC')
+    }
+    const rec4 = new Recorder({ programs: w, url: 'x', now: () => clock, spawn: () => new FakeProc(), log: () => {} })
+    expect(() => rec4.tick()).not.toThrow()
+  }, 10_000)
+
   it('scarta le registrazioni senza audio', async () => {
     clock = at('2026-11-16T21:10:00').getTime()
     const p = new Programs(tmp())
@@ -155,6 +258,35 @@ const hasFfmpeg = (() => {
 function makeMp3(file: string, seconds: number): void {
   execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `sine=frequency=440:duration=${seconds}`, '-c:a', 'libmp3lame', '-b:a', '128k', file])
 }
+
+describe('pubblicazione, casi difficili', () => {
+  it('ffmpeg mancante: errore e non attesa infinita', async () => {
+    const p = new Programs(tmp())
+    const e = p.startRecording(p.saveProgram({ title: 'Sera' }).id, Date.now())
+    writeFileSync(p.rawFile(e.id), Buffer.alloc(20_000))
+    p.endRecording(e.id, Date.now(), 60)
+    await expect(publishEpisode(p, e.id, { from: 0, to: 30, title: '', description: '' }, { ffmpeg: '/non/esiste/ffmpeg' })).rejects.toThrow(/taglio/)
+    expect(isPublishing(e.id)).toBe(false)
+  })
+
+  it('una bozza si pubblica una volta sola; eliminata durante il taglio non lascia file', async () => {
+    const p = new Programs(tmp())
+    const e = p.startRecording(p.saveProgram({ title: 'Sera' }).id, Date.now())
+    writeFileSync(p.rawFile(e.id), Buffer.alloc(20_000))
+    p.endRecording(e.id, Date.now(), 60)
+    const proc = new FakeProc()
+    const spawn = () => proc
+    const first = publishEpisode(p, e.id, { from: 0, to: 30, title: '', description: '' }, { spawn, seconds: async () => 30 })
+    expect(isPublishing(e.id)).toBe(true)
+    await expect(publishEpisode(p, e.id, { from: 0, to: 30, title: '', description: '' }, { spawn })).rejects.toThrow(/già/)
+    p.removeEpisode(e.id)
+    writeFileSync(`${p.episodeFile(e.id)}.tmp`, 'x')
+    proc.emit('exit', 0)
+    await expect(first).rejects.toThrow(/non trovata/)
+    expect(existsSync(p.episodeFile(e.id))).toBe(false)
+    expect(isPublishing(e.id)).toBe(false)
+  })
+})
 
 describe.skipIf(!hasFfmpeg)('pubblicazione', () => {
   it('taglia la bozza tra inizio e fine e la pubblica', async () => {
@@ -271,6 +403,30 @@ describe('indirizzi HTTP', () => {
     expect((await fetch(`${base}/api/puntate`, { method: 'POST', body: JSON.stringify({ azione: 'elimina', id: e.id }) })).status).toBe(403)
     const regia = (await (await fetch(`${base}/api/programmi/regia`)).json()) as Record<string, unknown>[]
     expect(regia.find((x) => x.id === prog.id)).toMatchObject({ title: 'Sera', episodes: [] })
+  })
+
+  it('un file che non si legge non fa cadere il server', async () => {
+    const dir = tmp()
+    const s = createServer((req, res) => sendFile(req, res, req.url === '/cartella' ? dir : join(dir, 'manca.mp3'), 'audio/mpeg'))
+    await new Promise<void>((r) => s.listen(0, '127.0.0.1', r))
+    const b = `http://127.0.0.1:${(s.address() as AddressInfo).port}`
+    expect((await fetch(`${b}/cartella`)).status).toBe(404)
+    expect((await fetch(`${b}/manca`)).status).toBe(404)
+    s.close()
+  })
+
+  it('Range fuori misura', async () => {
+    const admin = { name: 'admin', role: 'amministratore' } as PublicUser
+    const { prog, e, base } = await start(admin)
+    await fetch(`${base}/api/puntate`, { method: 'POST', body: JSON.stringify({ azione: 'pubblica', id: e.id, inizio: 0, fine: 1800, title: 'P', description: '' }) })
+    const url = `${base}/api/station/radio_test/public/podcast/${prog.id}/episode/${e.id}/download.mp3`
+    expect((await fetch(url, { headers: { Range: 'bytes=5000-' } })).status).toBe(416)
+    expect((await fetch(url, { headers: { Range: `bytes=${'9'.repeat(400)}-` } })).status).toBe(416)
+    const tail = await fetch(url, { headers: { Range: 'bytes=-10' } })
+    expect(tail.headers.get('content-range')).toBe('bytes 990-999/1000')
+    const big = await fetch(url, { headers: { Range: 'bytes=10-99999999' } })
+    expect(big.headers.get('content-range')).toBe('bytes 10-999/1000')
+    expect((await big.arrayBuffer()).byteLength).toBe(990)
   })
 
   it('senza accesso il pannello risponde 401', async () => {

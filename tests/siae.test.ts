@@ -108,6 +108,21 @@ describe('brani suonati dal server', () => {
   })
 })
 
+describe('brani suonati dal server: dati non validi', () => {
+  it('una data illeggibile non blocca le importazioni successive', () => {
+    const db = new RadioDb(join(dir, 'c.db'))
+    const plays = [
+      { at: 'non una data', source: 'riserva', id: '', title: 'Rotto', artist: 'X', duration: 100 },
+      null,
+      { at: '2026-11-15T03:00:00Z', source: 'esterna', id: 'sconosciuto/1', title: 'Buono', artist: 'Y', duration: 180, composer: 'Z' }
+    ] as unknown as ServerPlay[]
+    expect(importPlays(db, plays, new Map())).toBe(1)
+    const log = db.listLog(new Date('2026-11-15T00:00:00Z'), new Date('2026-11-16T00:00:00Z'))
+    expect(log.map((e) => [e.title, e.startedAt])).toEqual([['Buono', '2026-11-15T03:00:00.000Z']])
+    db.close()
+  })
+})
+
 describe('MusicBrainz nel database', () => {
   it('riempie solo i campi vuoti e tiene conto dei brani cercati', () => {
     const db = new RadioDb(join(dir, 'b.db'))

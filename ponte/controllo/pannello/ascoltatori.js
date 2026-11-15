@@ -73,13 +73,17 @@ $('stats-prev').addEventListener('click', () => shift(-1))
 $('stats-next').addEventListener('click', () => shift(1))
 setInterval(() => !$('stats').hidden && statsDate === isoDay(new Date()) && loadStats(), 60_000)
 
+let statsSeq = 0
 async function loadStats() {
   for (const b of document.querySelectorAll('[data-periodo]')) b.classList.toggle('on', b.dataset.periodo === statsKind)
   $('stats-date').value = statsDate
+  // con il 4G le risposte possono arrivare in disordine: vale solo l'ultima richiesta
+  const n = ++statsSeq
   try {
-    drawStats(await api(`/api/ascoltatori?periodo=${statsKind}&data=${statsDate}`))
+    const r = await api(`/api/ascoltatori?periodo=${encodeURIComponent(statsKind)}&data=${encodeURIComponent(statsDate)}`)
+    if (n === statsSeq) drawStats(r)
   } catch (e) {
-    notice(e.message)
+    if (n === statsSeq) notice(e.message)
   }
 }
 
@@ -114,17 +118,26 @@ function drawStats(r) {
           tr.append(el('td', null, p.title), el('td', null, num(p.avg)), el('td', null, String(p.peak)), el('td', null, num(p.hours)))
           return tr
         })
-      : [Object.assign(el('tr'), { innerHTML: '<td colspan="4" class="hint">Nessun programma in onda in questo periodo.</td>' })])
+      : [noPrograms()])
   )
 }
 
-function showTip(box, x, y, html) {
+function noPrograms() {
+  const tr = el('tr')
+  const td = el('td', 'hint', 'Nessun programma in onda in questo periodo.')
+  td.colSpan = 4
+  tr.append(td)
+  return tr
+}
+
+/** Dettaglio al passaggio: [prima riga, valore in grassetto, resto], sempre come testo. */
+function showTip(box, x, y, [head, bold, rest]) {
   let tip = box.querySelector('.tip')
   if (!tip) {
     tip = el('div', 'tip')
     box.append(tip)
   }
-  tip.innerHTML = html
+  tip.replaceChildren(document.createTextNode(head), el('b', null, bold), document.createTextNode(rest))
   tip.hidden = false
   const w = box.clientWidth
   tip.style.left = `${Math.min(Math.max(0, x + 12), w - tip.offsetWidth)}px`
@@ -190,7 +203,7 @@ function lineChart(box, r) {
     cross.setAttribute('visibility', 'visible')
     dot.setAttribute('visibility', 'visible')
     const label = new Date(p.t).toLocaleString('it-IT', week ? { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' } : { hour: '2-digit', minute: '2-digit' })
-    showTip(box, (px / W) * rect.width, (y(p.avg) / H) * rect.height, `${label}<b>${num(p.avg)} in media</b>picco ${p.peak} · principale ${num(p.a)}${p.b === null ? '' : ` · secondario ${num(p.b)}`}`)
+    showTip(box, (px / W) * rect.width, (y(p.avg) / H) * rect.height, [label, `${num(p.avg)} in media`, `picco ${p.peak} · principale ${num(p.a)}${p.b === null ? '' : ` · secondario ${num(p.b)}`}`])
   }
   hit.addEventListener('pointermove', move)
   hit.addEventListener('pointerdown', move)
@@ -227,7 +240,7 @@ function hourChart(box, hours) {
     hit.addEventListener('pointerenter', () => {
       bar.classList.add('dim')
       const rect = s.getBoundingClientRect()
-      showTip(box, ((bx + bw / 2) / W) * rect.width, (top / H) * rect.height, `dalle ${String(h.hour).padStart(2, '0')}:00<b>${num(h.avg)} in media</b>picco ${h.peak}`)
+      showTip(box, ((bx + bw / 2) / W) * rect.width, (top / H) * rect.height, [`dalle ${String(h.hour).padStart(2, '0')}:00`, `${num(h.avg)} in media`, `picco ${h.peak}`])
     })
     hit.addEventListener('pointerleave', () => {
       bar.classList.remove('dim')

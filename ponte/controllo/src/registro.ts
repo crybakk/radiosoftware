@@ -15,16 +15,24 @@ export interface ServerPlay {
   title: string
   artist: string
   duration: number
+  /**
+   * Quando è stata scritta la voce (ISO), solo se diversa dall'inizio: un brano sconosciuto etichettato dopo giorni
+   * aggiunge passaggi vecchi, che la regia deve scaricare anche se cerca solo le voci recenti.
+   */
+  added?: string
   /** Solo per i brani sconosciuti etichettati dal pannello (gli altri li conosce la regia). */
   composer?: string
   publisher?: string
 }
 
 const KEEP_DAYS = 400
+/** Il server resta acceso per mesi: le voci vecchie si tolgono anche mentre gira, una volta al giorno. */
+const PRUNE_EVERY_MS = 86400_000
 
 export class PlayLog {
   private readonly file: string
   private readonly now: () => number
+  private lastPrune = 0
   /** Avviso a ogni brano aggiunto (titolo in onda). */
   onAdd: ((e: ServerPlay) => void) | null = null
 
@@ -34,9 +42,11 @@ export class PlayLog {
     this.prune()
   }
 
-  add(p: Omit<ServerPlay, 'at'> & { at?: string }): ServerPlay {
+  add(p: Omit<ServerPlay, 'at' | 'added'> & { at?: string }): ServerPlay {
+    const now = new Date(this.now()).toISOString()
     const entry: ServerPlay = {
-      at: p.at ?? new Date(this.now()).toISOString(),
+      at: p.at ?? now,
+      ...(p.at && p.at !== now ? { added: now } : {}),
       source: p.source,
       id: p.id,
       title: p.title,
@@ -45,7 +55,13 @@ export class PlayLog {
       ...(p.composer ? { composer: p.composer } : {}),
       ...(p.publisher ? { publisher: p.publisher } : {})
     }
-    appendFileSync(this.file, `${JSON.stringify(entry)}\n`)
+    try {
+      if (this.now() - this.lastPrune > PRUNE_EVERY_MS) this.prune()
+      appendFileSync(this.file, `${JSON.stringify(entry)}\n`)
+    } catch (e) {
+      // disco pieno o simili: si perde la voce ma non si ferma chi suona (eventi, riconoscimento)
+      console.error(`[registro] voce non salvata: ${e instanceof Error ? e.message : String(e)}`)
+    }
     this.onAdd?.(entry)
     return entry
   }
@@ -56,7 +72,8 @@ export class PlayLog {
     for (const line of readFileSync(this.file, 'utf8').split('\n')) {
       if (!line.trim()) continue
       try {
-        out.push(JSON.parse(line) as ServerPlay)
+        const p = JSON.parse(line) as ServerPlay | null
+        if (p && typeof p === 'object' && typeof p.at === 'string') out.push(p)
       } catch {
         // riga rovinata (per esempio spegnimento a metà scrittura): si salta
       }
@@ -64,14 +81,16 @@ export class PlayLog {
     return out
   }
 
-  /** Voci con inizio in [from, to). */
+  /** Voci con inizio in [from, to), più quelle scritte in [from, to) con un inizio precedente. */
   list(from: Date, to: Date): ServerPlay[] {
     const a = from.toISOString()
     const b = to.toISOString()
-    return this.read().filter((p) => p.at >= a && p.at < b)
+    const inside = (t: string | undefined): boolean => typeof t === 'string' && t >= a && t < b
+    return this.read().filter((p) => inside(p.at) || inside(p.added))
   }
 
   private prune(): void {
+    this.lastPrune = this.now()
     const all = this.read()
     const limit = new Date(this.now() - KEEP_DAYS * 86400_000).toISOString()
     const keep = all.filter((p) => p.at >= limit)

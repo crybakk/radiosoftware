@@ -1,7 +1,9 @@
+import { EventEmitter } from 'node:events'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { EsterneRecognition } from './esterne.ts'
 import { FpIndex, fingerprint, LIBRARY_HOP, QUERY_HOP, SAMPLE_RATE, fpToBytes, fpFromBytes } from './impronta.ts'
 import { FpStore, Recognizer, UnknownStore, buildFpFile, parseFpFile, type Recognized } from './riconoscimento.ts'
 
@@ -62,6 +64,24 @@ describe('impronte', () => {
     expect(f.meta.id).toBe('regia/a.mp3')
     expect([...f.fp]).toEqual([...fp])
   })
+
+  it('file impronta con dati non validi: errore chiaro, non un TypeError', () => {
+    for (const head of ['null', '1', '"x"', '{}', '{"id":5}']) {
+      expect(() => parseFpFile(Buffer.from(`${head}\n\0\0\0\0`))).toThrow('impronta senza id')
+    }
+  })
+
+  it('brani tolti e rimessi tante volte non riempiono l\'indice', () => {
+    const idx = new FpIndex()
+    const fp = library[0] && fingerprint(library[0].pcm.slice(0, SR * 30), LIBRARY_HOP)
+    for (let i = 0; i < 70_000; i++) {
+      idx.put({ id: 'regia/a.mp3', title: 'A', artist: 'B', fp })
+      idx.remove('regia/a.mp3')
+    }
+    idx.put({ id: 'regia/a.mp3', title: 'A', artist: 'B', fp })
+    expect(idx.ids()).toEqual([{ id: 'regia/a.mp3', n: fp.length }])
+    expect(idx.search(fingerprint(library[0].pcm.slice(SR * 5, SR * 17), QUERY_HOP))?.id).toBe('regia/a.mp3')
+  })
 })
 
 describe('riconoscimento nelle esterne', () => {
@@ -119,5 +139,56 @@ describe('riconoscimento nelle esterne', () => {
     expect(unk2.get(u.id)?.label?.title).toBe('Nuovo')
     unk2.discard(u.id)
     expect(unk2.list()).toHaveLength(0)
+  })
+})
+
+describe('ascolto delle esterne (ffmpeg)', () => {
+  const deps = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'est-'))
+    const fp = new FpStore(join(dir, 'impronte'))
+    return { fp, unknowns: new UnknownStore(join(dir, 'sconosciuti'), fp.index), playLog: {} as never, url: 'http://x' }
+  }
+
+  it('ffmpeg che non parte non fa cadere il server e si riprova', async () => {
+    const logs: string[] = []
+    let spawned = 0
+    const procs: EventEmitter[] = []
+    const est = new EsterneRecognition({
+      ...deps(),
+      log: (s) => logs.push(s),
+      spawn: () => {
+        spawned++
+        const p = Object.assign(new EventEmitter(), { stdout: null, stdin: null, stdio: [], kill: () => {} })
+        procs.push(p)
+        return p
+      }
+    })
+    est.setActive(true)
+    // senza un gestore, 'error' su un EventEmitter lancia un'eccezione
+    expect(() => procs[0].emit('error', new Error('spawn ffmpeg ENOENT'))).not.toThrow()
+    expect(logs.some((l) => l.includes('ENOENT'))).toBe(true)
+    procs[0].emit('exit', null)
+    est.setActive(false)
+    expect(spawned).toBe(1)
+  })
+
+  it('un errore nel riconoscimento non esce dal gestore dei dati di ffmpeg', () => {
+    const d = deps()
+    const logs: string[] = []
+    const stdout = new EventEmitter()
+    const est = new EsterneRecognition({
+      ...d,
+      log: (s) => logs.push(s),
+      spawn: () => Object.assign(new EventEmitter(), { stdout, stdin: null, stdio: [], kill: () => {} }) as never
+    })
+    d.fp.index.search = () => {
+      throw new Error('troppe impronte')
+    }
+    est.setActive(true)
+    const pcm = Buffer.alloc(SR * 2 * 16)
+    for (let i = 0; i < SR * 16; i++) pcm.writeInt16LE(Math.round(Math.sin(i / 3) * 8000), i * 2)
+    expect(() => stdout.emit('data', pcm)).not.toThrow()
+    expect(logs.some((l) => l.includes('troppe impronte'))).toBe(true)
+    est.setActive(false)
   })
 })
