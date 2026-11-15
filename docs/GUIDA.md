@@ -183,7 +183,7 @@ Se nella VM avevi già installato AzuraCast con la versione precedente, toglilo
 (`cd /var/azuracast && sudo ./docker.sh uninstall`) oppure crea una VM nuova: Caddy ha bisogno delle porte 80 e 443.
 
 **Banda di casa:** ogni ascoltatore collegato all'Icecast principale usa 0,128 Mbit/s di upload. Con 20 Mbit/s in
-upload ci stanno circa 150 ascoltatori (il massimo si imposta con `ICECAST_MAX_ASCOLTATORI`, di base 250).
+upload ci stanno circa 150 ascoltatori (il massimo si imposta con `ICECAST_MAX_ASCOLTATORI`, di base 1000: con 500 Mbit/s in upload ce ne starebbero quasi 4000).
 
 ### Ascolto e Icecast secondario
 
