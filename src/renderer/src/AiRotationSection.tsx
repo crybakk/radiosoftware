@@ -74,7 +74,7 @@ export function AiRotationSection({
     try {
       const list = await api.aiApply(res.plan, replace)
       onEvents(list)
-      setMsg(`Eventi creati: li trovi qui sotto, con il nome che inizia con "${AI_LABEL}".`)
+      setMsg(`Eventi creati: li trovi nell'elenco qui sopra, con il nome che inizia con "${AI_LABEL}".`)
       setRes(null)
     } catch (e) {
       setErr(clean(e))
