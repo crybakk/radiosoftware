@@ -76,7 +76,7 @@ export const VOCI: Voce[] = [
 
   // --- Dirette video ---
   { chiave: 'DIRETTE_VIDEO', gruppo: 'Dirette video', etichetta: 'Dirette su YouTube e Facebook', tipo: 'sino', predefinito: 'si', parti: ['pannello'], aiuto: 'Le chiavi delle dirette e il logo si impostano nella sezione Dirette video.' },
-  { chiave: 'VIDEO_OBS_PASSPHRASE', gruppo: 'Dirette video', etichetta: 'Frase segreta per OBS', tipo: 'password', ...FRASE, predefinito: '', parti: ['pannello'], aiuto: 'Da 10 a 79 caratteri. Vuota = nessuna cifratura.' },
+  { chiave: 'VIDEO_OBS_PASSPHRASE', gruppo: 'Dirette video', etichetta: 'Frase segreta per OBS', tipo: 'password', ...FRASE, predefinito: '', parti: ['pannello'], aiuto: 'Da 10 a 79 caratteri. Senza frase la diretta da OBS non parte.' },
 
   // --- Riconoscimento e puntate ---
   { chiave: 'RICONOSCIMENTO', gruppo: 'Riconoscimento brani e puntate', etichetta: 'Riconoscimento dei brani nelle dirette esterne', tipo: 'sino', predefinito: 'si', parti: ['pannello'] },

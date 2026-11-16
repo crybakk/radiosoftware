@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PublicUser } from './users.ts'
-import { Relay, type Peer } from './relay.ts'
+import { MAX_PENDING_PER_PANEL, Relay, type Peer } from './relay.ts'
 
 class FakePeer implements Peer {
   sent: any[] = []
@@ -61,6 +61,32 @@ describe('smistamento tra pannello e regia', () => {
     expect(s.p.last('cmd')).toBeUndefined()
     ph.message(JSON.stringify({ t: 'cmd', id: 'p2', cmd: { type: 'search', q: 'battisti' } }))
     expect(s.p.last('cmd').cmd.type).toBe('search')
+  })
+
+  it('una ricerca alla volta e pochi comandi in attesa per pannello', () => {
+    const r = new Relay('tok')
+    const s = connectStudio(r)
+    const panel = new FakePeer()
+    const ph = r.attachPanel(panel, { name: 'anna', role: 'conduttore' })
+    const other = new FakePeer()
+    const oh = r.attachPanel(other, { name: 'bea', role: 'ospite' })
+    ph.message(JSON.stringify({ t: 'cmd', id: 's1', cmd: { type: 'search', q: 'a' } }))
+    const first = s.p.last('cmd')
+    ph.message(JSON.stringify({ t: 'cmd', id: 's2', cmd: { type: 'search', q: 'b' } }))
+    expect(panel.last('reply')).toMatchObject({ id: 's2', ok: false, error: expect.stringContaining('ricerca') })
+    // un altro pannello può cercare
+    oh.message(JSON.stringify({ t: 'cmd', id: 'o1', cmd: { type: 'search', q: 'c' } }))
+    expect(s.p.last('cmd').cmd.q).toBe('c')
+    // finita la prima, si può cercare di nuovo
+    s.h.message(JSON.stringify({ t: 'reply', id: first.id, ok: true, data: [] }))
+    ph.message(JSON.stringify({ t: 'cmd', id: 's3', cmd: { type: 'search', q: 'd' } }))
+    expect(s.p.last('cmd').cmd.q).toBe('d')
+    const before = s.p.sent.length
+    for (let i = 0; i < MAX_PENDING_PER_PANEL + 5; i++) ph.message(JSON.stringify({ t: 'cmd', id: `n${i}`, cmd: { type: 'next' } }))
+    expect(s.p.sent.length - before).toBe(MAX_PENDING_PER_PANEL - 1)
+    expect(panel.last('reply')).toMatchObject({ ok: false, error: expect.stringContaining('troppi') })
+    ph.close()
+    oh.close()
   })
 
   it('regia scollegata: i pannelli lo sanno e i comandi falliscono', () => {

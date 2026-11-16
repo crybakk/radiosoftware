@@ -27,6 +27,10 @@ interface Session {
 }
 
 const SESSION_DAYS = 30
+/** Sessioni aperte al massimo per ogni utente: oltre, si chiude la più vecchia. */
+export const MAX_SESSIONS_PER_USER = 20
+/** Sessioni aperte al massimo in tutto. */
+export const MAX_SESSIONS = 500
 
 function hashPassword(password: string, salt: string): string {
   return scryptSync(password, salt, 32).toString('hex')
@@ -172,6 +176,7 @@ export class Users {
     if (!this.users.includes(u) || u.hash !== hash) return null
     const token = randomBytes(32).toString('hex')
     this.purge()
+    this.trim(u.name)
     this.sessions.set(token, { user: u.name, expires: this.now() + SESSION_DAYS * 86_400_000 })
     this.writeSessions()
     return { token, user: { name: u.name, role: u.role } }
@@ -203,6 +208,17 @@ export class Users {
       }
     }
     if (changed) this.writeSessions()
+  }
+
+  /** Fa posto a una nuova sessione: chiude le più vecchie dell'utente e, se serve, di tutti. */
+  private trim(name: string): void {
+    const byAge = (list: [string, Session][]) => list.sort((a, b) => a[1].expires - b[1].expires)
+    const mine = byAge([...this.sessions].filter(([, s]) => s.user.toLowerCase() === name.toLowerCase()))
+    for (const [t] of mine.slice(0, Math.max(0, mine.length - MAX_SESSIONS_PER_USER + 1))) this.sessions.delete(t)
+    if (this.sessions.size >= MAX_SESSIONS) {
+      const all = byAge([...this.sessions])
+      for (const [t] of all.slice(0, this.sessions.size - MAX_SESSIONS + 1)) this.sessions.delete(t)
+    }
   }
 
   private purge(): void {

@@ -35,6 +35,8 @@ export interface VoiceOptions {
   sendVoice(pkt: Buffer): void
   /** Mette in onda o toglie la voce in Liquidsoap. */
   setOnAir(on: boolean): Promise<boolean>
+  /** Attese (ms) tra un tentativo e l'altro quando il mixer non conferma il "fuori onda". */
+  offRetryMs?: number[]
 }
 
 export class VoiceHub {
@@ -113,10 +115,14 @@ export class VoiceHub {
     if (this.session !== session) {
       // microfono chiuso mentre il mixer rispondeva (rete caduta, ospite chiuso):
       // la voce non deve restare aperta nel mixer, con la musica abbassata
-      if (on && !this.onAir) void this.mixer(false)
+      if (on && !this.onAir) this.ensureOff()
       throw new Error('microfono chiuso')
     }
-    if (!ok) throw new Error('il mixer del ponte non risponde')
+    if (!ok) {
+      // il mixer può aver acceso la voce senza riuscire a rispondere: meglio spegnerla di sicuro
+      if (on && !this.onAir) this.ensureOff()
+      throw new Error('il mixer del ponte non risponde')
+    }
     this.onAir = on
     this.emit()
   }
@@ -156,8 +162,27 @@ export class VoiceHub {
     this.owner = null
     this.user = null
     this.onAir = false
-    if (wasOnAir) void this.mixer(false)
+    if (wasOnAir) this.ensureOff()
     if (notify) this.emit()
+  }
+
+  /**
+   * Toglie la voce dal mixer e riprova finché il mixer non conferma: altrimenti chi apre
+   * dopo il microfono potrebbe finire in onda senza saperlo. Si ferma se nel frattempo
+   * qualcuno è andato in onda di proposito.
+   */
+  private ensureOff(): void {
+    const delays = this.opts.offRetryMs ?? [1000, 2000, 5000, 10_000, 30_000, 60_000]
+    const attempt = async (i: number): Promise<void> => {
+      if (this.onAir) return
+      if (await this.mixer(false)) return
+      if (i >= delays.length || this.onAir) {
+        console.error('Microfono remoto: il mixer non conferma il fuori onda')
+        return
+      }
+      setTimeout(() => void attempt(i + 1), delays[i]).unref?.()
+    }
+    void attempt(0)
   }
 
   private emit(): void {
@@ -274,7 +299,13 @@ export function voiceSockets(
   const rx: Socket = createSocket('udp4')
   rx.on('message', (m) => {
     // solo RTP: i pacchetti RTCP (tipo 200-204) non vanno al browser
-    if (m.length >= 12 && m[0] >> 6 === 2 && !(m[1] >= 200 && m[1] <= 204)) onReturn(m)
+    if (m.length < 12 || m[0] >> 6 !== 2 || (m[1] >= 200 && m[1] <= 204)) return
+    try {
+      onReturn(m)
+    } catch (e) {
+      // un pacchetto rovinato non deve fermare il ponte
+      console.error(`[microfono] ritorno scartato: ${e instanceof Error ? e.message : String(e)}`)
+    }
   })
   rx.on('error', (e) => console.error(`[microfono] ritorno: ${e.message}`))
   out.on('error', (e) => console.error(`[microfono] invio voce: ${e.message}`))

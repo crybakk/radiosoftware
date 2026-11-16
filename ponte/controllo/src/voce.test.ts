@@ -67,6 +67,44 @@ describe('microfono remoto', () => {
     await expect(t.hub.setMic(a, true)).rejects.toThrow(/non risponde/)
     expect(t.hub.status().onAir).toBe(false)
   })
+
+  it('il mixer non conferma il fuori onda: si riprova finché non risponde', async () => {
+    const answers = [true, false, false, true]
+    const calls: boolean[] = []
+    const hub = new VoiceHub({
+      factory: async (sdp) => ({ answer: sdp, close: () => {}, sendReturn: () => {} }),
+      sendVoice: () => {},
+      setOnAir: async (on) => {
+        calls.push(on)
+        return answers.shift() ?? true
+      },
+      offRetryMs: [1, 1, 1]
+    })
+    const a = {}
+    await hub.open(a, 'cristian', 'x')
+    await hub.setMic(a, true)
+    hub.close(a)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(calls).toEqual([true, false, false, false])
+  })
+
+  it('il mixer non risponde al "in onda": la voce viene comunque tolta', async () => {
+    const calls: boolean[] = []
+    const hub = new VoiceHub({
+      factory: async (sdp) => ({ answer: sdp, close: () => {}, sendReturn: () => {} }),
+      sendVoice: () => {},
+      setOnAir: async (on) => {
+        calls.push(on)
+        return !on
+      },
+      offRetryMs: []
+    })
+    const a = {}
+    await hub.open(a, 'cristian', 'x')
+    await expect(hub.setMic(a, true)).rejects.toThrow(/non risponde/)
+    await flush()
+    expect(calls).toEqual([true, false])
+  })
 })
 
 describe('microfono remoto: corse e reti che cadono', () => {
