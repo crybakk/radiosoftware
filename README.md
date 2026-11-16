@@ -63,7 +63,11 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 
 ## Installazione su Windows
 
-Ogni push compila l'installer in GitHub Actions: apri la scheda **Actions** del repository, l'ultima esecuzione di "Test e build Windows", e scarica l'artefatto **RadioRegia-Setup-Windows**.
+Scarica **RadioRegia-Setup-<versione>.exe** dall'ultima [release](https://github.com/crybakk/radiosoftware/releases); nella stessa pagina c'è lo ZIP del server (**RadioPonte-server-<versione>.zip**). Le novità di ogni versione sono in [CHANGELOG.md](CHANGELOG.md).
+
+Per provare una modifica non ancora pubblicata: scheda **Actions**, l'ultima esecuzione di "Test e build Windows", artefatto **RadioRegia-Setup-Windows**.
+
+Per pubblicare una nuova versione: aggiorna `version` in `package.json` e aggiungi la sezione `## v<versione>` in `CHANGELOG.md`, poi **Actions** → **Pubblica release** → **Run workflow** con lo stesso numero.
 
 ## Sviluppo
 

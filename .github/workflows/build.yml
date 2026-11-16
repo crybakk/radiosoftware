@@ -4,6 +4,8 @@ on:
   push:
     branches: ['**']
   workflow_dispatch:
+  # usato anche dalla pubblicazione delle release (release.yml)
+  workflow_call:
 
 jobs:
   test:
