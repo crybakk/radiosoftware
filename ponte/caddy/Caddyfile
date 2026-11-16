@@ -10,7 +10,7 @@
 			flush_interval -1
 		}
 	}
-	# tutto il resto: pannello remoto, regia, ospiti
+	# tutto il resto: player pubblico (/), pannello remoto (/dashboard), regia, ospiti
 	handle {
 		reverse_proxy controllo:9080
 	}

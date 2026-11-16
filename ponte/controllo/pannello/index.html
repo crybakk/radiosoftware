@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#111418" />
     <title>Regia remota</title>
-    <link rel="stylesheet" href="pannello.css" />
+    <link rel="stylesheet" href="/pannello.css" />
   </head>
   <body>
     <section id="login" class="login" hidden>
@@ -20,6 +20,7 @@
 
     <section id="app" hidden>
       <header class="top">
+        <button id="home-btn" class="home" title="Torna alla panoramica" hidden>← Panoramica</button>
         <div id="lamp" class="lamp">FERMO</div>
         <div id="studio" class="pill off">REGIA…</div>
         <button id="listeners-pill" class="pill listeners" title="Ascoltatori adesso: apri le statistiche" hidden></button>
@@ -35,6 +36,7 @@
         <button id="users-btn" class="ghost" hidden>Utenti</button>
         <button id="imp-btn" class="ghost" hidden>Impostazioni server</button>
         <a id="guide-link" class="btn-link" href="/guida" target="_blank" rel="noopener">📖 Guida</a>
+        <a class="btn-link" href="/" target="_blank" rel="noopener">📻 Player pubblico</a>
         <button id="logout" class="ghost">Esci</button>
       </nav>
 
@@ -182,7 +184,7 @@
 
       <section id="stats" class="users progs stats" hidden>
         <div class="card">
-          <div class="section-title">Ascoltatori <button class="small ghost" id="stats-close">Chiudi</button></div>
+          <div class="section-title">Ascoltatori <button class="small" id="stats-close" title="Torna alla panoramica">← Panoramica</button></div>
           <div class="row stats-bar">
             <button class="small" data-periodo="giorno">Giorno</button>
             <button class="small" data-periodo="settimana">Settimana</button>
@@ -210,7 +212,7 @@
 
       <section id="progs" class="users progs" hidden>
         <div class="card">
-          <div class="section-title">Programmi e puntate <button class="small ghost" id="progs-close">Chiudi</button></div>
+          <div class="section-title">Programmi e puntate <button class="small" id="progs-close" title="Torna alla panoramica">← Panoramica</button></div>
           <p class="hint" id="progs-status"></p>
         </div>
         <div class="card" id="drafts-card">
@@ -253,7 +255,7 @@
 
       <section id="imp" class="users progs" hidden>
         <div class="card">
-          <div class="section-title">Impostazioni del server <button class="small ghost" id="imp-close">Chiudi</button></div>
+          <div class="section-title">Impostazioni del server <button class="small" id="imp-close" title="Torna alla panoramica">← Panoramica</button></div>
           <p class="hint">Quando salvi, il server riparte da solo soltanto nelle parti che usano i valori cambiati.
             Le password non si vedono: lasciale vuote per tenere quelle di adesso.</p>
           <p class="banner info" id="imp-status" hidden></p>
@@ -276,7 +278,7 @@
 
       <section id="ann" class="users progs" hidden>
         <div class="card">
-          <div class="section-title">Annunci vocali del server <button class="small ghost" id="ann-close">Chiudi</button></div>
+          <div class="section-title">Annunci vocali del server <button class="small" id="ann-close" title="Torna alla panoramica">← Panoramica</button></div>
           <p class="hint">Annunci a orario letti dalla voce sintetica, solo quando trasmette il server (diretta autonoma o
             musica di riserva): vanno in onda dopo il brano in corso. Quando c'è la regia gli annunci li fa la regia con i suoi eventi.</p>
           <p class="hint" id="ann-status"></p>
@@ -298,7 +300,7 @@
       </section>
 
       <section id="users" class="card users" hidden>
-        <div class="section-title">Utenti del pannello <button class="small ghost" id="users-close">Chiudi</button></div>
+        <div class="section-title">Utenti del pannello <button class="small" id="users-close" title="Torna alla panoramica">← Panoramica</button></div>
         <table class="table">
           <thead><tr><th>Nome</th><th>Ruolo</th><th></th></tr></thead>
           <tbody id="users-list"></tbody>
@@ -318,10 +320,11 @@
         </form>
       </section>
     </section>
-    <script src="pannello.js"></script>
-    <script src="programmi.js"></script>
-    <script src="ascoltatori.js"></script>
-    <script src="annunci.js"></script>
-    <script src="impostazioni.js"></script>
+    <script src="/pannello.js"></script>
+    <script src="/programmi.js"></script>
+    <script src="/ascoltatori.js"></script>
+    <script src="/annunci.js"></script>
+    <script src="/impostazioni.js"></script>
+    <script src="/navigazione.js"></script>
   </body>
 </html>

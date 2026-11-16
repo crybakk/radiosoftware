@@ -50,7 +50,7 @@ Le sezioni seguenti spiegano gli stessi passaggi a mano, per esempio su un serve
 
 | Porta | A cosa serve |
 |---|---|
-| **TCP 80 e 443** | HTTPS: pannello remoto, collegamento della regia, ascolto `https://` |
+| **TCP 80 e 443** | HTTPS: player pubblico, pannello remoto (`/dashboard`), collegamento della regia, ascolto `https://` |
 | TCP 8000 (`ICECAST_PORTA`) | ascolto senza https, per i lettori vecchi (facoltativo) |
 | **UDP 9000** (`SRT_PORT`) | audio dalla regia |
 | TCP 9010 (`ESTERNA_PORTA`) | dirette esterne |
@@ -125,7 +125,8 @@ Titolo e artista arrivano dalla regia (o dal file, per la diretta autonoma e la 
 
 Pagine per gli ascoltatori (servite dal controllo, dietro Caddy):
 
-- `https://<dominio>/ascolta.html`: la diretta con il titolo in onda;
+- `https://<dominio>/`: il player della radio (diretta, titolo e copertina in onda, brani recenti), come la
+  pagina pubblica di AzuraCast; il vecchio `/ascolta.html` porta qui;
 - `https://<dominio>/podcast.html`: programmi e puntate on demand (solo ascolto in streaming).
 
 ## Programmi e puntate on demand
@@ -168,7 +169,7 @@ musica di riserva. Nei tuoi lettori puoi mettere il secondario come indirizzo di
 
 ## Pannello remoto
 
-Dal browser (telefono, tablet o computer) apri `https://<dominio>` ed entra con l'utente `admin`
+Dal browser (telefono, tablet o computer) apri `https://<dominio>/dashboard` ed entra con l'utente `admin`
 e la password `PANNELLO_ADMIN_PASSWORD` del file `.env`.
 
 Dal pannello vedi cosa va in onda e la coda, e puoi premere PLAY / AVANTI / STOP, passare tra automatico e

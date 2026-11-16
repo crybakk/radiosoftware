@@ -1,6 +1,6 @@
 /**
  * Guida d'uso dentro il pannello: GET /guida mostra docs/GUIDA.md come pagina, GET /guida/immagini/<nome>.png
- * gli screenshot. Solo per chi è entrato nel pannello.
+ * gli screenshot. Solo per chi è entrato nel pannello (/dashboard).
  * Sul server la guida sta in /opt/radio-ponte/guida (la copia installa-server.sh), montata in /app/guida.
  */
 import { existsSync } from 'node:fs'
@@ -41,7 +41,7 @@ export async function guidePage(dir: string | null): Promise<string> {
     <link rel="stylesheet" href="/guida.css" />
   </head>
   <body>
-    <header class="guida-top"><a href="/" class="indietro">← Torna al pannello</a><a href="#indice" class="su">Indice</a></header>
+    <header class="guida-top"><a href="/dashboard" class="indietro">← Torna al pannello</a><a href="#indice" class="su">Indice</a></header>
     <article class="guida">${body}</article>
   </body>
 </html>`

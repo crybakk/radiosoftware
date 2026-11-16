@@ -32,6 +32,7 @@ input, select, textarea { background: var(--bg); border: 1px solid var(--line); 
 .pill.ok { border-color: var(--green); color: #86efac; }
 .pill.off { border-color: var(--red); color: #fca5a5; }
 .mode { font-weight: 800; font-size: 13px; }
+.home { font-weight: 700; white-space: nowrap; background: var(--accent); border-color: var(--accent); color: white; }
 .mode.auto { background: var(--green); border-color: var(--green); color: #04130a; }
 .mode.manual { background: var(--amber); border-color: var(--amber); color: #1a1000; }
 /* telefoni stretti: la barra in alto deve restare dentro lo schermo */
@@ -39,7 +40,7 @@ input, select, textarea { background: var(--bg); border: 1px solid var(--line); 
   .top { gap: 6px; padding: 8px; flex-wrap: wrap; }
   .lamp { letter-spacing: 1px; padding: 8px; font-size: 13px; }
   .pill { padding: 6px; }
-  .mode, #menu-btn { padding: 8px 10px; }
+  .mode, #menu-btn, .home { padding: 8px 10px; }
   .transport .big { font-size: 17px; padding: 20px 4px; }
   .menu span { flex-basis: 100%; }
 }

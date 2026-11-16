@@ -131,7 +131,7 @@ export function apiNowPlaying(np: NowPlaying, info: NowPlayingInfo): Record<stri
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       listen_url: info.listenUrl,
       url: info.base,
-      public_player_url: `${info.base}/ascolta.html`,
+      public_player_url: `${info.base}/`,
       playlist_pls_url: `${root}/playlist.pls`,
       playlist_m3u_url: `${root}/playlist.m3u`,
       is_public: true,
