@@ -41,8 +41,6 @@ async function refresh() {
     const dur = np?.duration || 0
     $('bar').hidden = !dur
     if (dur) $('bar-fill').style.width = `${Math.min(100, (100 * np.elapsed) / dur)}%`
-    const n = data.listeners?.current ?? 0
-    $('listeners').textContent = n ? `${n} ${n === 1 ? 'ascoltatore' : 'ascoltatori'}` : ''
     $('msg').textContent = st.listen_url ? (data.is_online === false ? 'La radio in questo momento non trasmette.' : '') : 'Indirizzo d\'ascolto non configurato sul server.'
     for (const k of ['m3u', 'pls']) {
       $(k).href = st[`playlist_${k}_url`] || '#'
