@@ -97,7 +97,12 @@ export async function readFileInfo(path: string, kind: TrackKind): Promise<Scann
  * I brani dentro cartelle che non si riescono a leggere (per esempio un NAS spento) non vengono toccati:
  * ogni cartella illeggibile conta come un errore.
  */
-export async function scanLibrary(db: RadioDb, onProgress?: (p: ScanProgress) => void): Promise<ScanProgress> {
+export async function scanLibrary(
+  db: RadioDb,
+  onProgress?: (p: ScanProgress) => void,
+  // su Windows "canzone.mp3" e "Canzone.mp3" sono lo stesso file
+  caseInsensitive = process.platform === 'win32'
+): Promise<ScanProgress> {
   const folders = db.listFolders()
   const seenPaths = new Set<string>()
   const unreadable: string[] = []
@@ -112,6 +117,11 @@ export async function scanLibrary(db: RadioDb, onProgress?: (p: ScanProgress) =>
       progress.seen++
       try {
         const st = await stat(file)
+        // file rinominato cambiando solo maiuscole/minuscole: resta lo stesso brano (correzioni, tipo, storico)
+        if (caseInsensitive && !db.fileState(file)) {
+          const old = db.findByPath(file, true)
+          if (old && old.path !== file) db.renameTrackPath(old.id, file)
+        }
         const prev = db.fileState(file)
         const unchanged = prev && prev.size === st.size && Math.abs(prev.mtime - st.mtimeMs) < 1
         const info = unchanged ? null : await readFileInfo(file, folder.kind)

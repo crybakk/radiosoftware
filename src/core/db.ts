@@ -448,6 +448,11 @@ export class RadioDb {
     this.db.prepare('UPDATE tracks SET enabled = 0, missing = 1 WHERE id = ?').run(id)
   }
 
+  /** Nuovo percorso dello stesso file (per esempio rinominato cambiando solo le maiuscole su Windows). */
+  renameTrackPath(id: number, path: string): void {
+    this.db.prepare('UPDATE tracks SET path = ? WHERE id = ?').run(path, id)
+  }
+
   /** Inserisce o aggiorna un file scansionato. Se il file è cambiato, l'analisi va rifatta. */
   upsertScanned(f: ScannedFile): number {
     const existing = this.db.prepare('SELECT id FROM tracks WHERE path = ?').get(f.path) as Row | undefined
@@ -584,6 +589,13 @@ export class RadioDb {
     if (manual) {
       sets.push('manual_fields = manual_fields | ?')
       values.push(manual)
+    }
+    // titolo o interprete corretti a mano: l'abbinamento a MusicBrainz era probabilmente sbagliato,
+    // quindi si toglie e il brano torna in coda per MusicBrainz, AcoustID, Discogs e Last.fm
+    // (gli autori già scritti restano: sono campi protetti solo se corretti a mano)
+    const renamed = before && ((edit.title !== undefined && edit.title !== before.title) || (edit.artist !== undefined && edit.artist !== before.artist))
+    if (renamed) {
+      sets.push("mb_recording_id = ''", 'mb_checked_at = NULL', 'mb_genres_at = NULL', 'acoustid_at = NULL', 'dc_at = NULL', 'lfm_at = NULL')
     }
     // abilitato/disabilitato a mano: è una scelta dell'utente, la scansione non la cambia più
     if (edit.enabled !== undefined) sets.push('missing = 0')

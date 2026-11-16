@@ -711,8 +711,8 @@ Riconoscimento brani e puntate, Allarmi (Telegram ed email).
 - Cambia i valori e premi **Salva e applica**. Prima di salvare il pannello ti dice cosa riparte: se tocca l'audio
   (per esempio la password delle esterne) la radio resta muta per qualche secondo; se tocca solo il pannello (per
   esempio Telegram o le email) l'audio non si ferma. Finché il server lavora compare **Applico le impostazioni…**,
-  poi **✓ Impostazioni applicate** oppure **✗ Errore** con il motivo. Nei valori non si possono usare apostrofi
-  e non si può finire con `\`.
+  poi **✓ Impostazioni applicate** oppure **✗ Errore** con il motivo. Un valore non può finire con `\`; con un
+  apostrofo (per esempio "Radio dell'Isola") non può contenere anche `$`, `\`, `"` o `` ` ``.
 - **Password**: non si vedono. Lasciale vuote per tenere quelle di adesso; l'occhio 👁 mostra quello che stai
   scrivendo; **Cancella** la toglie.
 - **Avanzate** (dominio, porte, frase segreta SRT, token della regia, password di Icecast, mount dell'ascolto):
