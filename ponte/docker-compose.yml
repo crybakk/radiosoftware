@@ -8,12 +8,33 @@ services:
     image: savonet/liquidsoap:v2.3.3
     command: ["liquidsoap", "/cfg/ponte.liq"]
     restart: unless-stopped
-    env_file: .env
+    # solo i valori che usa l'audio: così cambiare dal pannello, per esempio, Telegram o le email
+    # non riavvia l'audio della radio
     environment:
       TZ: Europe/Rome
       CONTROLLO_INTERNO: http://controllo:8091
       RITORNO_VOCE_HOST: controllo
       ICECAST_HOST: icecast
+      NOME_RADIO: ${NOME_RADIO:-Radio}
+      SRT_PORT: ${SRT_PORT:-9000}
+      SRT_PASSPHRASE: ${SRT_PASSPHRASE:-}
+      SRT_BUFFER_SECONDS: ${SRT_BUFFER_SECONDS:-10}
+      PROCESSORE_AUDIO: ${PROCESSORE_AUDIO:-medio}
+      ALLARME_SILENZIO_SECONDI: ${ALLARME_SILENZIO_SECONDI:-20}
+      ICECAST_MOUNT: ${ICECAST_MOUNT:-/radio.mp3}
+      ICECAST_PASSWORD_SORGENTE: ${ICECAST_PASSWORD_SORGENTE:-}
+      ICECAST_BITRATE: ${ICECAST_BITRATE:-128}
+      ESTERNA_PORTA: ${ESTERNA_PORTA:-9010}
+      ESTERNA_MOUNT: ${ESTERNA_MOUNT:-/}
+      ESTERNA_UTENTE: ${ESTERNA_UTENTE:-esterna}
+      ESTERNA_PASSWORD: ${ESTERNA_PASSWORD:-}
+      MICROFONO_REMOTO: ${MICROFONO_REMOTO:-si}
+      ABBASSAMENTO_MUSICA_DB: ${ABBASSAMENTO_MUSICA_DB:--12}
+      ICECAST_ESTERNO_HOST: ${ICECAST_ESTERNO_HOST:-}
+      ICECAST_ESTERNO_PORTA: ${ICECAST_ESTERNO_PORTA:-8000}
+      ICECAST_ESTERNO_MOUNT: ${ICECAST_ESTERNO_MOUNT:-/radio.mp3}
+      ICECAST_ESTERNO_UTENTE: ${ICECAST_ESTERNO_UTENTE:-source}
+      ICECAST_ESTERNO_PASSWORD: ${ICECAST_ESTERNO_PASSWORD:-}
     volumes:
       - ./liquidsoap:/cfg:ro
       # libreria musicale del server: diretta autonoma e musica di riserva
@@ -61,6 +82,10 @@ services:
     volumes:
       - dati:/data
       - ./musica:/musica
+      # impostazioni modificabili dal pannello (menu ☰ → Impostazioni server) e richieste di riavvio,
+      # eseguite sul server dal servizio radio-ponte-impostazioni (vedi la cartella "sistema")
+      - ./.env:/impostazioni/.env
+      - ./richieste:/richieste
     ports:
       # audio del microfono remoto e degli ospiti (WebRTC): da inoltrare anche sul router
       - "${WEBRTC_PORTE:-40000-40049}:${WEBRTC_PORTE:-40000-40049}/udp"

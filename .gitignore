@@ -5,4 +5,5 @@ dist/
 .DS_Store
 ponte/.env
 ponte/musica/
+ponte/richieste/
 build-resources/

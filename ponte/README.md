@@ -319,6 +319,22 @@ Se il tuo `.env` è di una versione con AzuraCast, aggiungi le righe nuove di `.
 (`DOMINIO`, `ICECAST_*`, `VIDEO_*`) e togli quelle `AZURACAST_*`, oppure rilancia `installa-server.sh`
 dopo aver spostato il vecchio `.env`.
 
+## Impostazioni dal pannello
+
+Tutti i valori del `.env` (tranne `PANNELLO_ADMIN_PASSWORD`, che serve solo al primo avvio) si vedono e si cambiano
+dal pannello: menu ☰ → **Impostazioni server**, solo amministratori.
+
+- Il servizio di controllo monta `.env` in `/impostazioni/.env` e lo riscrive sul posto conservando commenti e ordine
+  (valori con spazi o `$` tra apici singoli). Per questo `riavvia.sh` lo assegna all'utente 1000 (resta `600`).
+- Dopo il salvataggio lascia il file `richieste/applica`. Il servizio di sistema `radio-ponte-impostazioni.path`
+  (installato da `installa-server.sh`, file in `sistema/`) lo vede e lancia `sistema/applica-impostazioni.sh`, cioè
+  `docker compose up -d`: ripartono solo i contenitori con valori cambiati. L'esito va in `richieste/esito.json`.
+- Liquidsoap riceve solo i suoi valori (elenco in `docker-compose.yml`): cambiare Telegram, email o le altre
+  impostazioni del solo servizio di controllo non ferma l'audio.
+- Dominio, porte, frase SRT, token, password di Icecast e mount sono "avanzati": si sbloccano con
+  **Modifica avanzata** e una doppia conferma.
+- Controllo a mano: `systemctl status radio-ponte-impostazioni.path` e `journalctl -u radio-ponte-impostazioni`.
+
 ## Problemi comuni
 
 - **"Il ponte non risponde"** nella regia: porta UDP chiusa nel firewall, indirizzo sbagliato, o ponte spento (`docker compose ps`).

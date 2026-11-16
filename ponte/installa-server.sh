@@ -42,7 +42,7 @@ fi
 
 passo "Ponte: copio i file in $CARTELLA_PONTE"
 mkdir -p "$CARTELLA_PONTE"
-rsync -a --exclude .env --exclude proxmox --exclude musica "$QUI/" "$CARTELLA_PONTE/"
+rsync -a --exclude .env --exclude proxmox --exclude musica --exclude richieste "$QUI/" "$CARTELLA_PONTE/"
 cd "$CARTELLA_PONTE"
 
 NUOVO_ENV=0
@@ -73,6 +73,12 @@ fi
 
 passo "Avvio"
 ./riavvia.sh
+
+passo "Servizio che applica le impostazioni salvate dal pannello"
+chmod +x sistema/applica-impostazioni.sh
+cp sistema/radio-ponte-impostazioni.path sistema/radio-ponte-impostazioni.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now radio-ponte-impostazioni.path
 
 leggi() { grep -E "^$1=" .env | head -1 | cut -d= -f2-; }
 IP_LOCALE="$(hostname -I | awk '{print $1}')"
@@ -111,8 +117,9 @@ cat <<FINE
 5) Dirette esterne: nell'app che usavi come DJ su AzuraCast metti
      server $DOM, porta $(leggi ESTERNA_PORTA), mount $(leggi ESTERNA_MOUNT), utente $(leggi ESTERNA_UTENTE), password $(leggi ESTERNA_PASSWORD)
 
-6) Icecast secondario (esterno): scrivi i suoi dati in $CARTELLA_PONTE/.env
-   (ICECAST_ESTERNO_...) e poi: sudo $CARTELLA_PONTE/riavvia.sh
+6) Tutte le impostazioni (Icecast secondario, dirette esterne, allarmi, Telegram, email…)
+   si cambiano dal pannello: menu ☰ → Impostazioni server. Il server si riavvia da solo
+   nelle parti che servono.
 
 7) Musica di riserva e diretta autonoma: copia la selezione della libreria in
    $CARTELLA_PONTE/musica (vedi la guida, "Libreria sul server").

@@ -69,6 +69,7 @@ import { apiNowPlaying, icecastListeners, NowPlaying } from './nowplaying.ts'
 import { ListenerLog, period, readSecondary, report, type SecondaryConfig } from './ascoltatori.ts'
 import { Recorder } from './puntate.ts'
 import { handleProgramApi } from './programmiApi.ts'
+import { Impostazioni, NOMI_PARTI } from './impostazioni.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -87,6 +88,9 @@ const MAX_BACKUP_BYTES = 1024 * 1024 * 1024
 const CERT_FILE = env('CERTIFICATO_TLS')
 const KEY_FILE = env('CHIAVE_TLS')
 const LISTEN_URL = env('ASCOLTO_URL') || (env('DOMINIO') ? `https://${env('DOMINIO')}${env('ICECAST_MOUNT', '/radio.mp3')}` : '')
+// impostazioni del server modificabili dal pannello: il file .env montato e la cartella delle richieste
+// di riavvio, che un servizio sul server (installato da installa-server.sh) controlla
+const impostazioni = new Impostazioni(env('IMPOSTAZIONI_FILE', '/impostazioni/.env'), env('IMPOSTAZIONI_RICHIESTE', '/richieste'))
 const PANEL_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'pannello')
 
 if (TOKEN.length < 16) {
@@ -1025,6 +1029,42 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       }
       return json(res, 404, { error: 'non trovato' })
     }
+    // --- impostazioni del server (pannello, amministratori) ---
+    if (url.pathname.startsWith('/api/impostazioni')) {
+      const me = sessionUser(req)
+      if (!me) return json(res, 401, { error: 'accesso richiesto' })
+      if (!can(me.role, 'utenti')) return json(res, 403, { error: 'solo gli amministratori cambiano le impostazioni' })
+      if (req.method !== 'GET' && !sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+      if (!impostazioni.disponibile()) {
+        return json(res, 503, { error: 'il file delle impostazioni non è collegato: aggiorna il server rilanciando una volta installa-server.sh' })
+      }
+      if (req.method === 'GET' && url.pathname === '/api/impostazioni') {
+        return json(res, 200, { voci: impostazioni.elenco(), parti: NOMI_PARTI, stato: impostazioni.stato() })
+      }
+      if (req.method === 'POST' && url.pathname === '/api/impostazioni') {
+        const body = await readJson(req)
+        const valori = body.valori && typeof body.valori === 'object' ? (body.valori as Record<string, unknown>) : {}
+        const svuota = Array.isArray(body.svuota) ? body.svuota.map(String) : []
+        let esito
+        try {
+          esito = impostazioni.salva(valori, { avanzate: body.avanzate === true, svuota })
+        } catch (e) {
+          return json(res, 400, { error: (e as Error).message })
+        }
+        if (esito.cambiate.length) {
+          console.log(`impostazioni cambiate da ${me.name}: ${esito.cambiate.join(', ')}`)
+          impostazioni.applica()
+        }
+        return json(res, 200, { ...esito, voci: impostazioni.elenco(), stato: impostazioni.stato() })
+      }
+      if (req.method === 'POST' && url.pathname === '/api/impostazioni/applica') {
+        impostazioni.annullaRichiesta()
+        impostazioni.applica()
+        return json(res, 200, { stato: impostazioni.stato() })
+      }
+      return json(res, 404, { error: 'non trovato' })
+    }
+
     if (url.pathname === '/api/io' || url.pathname.startsWith('/api/utenti')) {
       const me = sessionUser(req)
       if (!me) return json(res, 401, { error: 'accesso richiesto' })

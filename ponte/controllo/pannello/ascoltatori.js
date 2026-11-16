@@ -44,7 +44,7 @@ setTimeout(() => !$('app').hidden && loadListenersNow(), 1500)
 
 function openStats() {
   $('menu').hidden = true
-  for (const id of ['main', 'users', 'progs', 'ann']) $(id).hidden = true
+  for (const id of ['main', 'users', 'progs', 'ann', 'imp']) $(id).hidden = true
   $('stats').hidden = false
   loadStats()
 }
