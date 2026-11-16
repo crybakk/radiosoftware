@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { RadioDb } from '../core/db'
+import { sanitizeRestoredFile, type RadioDb } from '../core/db'
 import { backupDue, parsePonteHost, PonteClient, type PonteAlarm, type PonteBackup, type ListenerStats, type PonteProgram, type PonteState } from '../core/ponteClient'
 import { pickReplay } from '../core/eventActions'
 import type { PonteSettings, Track } from '../core/types'
@@ -41,6 +41,14 @@ export function applyPendingRestore(dataDir: string): string | null {
   const current = join(dataDir, 'radio.db')
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const kept = join(dataDir, `radio-prima-del-ripristino-${stamp}.db`)
+  // trigger e viste di un backup arrivato da fuori non devono mai girare nella regia
+  try {
+    sanitizeRestoredFile(pending)
+  } catch (e) {
+    // backup illeggibile: messo da parte, la regia riparte con il database di prima
+    renameSync(pending, `${pending}.rifiutato`)
+    throw e
+  }
   if (existsSync(current)) renameSync(current, kept)
   for (const ext of ['-wal', '-shm']) rmSync(current + ext, { force: true })
   renameSync(pending, current)

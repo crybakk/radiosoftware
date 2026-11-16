@@ -103,7 +103,15 @@ if (primary) app.whenReady().then(() => {
   }
   const db = new RadioDb(join(app.getPath('userData'), 'radio.db'))
   // un backup arriva dal server: gli eventi con un comando esterno ripartono spenti
-  const commandEventsOff = restoredFrom ? db.disableCommandEvents() : []
+  let commandEventsOff: string[] = []
+  try {
+    if (restoredFrom) commandEventsOff = db.disableCommandEvents()
+  } catch (e) {
+    // meglio non partire che lasciare accesi comandi arrivati con un backup
+    dialog.showErrorBox('Ripristino non sicuro', e instanceof Error ? e.message : String(e))
+    app.exit(1)
+    return
+  }
   db.closeDanglingLog(new Date())
   const library = new LibraryService(db, ffmpegPath())
   const rotation = new RotationService(db)
