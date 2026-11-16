@@ -17,6 +17,7 @@
  *
  * Pannello remoto (accesso con nome e password, sessione in un cookie):
  *   GET  /                pagine del pannello
+ *   GET  /guida, /guida/immagini/<nome>   guida d'uso con gli screenshot (dopo l'accesso)
  *   POST /api/login, POST /api/logout, GET /api/io
  *   GET/POST /api/utenti, DELETE /api/utenti/<nome>   (solo amministratori)
  *   WS   /ws/pannello     stato della regia e comandi, microfono, diretta autonoma, ospiti
@@ -62,6 +63,7 @@ import { PlayLog, type PlaySource } from './registro.ts'
 import { FpStore, parseFpFile, UnknownStore, type UnknownLabel } from './riconoscimento.ts'
 import { EsterneRecognition } from './esterne.ts'
 import { LabelBot, type Section } from './telegram.ts'
+import { findGuideDir, guideImageName, guidePage } from './guida.ts'
 import { AnnounceScheduler, AnnounceStore } from './annunciRadio.ts'
 import { programContext, Synth } from './sintesi.ts'
 import { activeSlot, Programs } from './programmi.ts'
@@ -93,6 +95,8 @@ const LISTEN_URL = env('ASCOLTO_URL') || (env('DOMINIO') ? `https://${env('DOMIN
 // di riavvio, che un servizio sul server (installato da installa-server.sh) controlla
 const impostazioni = new Impostazioni(env('IMPOSTAZIONI_FILE', '/impostazioni/.env'), env('IMPOSTAZIONI_RICHIESTE', '/richieste'))
 const PANEL_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'pannello')
+// guida d'uso (docs/GUIDA.md e immagini), aperta dal menu del pannello
+const GUIDE_DIR = findGuideDir(join(dirname(fileURLToPath(import.meta.url)), '..'), env('CARTELLA_GUIDA'))
 
 if (TOKEN.length < 16) {
   console.error('CONTROLLO_TOKEN mancante o troppo corto (almeno 16 caratteri): il servizio non parte.')
@@ -849,6 +853,33 @@ async function serveStatic(res: ServerResponse, path: string): Promise<boolean> 
   return true
 }
 
+/** Guida d'uso: solo per chi è entrato nel pannello (gli altri tornano alla pagina di accesso). */
+async function serveGuide(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+  if (!sessionUser(req)) {
+    res.writeHead(302, { Location: '/' })
+    return void res.end()
+  }
+  if (path === '/guida' || path === '/guida/') {
+    const html = await guidePage(GUIDE_DIR)
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'self'; img-src 'self'; frame-ancestors 'none'"
+    })
+    return void res.end(html)
+  }
+  const name = guideImageName(path)
+  const data = name && GUIDE_DIR ? await readFile(join(GUIDE_DIR, 'immagini', name)).catch(() => null) : null
+  if (!data) return json(res, 404, { error: 'non trovato' })
+  res.writeHead(200, {
+    'Content-Type': name!.endsWith('.png') ? 'image/png' : 'image/jpeg',
+    'Cache-Control': 'private, max-age=600',
+    'X-Content-Type-Options': 'nosniff'
+  })
+  res.end(data)
+}
+
 // ---------- backup ----------
 
 async function listBackups(): Promise<{ name: string; size: number; date: string }[]> {
@@ -898,6 +929,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
   try {
     const url = new URL(req.url ?? '/', 'http://x')
     if (url.pathname === '/health') return json(res, 200, { ok: true })
+    if (req.method === 'GET' && (url.pathname === '/guida' || url.pathname.startsWith('/guida/'))) return await serveGuide(req, res, url.pathname)
     if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
       if (await serveStatic(res, url.pathname)) return
       return json(res, 404, { error: 'non trovato' })
