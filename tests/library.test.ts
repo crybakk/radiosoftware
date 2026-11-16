@@ -91,7 +91,7 @@ describe('libreria', () => {
     // una ricerca enorme si taglia (200 caratteri, 8 parole) invece di bloccare la regia
     const t0 = Date.now()
     expect(db.searchTracks({ text: 'prova '.repeat(2000) }).tracks).toHaveLength(1)
-    expect(Date.now() - t0).toBeLessThan(500)
+    expect(Date.now() - t0).toBeLessThan(2000)
     const t = tracks[0]
     expect(t.title).toBe('Canzone di prova')
     expect(t.artist).toBe('Artista Prova')

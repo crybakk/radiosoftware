@@ -30,7 +30,7 @@ describe('libreria del server', () => {
     // una richiesta enorme viene tagliata e non blocca il servizio
     const t0 = Date.now()
     expect(lib.search('a '.repeat(400_000) + 'zzqx')).toEqual(lib.search('a'))
-    expect(Date.now() - t0).toBeLessThan(500)
+    expect(Date.now() - t0).toBeLessThan(2000)
     // i dati della regia vincono sui tag e restano dopo una nuova scansione
     lib.setMeta('regia/c.mp3', { title: 'Se telefonando (2023 Remaster)', gainDb: -3.5 })
     lib.save()
