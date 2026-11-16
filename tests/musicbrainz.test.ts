@@ -48,8 +48,29 @@ describe('MusicBrainz', () => {
       composer: 'Vasco Rossi, Alberto Rossi',
       publisher: 'EMI Music Publishing',
       isrc: 'ITA000000001',
-      iswc: 'T-000.000.001-0'
+      iswc: 'T-000.000.001-0',
+      genres: [],
+      year: null,
+      artistIds: []
     })
+  })
+
+  it('legge i generi più votati, l\'anno e gli artisti', () => {
+    const res = parseRecording({
+      id: 'rec',
+      'first-release-date': '1979-04',
+      genres: [
+        { name: 'Rock', count: 2 },
+        { name: 'pop rock', count: 5 },
+        { name: 'rock', count: 1 },
+        ...['a', 'b', 'c', 'd'].map((name) => ({ name, count: 0 }))
+      ],
+      'artist-credit': [{ name: 'Vasco Rossi', artist: { id: 'art-1', name: 'Vasco Rossi' } }]
+    })
+    expect(res.genres).toEqual(['pop rock', 'rock', 'a', 'b', 'c'])
+    expect(res.year).toBe(1979)
+    expect(res.artistIds).toEqual(['art-1'])
+    expect(lookupUrl('x')).toContain('genres+artist-credits')
   })
 
   it('una richiesta al secondo, nome del programma generico, riprova se occupato', async () => {

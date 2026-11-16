@@ -60,6 +60,7 @@ export function streamTrack(url: string, minutes: number, title: string): Track 
     publisher: '',
     isrc: '',
     iswc: '',
+    mbGenres: '',
     siaeCode: '',
     duration: seconds,
     bitrate: 0,
