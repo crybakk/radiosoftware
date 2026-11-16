@@ -91,6 +91,8 @@ export interface Settings {
   discogsToken: string
   /** Chiave API di Last.fm. */
   lastfmKey: string
+  /** Contatto (email o sito) da mandare a MusicBrainz nel nome del programma, come chiede MusicBrainz. */
+  mbContact: string
   /** Chiave dell'applicazione AcoustID. */
   acoustidKey: string
   /**
@@ -178,6 +180,7 @@ export const DEFAULT_SETTINGS: Settings = {
   aiDescription: '',
   discogsToken: '',
   lastfmKey: '',
+  mbContact: '',
   acoustidKey: '',
   playoutMode: 'manual'
 }

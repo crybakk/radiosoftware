@@ -241,6 +241,19 @@ export function SettingsView({ radio }: { radio: Radio }) {
           vuole una chiave personale: creala dal link, incollala qui e premi Salva. Poi avvia la ricerca dalla Libreria.
         </p>
         <div className="form-grid">
+          <label>
+            <span>
+              Contatto per MusicBrainz <em>· email o sito</em>
+            </span>
+            <input
+              type="text"
+              autoComplete="off"
+              value={draft.mbContact}
+              placeholder="per esempio la tua email"
+              onChange={(e) => setDraft({ ...draft, mbContact: e.target.value })}
+            />
+            <small className="hint">MusicBrainz chiede un contatto a chi usa il servizio: viene mandato solo a MusicBrainz.</small>
+          </label>
           {(
             [
               ['discogsToken', 'Token di Discogs', 'Generi e stili', 'https://www.discogs.com/settings/developers', 'Discogs → Impostazioni → Developers → Generate new token'],

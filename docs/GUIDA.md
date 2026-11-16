@@ -326,6 +326,7 @@ mancano ai brani di musica: **autori** (separati da virgola), **editore**, **ISW
 - Il **codice opera SIAE** non è su MusicBrainz: va scritto nella scheda brano.
 - **Riprova i brani non trovati** rimette in coda quelli ancora incompleti (utile dopo qualche mese).
 - **Mostra la musica con dati mancanti** elenca i brani senza autori, editore o codici: con **Scheda** li completi.
+- MusicBrainz chiede un contatto a chi usa il servizio: scrivi la tua email in **Impostazioni** → **Servizi per i dati dei brani** → **Contatto per MusicBrainz** e premi **Salva**. Viene mandata solo a MusicBrainz.
 
 ### Discogs, Last.fm e AcoustID
 
