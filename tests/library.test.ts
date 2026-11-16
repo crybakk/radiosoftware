@@ -88,6 +88,10 @@ describe('libreria', () => {
     expect(first.added).toBe(2)
     const { tracks } = db.searchTracks({ text: 'prova' })
     expect(tracks).toHaveLength(1)
+    // una ricerca enorme si taglia (200 caratteri, 8 parole) invece di bloccare la regia
+    const t0 = Date.now()
+    expect(db.searchTracks({ text: 'prova '.repeat(2000) }).tracks).toHaveLength(1)
+    expect(Date.now() - t0).toBeLessThan(2000)
     const t = tracks[0]
     expect(t.title).toBe('Canzone di prova')
     expect(t.artist).toBe('Artista Prova')
@@ -124,6 +128,9 @@ describe('database', () => {
     })
     db.updateTrack(id, { siaeCode: '00123', enabled: true })
     expect(db.getTrack(id)!.siaeCode).toBe('00123')
+    // chiavi strane da un messaggio IPC: ignorate, non finiscono nella query
+    db.updateTrack(id, JSON.parse('{"constructor":"x","toString":"y","title":"A"}'))
+    expect(db.getTrack(id)!.title).toBe('A')
     const base = {
       label: 'Sigla', time: '08:00', days: [1, 2], repeatMinutes: 0, untilTime: null, validFrom: null, validTo: null,
       mode: 'hard' as const, toleranceSeconds: 0, actions: [{ type: 'play' as const, trackId: id }], enabled: true
@@ -132,6 +139,12 @@ describe('database', () => {
     expect(() => db.saveEvent({ ...base, actions: [] })).toThrow()
     expect(() => db.saveEvent({ ...base, actions: [{ type: 'stream', url: 'ftp://x', minutes: 5, title: '' }] })).toThrow()
     db.saveEvent(base)
+    // dopo un ripristino gli eventi con un comando esterno si spengono, gli altri no
+    const cmdId = db.saveEvent({ ...base, label: 'Script', time: '09:00', actions: [{ type: 'command', command: 'echo x' }] })
+    expect(db.disableCommandEvents()).toEqual(['Script'])
+    expect(db.listEvents().find((e) => e.id === cmdId)!.enabled).toBe(false)
+    expect(db.listEvents().find((e) => e.id !== cmdId)!.enabled).toBe(true)
+    db.deleteEvent(cmdId)
     expect(db.listEvents()[0]).toMatchObject({ time: '08:00', days: [1, 2], mode: 'hard', actions: [{ type: 'play', trackId: id }] })
 
     const logId = db.logStart(db.getTrack(id)!, new Date('2026-11-16T10:00:00Z'))

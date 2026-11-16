@@ -43,6 +43,13 @@ function impField(v) {
         opt.value = o
         input.append(opt)
       }
+      // un valore scritto a mano nel file che non è tra le scelte: si mostra com'è, altrimenti salvando
+      // qualsiasi altra cosa partirebbe un valore vuoto (e il salvataggio verrebbe rifiutato)
+      if (!v.opzioni.includes(v.valore)) {
+        const opt = el('option', null, v.valore)
+        opt.value = v.valore
+        input.append(opt)
+      }
       input.value = v.valore
     } else {
       input = el('input')
@@ -176,9 +183,15 @@ function impTime(iso) {
 function drawImpState(st) {
   clearTimeout(impPoll)
   if (!st) return showImpStatus('')
-  const waiting = st.richiesta && (!st.esito || Date.parse(st.esito.quando) < Date.parse(st.richiesta))
-  if (waiting && st.servizioAssente) {
-    showImpStatus('Le impostazioni sono salvate ma il server non le ha ancora applicate: il servizio di riavvio non risponde. Rilancia una volta installa-server.sh sul server.', 'error')
+  // "inCorso" manca solo con un servizio di controllo vecchio (prima dell'aggiornamento)
+  const waiting = st.inCorso ?? (st.richiesta && (!st.esito || Date.parse(st.esito.quando) < Date.parse(st.richiesta)))
+  if ((waiting && st.servizioAssente) || st.senzaRisposta) {
+    showImpStatus(
+      st.senzaRisposta
+        ? 'Le impostazioni sono salvate ma il server non ha detto se le ha applicate: il riavvio si è bloccato o è finito con un errore. Controlla sul server con "journalctl -u radio-ponte-impostazioni".'
+        : 'Le impostazioni sono salvate ma il server non le ha ancora applicate: il servizio di riavvio non risponde. Rilancia una volta installa-server.sh sul server.',
+      'error'
+    )
     const again = button('Riprova', '', async () => {
       try {
         drawImpState((await api('/api/impostazioni/applica', { method: 'POST' })).stato)
@@ -195,7 +208,7 @@ function drawImpState(st) {
     showImpStatus('')
   }
   // mentre il server riparte il pannello può non rispondere per qualche secondo: si riprova
-  if (waiting && !$('imp').hidden) {
+  if (waiting && !st.senzaRisposta && !$('imp').hidden) {
     impPoll = setTimeout(async () => {
       try {
         drawImpState((await api('/api/impostazioni')).stato)

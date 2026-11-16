@@ -102,6 +102,8 @@ export async function scanLibrary(db: RadioDb, onProgress?: (p: ScanProgress) =>
   const seenPaths = new Set<string>()
   const unreadable: string[] = []
   const progress: ScanProgress = { folder: '', seen: 0, added: 0, updated: 0, errors: 0, disabled: 0, done: false }
+  // i brani aggiunti da altri durante la scansione (download dal server, playlist) non vanno disabilitati
+  const lastId = db.lastTrackId()
   for (const folder of folders) {
     progress.folder = folder.path
     const before = unreadable.length
@@ -111,11 +113,15 @@ export async function scanLibrary(db: RadioDb, onProgress?: (p: ScanProgress) =>
       try {
         const st = await stat(file)
         const prev = db.fileState(file)
-        if (prev && prev.size === st.size && Math.abs(prev.mtime - st.mtimeMs) < 1) {
+        const unchanged = prev && prev.size === st.size && Math.abs(prev.mtime - st.mtimeMs) < 1
+        const info = unchanged ? null : await readFileInfo(file, folder.kind)
+        // cartella tolta dalla libreria durante la scansione: i suoi brani restano disabilitati
+        if (!db.listFolders().some((f) => f.id === folder.id)) break
+        if (!info) {
           // non modificato: riabilitato se era sparito, tipo della cartella se non cambiato a mano
           db.refreshUnchanged(file, folder.kind)
         } else {
-          db.upsertScanned(await readFileInfo(file, folder.kind))
+          db.upsertScanned(info)
           if (prev) progress.updated++
           else progress.added++
         }
@@ -131,7 +137,8 @@ export async function scanLibrary(db: RadioDb, onProgress?: (p: ScanProgress) =>
   progress.disabled = db.disableMissing(
     seenPaths,
     folders.map((f) => resolve(f.path)),
-    unreadable
+    unreadable,
+    lastId
   )
   progress.done = true
   onProgress?.({ ...progress })

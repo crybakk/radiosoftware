@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -108,5 +108,82 @@ describe('impostazioni dal pannello', () => {
     expect(imp.stato().servizioAssente).toBe(true)
     imp.annullaRichiesta()
     expect(imp.stato().richiesta).toBeUndefined()
+  })
+
+  it('resta "in corso" finché non arriva l\'esito nuovo, anche dopo che il servizio ha tolto la richiesta', () => {
+    let t = Date.parse('2026-11-16T10:00:00Z')
+    const { imp, dir } = make(ESEMPIO, () => t)
+    // esito di un riavvio precedente, andato bene
+    writeFileSync(join(dir, 'esito.json'), JSON.stringify({ quando: '2026-11-16T09:00:00.123456+00:00', ok: true, messaggio: 'Impostazioni applicate' }))
+    imp.salva({ NOME_RADIO: 'Radio Nuova' }, { avanzate: false })
+    imp.applica()
+    expect(imp.stato().inCorso).toBe(true)
+    // il servizio sul server toglie subito la richiesta e lancia docker compose (che ci mette un po')
+    unlinkSync(join(dir, 'applica'))
+    t += 5000
+    expect(imp.stato()).toMatchObject({ inCorso: true, senzaRisposta: false })
+    // docker compose fallisce: l'esito nuovo è quello che conta
+    writeFileSync(join(dir, 'esito.json'), JSON.stringify({ quando: '2026-11-16T10:00:20.5+00:00', ok: false, messaggio: 'Errore: porta occupata' }))
+    t += 20_000
+    expect(imp.stato()).toMatchObject({ inCorso: false, senzaRisposta: false, esito: { ok: false } })
+  })
+
+  it('una richiesta arrivata mentre il server applicava la precedente resta in corso', () => {
+    let t = Date.parse('2026-11-16T10:00:00Z')
+    const { imp, dir } = make(ESEMPIO, () => t)
+    imp.applica()
+    unlinkSync(join(dir, 'applica'))
+    t += 2000
+    imp.applica()
+    // finisce il primo riavvio, dopo la seconda richiesta
+    writeFileSync(join(dir, 'esito.json'), JSON.stringify({ quando: '2026-11-16T10:00:05+00:00', ok: true, messaggio: 'Impostazioni applicate' }))
+    t += 5000
+    expect(imp.stato().inCorso).toBe(true)
+  })
+
+  it('dopo 10 minuti senza esito dice che il riavvio non ha risposto', () => {
+    let t = Date.parse('2026-11-16T10:00:00Z')
+    const { imp, dir } = make(ESEMPIO, () => t)
+    imp.applica()
+    unlinkSync(join(dir, 'applica'))
+    t += 11 * 60_000
+    expect(imp.stato()).toMatchObject({ inCorso: true, senzaRisposta: true, servizioAssente: false })
+  })
+
+  it('un valore vuoto nel file vale il predefinito (come in docker-compose.yml)', () => {
+    const { imp, env } = make('MICROFONO_REMOTO=\nICECAST_BITRATE=\nNOME_RADIO=Prova\n')
+    const v = imp.elenco()
+    expect(v.find((x) => x.chiave === 'MICROFONO_REMOTO')!.valore).toBe('si')
+    expect(v.find((x) => x.chiave === 'ICECAST_BITRATE')!.valore).toBe('128')
+    // il pannello rimanda il valore che mostra: non è un cambio
+    expect(imp.salva({ MICROFONO_REMOTO: 'si', ICECAST_BITRATE: '128' }, { avanzate: false }).cambiate).toEqual([])
+    expect(imp.salva({ MICROFONO_REMOTO: 'no' }, { avanzate: false }).cambiate).toEqual(['MICROFONO_REMOTO'])
+    expect(leggiEnv(env()).MICROFONO_REMOTO).toBe('no')
+  })
+})
+
+describe('file .env scritto a mano o con caratteri strani', () => {
+  it('valori tra virgolette seguiti da un commento', () => {
+    expect(leggiEnv("NOME_RADIO='Radio Pop' # il nome\nB=\"a \\\"b\\\" c\"   # commento\n")).toEqual({ NOME_RADIO: 'Radio Pop', B: 'a "b" c' })
+  })
+
+  it('rifiuta un valore che finisce con \\ (Docker Compose non leggerebbe più il file)', () => {
+    const { imp, env } = make()
+    const prima = env()
+    expect(() => imp.salva({ SMTP_PASSWORD: 'segreta\\' }, { avanzate: false })).toThrow(/finire/)
+    expect(env()).toBe(prima)
+    // in mezzo va bene
+    imp.salva({ SMTP_PASSWORD: 'a\\b c', NOME_RADIO: 'Radio Città ★ #1 $HOME "x"' }, { avanzate: false })
+    expect(leggiEnv(env())).toMatchObject({ SMTP_PASSWORD: 'a\\b c', NOME_RADIO: 'Radio Città ★ #1 $HOME "x"' })
+  })
+})
+
+describe('mount', () => {
+  it('accetta solo caratteri sicuri (il mount finisce anche nel Caddyfile)', async () => {
+    const { controlla } = await import('./impostazioni.ts')
+    const v = VOCI.find((x) => x.chiave === 'ICECAST_MOUNT')!
+    expect(controlla(v, '/radio.mp3')).toBe('/radio.mp3')
+    expect(() => controlla(v, '/radio{x}')).toThrow()
+    expect(() => controlla(v, '/a"b')).toThrow()
   })
 })

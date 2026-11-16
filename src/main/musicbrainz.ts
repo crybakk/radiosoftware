@@ -4,11 +4,11 @@
  * Parte solo quando lo chiedi (sono circa due richieste al secondo per brano e il 4G non è illimitato)
  * e si può fermare: riprende da dove era rimasta.
  */
-import type { RadioDb } from '../core/db'
+import type { MbTrack, RadioDb } from '../core/db'
 import { MbError, MusicBrainz, type MbResult } from '../core/musicbrainz'
-import type { Track } from '../core/types'
 import type { AcoustId } from '../core/acoustid'
-import { fingerprint } from './fpcalc'
+import { ServiceError } from '../core/webLimit'
+import { fingerprint, FpcalcMissing } from './fpcalc'
 
 export interface MbStatus {
   running: boolean
@@ -79,7 +79,8 @@ export class MusicBrainzService {
   async lookup(ids: number[]): Promise<void> {
     if (this.running) return // la ricerca completa li troverà (sono tornati in coda)
     for (const id of ids) {
-      const t = this.db.getTrack(id)
+      // con lo stato della ricerca: una registrazione già trovata si rilegge, non si cerca di nuovo per titolo
+      const t = this.db.mbTrack(id)
       if (!t) continue
       try {
         await this.one(t)
@@ -95,7 +96,7 @@ export class MusicBrainzService {
    * cercata senza trovarla non si ricerca; altrimenti ricerca completa. Se la registrazione non ha generi
    * si prendono quelli del primo artista (letti una volta sola per artista).
    */
-  private async one(t: Track & { recordingId?: string; checked?: boolean; acoustIdTried?: boolean }, signal?: AbortSignal): Promise<void> {
+  private async one(t: MbTrack, signal?: AbortSignal): Promise<void> {
     let r: MbResult | null = null
     if (t.recordingId) r = await this.mb.recording(t.recordingId, signal)
     else if (!t.checked) r = await this.mb.find(t, signal)
@@ -104,7 +105,9 @@ export class MusicBrainzService {
       let fp: { fingerprint: string; duration: number } | null = null
       try {
         fp = await fingerprint(this.acoustId!.fpcalc()!, t.path, signal)
-      } catch {
+      } catch (e) {
+        // ricerca fermata o fpcalc che non parte: il brano resta da provare
+        if (signal?.aborted || e instanceof FpcalcMissing) throw e
         // file illeggibile o mancante: non si riprova
       }
       const id = fp ? await this.acoustId!.client.recording(fp, signal) : null
@@ -148,8 +151,11 @@ export class MusicBrainzService {
           } catch (e) {
             if (ac.signal.aborted) break
             // rete assente o MusicBrainz in difficoltà: dopo 5 errori di fila ci si ferma
-            this.lastError = e instanceof MbError ? e.message : 'errore nella ricerca su MusicBrainz'
-            if (++failures >= 5) throw new MbError(this.lastError)
+            // (anche AcoustID e fpcalc: per esempio "AcoustID: chiave non valida")
+            this.lastError =
+              e instanceof MbError || e instanceof ServiceError || e instanceof FpcalcMissing ? e.message : 'errore nella ricerca su MusicBrainz'
+            // chiave sbagliata o fpcalc che non parte: inutile continuare
+            if (e instanceof FpcalcMissing || /chiave/.test(this.lastError) || ++failures >= 5) throw new MbError(this.lastError)
           }
           this.emit()
         }

@@ -57,3 +57,18 @@ describe('guida: Markdown', () => {
     expect(renderMarkdown('---')).toBe('<hr />')
   })
 })
+
+describe('guida: casi limite', () => {
+  it('riga rientrata dopo un sottoelenco: resta nella voce principale, dopo il sottoelenco', () => {
+    const md = '6. **Router**: inoltra\n    - TCP 80\n    - UDP 9020\n\n   Appena le porte arrivano, ok.\n7. Musica'
+    expect(renderMarkdown(md)).toBe(
+      '<ol start="6"><li><strong>Router</strong>: inoltra<ul><li>TCP 80</li><li>UDP 9020</li></ul><p>Appena le porte arrivano, ok.</p></li><li>Musica</li></ol>'
+    )
+  })
+
+  it('titoli con accenti scritti in forma scomposta (NFD, es. file salvato su Mac): il link trova lo stesso il titolo', () => {
+    const md = '## Perchè no\n\n[vai](#perchè-no)'
+    const id = headings(md)[0].id
+    expect(renderMarkdown(md)).toContain(`href="#${id}"`)
+  })
+})

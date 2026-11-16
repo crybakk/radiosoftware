@@ -96,6 +96,7 @@ const api: RadioApi = {
   ponteTestNotification: call('ponteTestNotification'),
   ponteRestore: call('ponteRestore'),
   restoredFrom: call('restoredFrom'),
+  restoredEventsOff: call('restoredEventsOff'),
   serverSyncStatus: call('serverSyncStatus'),
   serverSyncList: call('serverSyncList'),
   serverSyncChoice: call('serverSyncChoice'),

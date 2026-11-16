@@ -221,8 +221,20 @@ export class LabelBot {
     } else {
       msg = await this.call('sendMessage', { chat_id: this.d.chatId, text: `${caption}\n(audio non disponibile)`, reply_markup: keyboard })
     }
-    this.state.messages[String(msg.message_id)] = u.id
+    // il messaggio resta legato a quel brano preciso (numero + primo ascolto), non solo al numero
+    this.state.messages[String(msg.message_id)] = `${u.id}@${u.heard[0] ?? ''}`
     this.save()
+  }
+
+  /** Il brano a cui si riferisce un messaggio del bot, se esiste ancora ed è proprio quello. */
+  private target(messageId: number | undefined): string | undefined {
+    const mapped = messageId === undefined ? undefined : this.state.messages[String(messageId)]
+    if (!mapped) return undefined
+    const at = mapped.lastIndexOf('@')
+    const id = at < 0 ? mapped : mapped.slice(0, at)
+    const u = this.d.get(id)
+    if (!u || (at >= 0 && (u.heard[0] ?? '') !== mapped.slice(at + 1))) return undefined
+    return id
   }
 
   /** Gestisce un aggiornamento di Telegram. */
@@ -247,7 +259,9 @@ export class LabelBot {
         if (text !== null && cb.message) await this.edit(cb.message.message_id, text, this.sectionKeyboard(key))
         return
       }
-      const id = cb.data?.startsWith('scarta:') ? cb.data.slice(7) : ''
+      let id = cb.data?.startsWith('scarta:') ? cb.data.slice(7) : ''
+      // il pulsante vale solo per il brano del suo messaggio (un numero potrebbe essere stato riusato)
+      if (id && cb.message && this.state.messages[String(cb.message.message_id)] !== undefined && this.target(cb.message.message_id) !== id) id = ''
       let text = 'Già tolto'
       const u = id ? this.d.get(id) : undefined
       if (u?.label) {
@@ -274,9 +288,9 @@ export class LabelBot {
     if (!m || String(m.chat.id) !== String(this.d.chatId) || !m.text) return
     if (/^\/(start|menu)(@\w+)?\b/.test(m.text)) return void (await this.sendMenu().catch((e: unknown) => this.log(`menu non inviato: ${e instanceof Error ? e.message : String(e)}`)))
     if (/^\/sconosciuti(@\w+)?\b/.test(m.text)) return void (await this.sendPending(m.message_id))
-    const target = m.reply_to_message ? this.state.messages[String(m.reply_to_message.message_id)] : undefined
-    if (!target) return
-    if (!this.d.get(target)) return void (await this.reply('Questo brano non è più in archivio.', m.message_id))
+    if (!m.reply_to_message || this.state.messages[String(m.reply_to_message.message_id)] === undefined) return
+    const target = this.target(m.reply_to_message.message_id)
+    if (!target) return void (await this.reply('Questo brano non è più in archivio.', m.message_id))
     const label = parseLabel(m.text)
     if (!label) return void (await this.reply('Non ho capito: scrivi "Artista - Titolo" (con il trattino in mezzo).', m.message_id))
     try {

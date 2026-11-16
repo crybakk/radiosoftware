@@ -15,10 +15,18 @@ export function fpcalcPath(): string | null {
   return p && existsSync(p) ? p : null
 }
 
+/** fpcalc non si può avviare: va sistemato il programma, i brani non c'entrano. */
+export class FpcalcMissing extends Error {}
+
 export function fingerprint(bin: string, file: string, signal?: AbortSignal): Promise<{ fingerprint: string; duration: number }> {
   return new Promise((resolve, reject) => {
     execFile(bin, ['-json', '-length', '120', file], { timeout: 60_000, signal, windowsHide: true }, (err, stdout) => {
-      if (err) return reject(new Error(`impronta non calcolata: ${err.message}`))
+      if (err) {
+        // fpcalc non parte (mancante, bloccato dall'antivirus, senza permessi): non è colpa del brano
+        const code = (err as { code?: unknown }).code
+        if (typeof code === 'string' && code !== 'ABORT_ERR' && !code.startsWith('ERR_')) return reject(new FpcalcMissing(`fpcalc non si avvia (${code})`))
+        return reject(new Error(`impronta non calcolata: ${err.message}`))
+      }
       try {
         const j = JSON.parse(stdout) as { fingerprint?: string; duration?: number }
         if (!j.fingerprint) throw new Error('vuota')

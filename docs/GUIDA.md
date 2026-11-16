@@ -159,7 +159,8 @@ Durante l'esterna il server ascolta il programma e **riconosce i brani**, così 
   una notifica (al massimo una ogni mezz'ora). Nel pannello, riquadro **Brani sconosciuti delle esterne**, lo
   ascolti e scrivi titolo, interprete, autori ed editore: da quel momento viene riconosciuto da solo e i passaggi
   già sentiti vanno nel registro. Se era parlato o rumore, premi **Non è musica**. Per etichettare serve almeno il
-  ruolo conduttore.
+  ruolo conduttore. I segni `=`, `+`, `-` e `@` all'inizio di un campo vengono tolti, perché Excel li leggerebbe
+  come formule quando apri il registro.
 - Un brano sconosciuto entra nel registro solo dopo che lo hai etichettato.
 - Per spegnere il riconoscimento: pannello, menu **☰** → **Impostazioni server** → **Riconoscimento brani e
   puntate**.
@@ -295,6 +296,8 @@ i prossimi eventi e, se attivo, il profilo di rotazione in uso.
 ![Libreria](immagini/regia-libreria.png)
 
 1. **+ Aggiungi cartella**: prima scegli il tipo (Musica, Jingle, Notiziario, Programma, Spot), poi la cartella.
+   I collegamenti (scorciatoie, link simbolici, junction) dentro la cartella non vengono seguiti: aggiungi la
+   cartella vera.
 2. **Aggiorna libreria**: legge i file nuovi o cambiati (titolo, interprete, autori, editore, ISRC). Premilo ogni
    volta che aggiungi file nelle cartelle.
 
@@ -539,7 +542,9 @@ chiave salvata.
 - **Logo fisso**: carica un PNG o JPEG (ideale 1280×720) con **⬆ Carica il logo**;
 - **Video da OBS**: in OBS, Impostazioni → Stream: Servizio **Personalizzato**, Server
   `srt://<indirizzo della radio>:9020` (in casa basta l'IP del server), chiave vuota. Uscita: **x264**, al massimo
-  **1280×720**, fotogrammi chiave ogni **2 s**, 2500-4000 kbit/s. Il pannello mostra l'indirizzo esatto.
+  **1280×720**, fotogrammi chiave ogni **2 s**, 2500-4000 kbit/s. Il pannello mostra l'indirizzo esatto, con la
+  **frase segreta** (`passphrase`) se è impostata. L'installazione ne crea una; se manca, il pannello avvisa:
+  impostala in **Impostazioni server**, altrimenti chiunque raggiunga la porta potrebbe mandare il suo video.
 
 **Andare in onda:** scegli l'immagine, spunta **YouTube** e/o **Facebook** e premi **▶ Avvia diretta video** (con
 OBS, dopo, premi "Avvia trasmissione" in OBS). **■ Ferma diretta video** la chiude. L'audio è sempre quello della
@@ -596,7 +601,9 @@ eventi, registro e impostazioni. Il server tiene gli ultimi 14.
 
 - **Fai un backup adesso**: copia immediata, utile prima di grandi modifiche.
 - **Mostra i backup sul ponte** → **Ripristina** → **Sì, ripristina**: la regia si riavvia con il backup scelto. La
-  messa in onda si ferma per qualche secondo. Il database di prima resta in una copia a parte.
+  messa in onda si ferma per qualche secondo. Il database di prima resta in una copia a parte. Per sicurezza gli
+  eventi che lanciano un **comando esterno** ripartono spenti: la regia li elenca in alto, controllali e
+  riaccendili dalla scheda **Eventi**.
 
 ## 18. Installare la regia su Windows
 
@@ -703,7 +710,9 @@ Riconoscimento brani e puntate, Allarmi (Telegram ed email).
 
 - Cambia i valori e premi **Salva e applica**. Prima di salvare il pannello ti dice cosa riparte: se tocca l'audio
   (per esempio la password delle esterne) la radio resta muta per qualche secondo; se tocca solo il pannello (per
-  esempio Telegram o le email) l'audio non si ferma. In alto compare **✓ Impostazioni applicate**.
+  esempio Telegram o le email) l'audio non si ferma. Finché il server lavora compare **Applico le impostazioni…**,
+  poi **✓ Impostazioni applicate** oppure **✗ Errore** con il motivo. Nei valori non si possono usare apostrofi
+  e non si può finire con `\`.
 - **Password**: non si vedono. Lasciale vuote per tenere quelle di adesso; l'occhio 👁 mostra quello che stai
   scrivendo; **Cancella** la toglie.
 - **Avanzate** (dominio, porte, frase segreta SRT, token della regia, password di Icecast, mount dell'ascolto):
@@ -819,6 +828,7 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | In manuale la regia si ferma dopo ogni brano | è normale: premi **▶ PLAY**, oppure passa in AUTOMATICO |
 | "Ricerca fermata: MusicBrainz non raggiungibile" | niente internet o MusicBrainz in manutenzione: riprova più tardi, riparte da dove era |
 | "chiave non valida" (Discogs, Last.fm o AcoustID) | ricopia la chiave in **Impostazioni** → **Servizi per i dati dei brani** e **Salva** |
+| "Ricerca fermata: fpcalc non si avvia" | il programma per l'impronta audio è bloccato (spesso dall'antivirus): sbloccalo o reinstalla la regia; i brani restano da provare |
 | Il riquadro non dice "AcoustID attivo" | manca la chiave di AcoustID, oppure la regia è vecchia: aggiornala |
 | "modello non scaricato" (AI) | serve internet la prima volta: premi **Riprendi lo scaricamento** |
 | L'AI sbaglia giorni od orari | scrivili in modo esplicito ("dal lunedì al venerdì dalle 7 alle 10") e correggi nell'anteprima |
@@ -841,7 +851,7 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | Il pannello dice REGIA SCOLLEGATA | regia spenta o senza internet, oppure "Permetti di comandare la regia dal pannello remoto" spento |
 | Allarme Icecast secondario | dati sbagliati in **Impostazioni server** → **Icecast secondario**, oppure server esterno spento |
 | Le statistiche non contano il secondario | la pagina `status-json.xsl` del secondario è chiusa: metti utente e password di amministrazione in **Icecast secondario** |
-| Striscia rossa nelle Impostazioni server | manca il servizio che applica le impostazioni: rilancia `sudo bash installa-server.sh` |
+| Striscia rossa nelle Impostazioni server | "il servizio di riavvio non risponde": manca il servizio che applica le impostazioni, rilancia `sudo bash installa-server.sh`; "il server non ha detto se le ha applicate": il riavvio si è bloccato, guarda `journalctl -u radio-ponte-impostazioni` sul server |
 | "la libreria del server è vuota" | fai la prima copia ([sezione 22](#22-la-musica-sul-server)) o carica brani dal pannello |
 | "la selezione toglierebbe … brani dal server" | il disco della musica della regia non è collegato: ricollegalo e riprova |
 | La regia non invia brani al server | fuori dalle ore di invio, limite del giorno raggiunto, oppure "Invia da solo" spento |
@@ -893,3 +903,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 16/11/2026 | Discogs (generi e stili), Last.fm (etichette) e AcoustID (brani riconosciuti dall'audio): chiavi in Impostazioni, ricerca dalla Libreria |
 | 16/11/2026 | Impostazioni del server dal pannello (menu ☰ → Impostazioni server): tutti i valori del `.env`, riavvio automatico solo delle parti cambiate, valori avanzati protetti |
 | 16/11/2026 | Guida riscritta più semplice: prima le cose di tutti i giorni, poi l'installazione; screenshot con i numeri; dirette esterne passo passo (anche con BUTT); scheda **Guida** nella regia e **📖 Guida** nel menu del pannello |
+| 16/11/2026 | Controllo di sicurezza: ricerche lunghissime limitate, regia che non apre pagine esterne, eventi con comando esterno spenti dopo un ripristino, frase segreta per il video da OBS, etichette e registro protetti dalle formule di Excel |

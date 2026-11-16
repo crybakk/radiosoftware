@@ -50,8 +50,11 @@ export class AcoustId {
       duration: String(Math.round(fp.duration)),
       fingerprint: fp.fingerprint
     })}`
-    const r = await this.http.json<{ status?: string; results?: Result[]; error?: { code?: number; message?: string } }>(url, {}, signal)
+    // AcoustID risponde 400 con la spiegazione nel JSON, anche per la chiave sbagliata
+    const r = await this.http.json<{ status?: string; results?: Result[]; error?: { code?: number; message?: string } }>(url, {}, signal, true)
     if (r?.status === 'error') {
+      // 3 = impronta non valida, 8 = durata non valida: colpa del file, non riconosciuto (non si blocca la ricerca)
+      if (r.error?.code === 3 || r.error?.code === 8) return null
       // 4 = chiave dell'applicazione non valida
       throw new ServiceError(r.error?.code === 4 ? 'AcoustID: chiave non valida' : `AcoustID: ${r.error?.message ?? 'errore'}`)
     }

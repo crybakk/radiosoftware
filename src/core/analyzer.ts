@@ -93,7 +93,7 @@ export function analyzeFile(
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(
       ffmpegPath,
-      ['-hide_banner', '-nostdin', '-loglevel', 'verbose', '-i', file, '-vn', '-af', 'ebur128', '-f', 'null', '-'],
+      ['-hide_banner', '-nostdin', '-loglevel', 'verbose', '-protocol_whitelist', 'file', '-i', file, '-vn', '-af', 'ebur128', '-f', 'null', '-'],
       { windowsHide: true, signal, killSignal: 'SIGKILL' }
     )
     let stderr = ''

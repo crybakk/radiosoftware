@@ -49,7 +49,12 @@ export class PlayLog {
   constructor(file: string, now: () => number = () => Date.now()) {
     this.file = file
     this.now = now
-    this.prune()
+    // un registro non scrivibile non deve impedire al servizio di partire
+    try {
+      this.prune()
+    } catch (e) {
+      console.error(`registro dei brani: pulizia non riuscita (${(e as Error).message})`)
+    }
   }
 
   add(p: Omit<ServerPlay, 'at' | 'added'> & { at?: string }): ServerPlay {

@@ -9,6 +9,8 @@
  * non si manda nessun dato della radio o dell'utente.
  */
 
+import { sleepOrAbort } from './webLimit'
+
 const BASE = 'https://musicbrainz.org/ws/2'
 const USER_AGENT = 'RadioRegia/0.1'
 
@@ -89,7 +91,11 @@ export function topGenres(list: Genre[] | undefined): string[] {
   return out
 }
 
-/** Testo confrontabile: senza accenti, punteggiatura e parti tra parentesi ("(Remastered 2009)"). */
+/**
+ * Testo confrontabile: senza accenti, punteggiatura e parti tra parentesi ("(Remastered 2009)").
+ * "&", "e" e "and" tra due parole non contano: "Simon and Garfunkel" = "Simon & Garfunkel" e
+ * "Jovanotti, Fiorello" = "Jovanotti & Fiorello".
+ */
 export function simplify(s: string): string {
   return s
     .normalize('NFD')
@@ -99,6 +105,7 @@ export function simplify(s: string): string {
     .replace(/\b(feat|ft|featuring)\b.*$/, '')
     .replace(/&/g, ' e ')
     .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/ (?:(?:e|and) )+/g, ' ')
     .trim()
 }
 
@@ -212,7 +219,7 @@ export class MusicBrainz {
       const now = this.now()
       const at = Math.max(now, this.last + 1100)
       this.last = at
-      if (at > now) await this.sleep(at - now)
+      if (at > now) await sleepOrAbort(this.sleep, at - now, signal)
       let r: Response
       try {
         r = await this.fetchFn(url, {
@@ -225,7 +232,7 @@ export class MusicBrainz {
       }
       // troppe richieste o servizio occupato: si aspetta e si riprova
       if ((r.status === 503 || r.status === 429) && attempt < 3) {
-        await this.sleep(5000 * (attempt + 1))
+        await sleepOrAbort(this.sleep, 5000 * (attempt + 1), signal)
         continue
       }
       if (r.status === 404) return null as T

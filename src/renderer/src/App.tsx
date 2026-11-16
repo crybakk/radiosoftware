@@ -119,13 +119,21 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
 
 function RestoredBanner() {
   const [from, setFrom] = useState<string | null>(null)
+  const [off, setOff] = useState<string[]>([])
   useEffect(() => {
     void window.radio.restoredFrom().then(setFrom)
+    void window.radio.restoredEventsOff().then(setOff)
   }, [])
   if (!from) return null
   return (
     <div className="banner warn inline-banner">
       Backup ripristinato. Il database precedente è stato conservato in: {from}
+      {off.length > 0 && (
+        <>
+          {' '}
+          Per sicurezza sono stati spenti gli eventi con un comando esterno: {off.join(', ')}. Controllali e riaccendili dalla scheda Eventi.
+        </>
+      )}
       <button className="small" onClick={() => setFrom(null)}>
         Chiudi
       </button>

@@ -62,7 +62,9 @@ export function explainError(stderr: string): string {
   if (/Name or service not known|getaddrinfo|Failed to resolve/i.test(stderr)) return 'Indirizzo del ponte non trovato'
   if (/Connection was broken|Broken pipe|Connection reset/i.test(stderr)) return 'Collegamento interrotto'
   const last = stderr.trim().split(/\r?\n/).filter(Boolean).at(-1)
-  return last ? last.replace(/^\[[^\]]+\]\s*/, '').slice(0, 160) : 'Collegamento interrotto'
+  // l'indirizzo srt:// contiene la frase segreta: non deve finire nei messaggi o nel registro
+  const clean = last?.replace(/(passphrase|streamid)=[^&\s'"]*/gi, '$1=***')
+  return clean ? clean.replace(/^\[[^\]]+\]\s*/, '').slice(0, 160) : 'Collegamento interrotto'
 }
 
 /** Attesa prima del tentativo n (1, 2, 3…): 2, 4, 8, 16, 30, 30… secondi. */

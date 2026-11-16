@@ -186,8 +186,21 @@ async function resolveAll(names: string[]): Promise<string[]> {
   return [...out]
 }
 
+/**
+ * L'offerta del browser deve contenere solo audio, al massimo 4 tracce, e se ne ha più di una
+ * devono viaggiare insieme (BUNDLE): così ogni collegamento occupa una sola porta UDP e un
+ * ospite non può prendersi tutte le porte del microfono remoto.
+ */
+export function checkOffer(sdp: string): void {
+  if (sdp.length > 20_000) throw new Error('offerta audio troppo grande')
+  const media = sdp.match(/^m=\S+/gm) ?? []
+  if (!media.length || media.length > 4 || media.some((m) => m !== 'm=audio')) throw new Error('offerta audio non valida')
+  if (media.length > 1 && !/^a=group:BUNDLE /m.test(sdp)) throw new Error('offerta audio non valida')
+}
+
 export function weriftFactory(o: WeriftOptions): SessionFactory {
   return async (offerSdp, h, host) => {
+    checkOffer(offerSdp)
     const pc = new RTCPeerConnection({
       codecs: {
         audio: [

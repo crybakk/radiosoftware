@@ -82,7 +82,7 @@ export class PonteService {
     this.remote = new RemoteLink(
       async (cmd, by) => {
         // la ricerca la fa direttamente il database, il resto lo esegue il motore di messa in onda
-        if (cmd.type === 'search') return this.db.searchTracks({ text: String(cmd.q ?? ''), limit: 50 }).tracks.map(remoteTrack)
+        if (cmd.type === 'search') return this.db.searchTracks({ text: String(cmd.q ?? '').slice(0, 200), limit: 50 }).tracks.map(remoteTrack)
         return this.runInUi(cmd, by)
       },
       () => this.emit()

@@ -64,6 +64,8 @@ if [[ ! -f .env ]]; then
   imposta() { sed -i "s|^$1=.*|$1=$2|" .env; }
   imposta DOMINIO "$DOMINIO"
   imposta SRT_PASSPHRASE "$(openssl rand -hex 16)"
+  # anche l'ingresso video da OBS ha la sua frase segreta: senza, chiunque potrebbe mandare il video
+  imposta VIDEO_OBS_PASSPHRASE "$(openssl rand -hex 16)"
   imposta CONTROLLO_TOKEN "$(openssl rand -hex 24)"
   imposta ESTERNA_PASSWORD "$(openssl rand -hex 8)"
   imposta ICECAST_PASSWORD_SORGENTE "$(openssl rand -hex 12)"
