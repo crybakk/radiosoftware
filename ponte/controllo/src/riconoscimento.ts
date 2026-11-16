@@ -100,6 +100,14 @@ export function parseFpFile(b: Uint8Array): { meta: FpMeta; fp: Uint32Array } {
 
 // ---------- brani sconosciuti ----------
 
+/**
+ * Campo di un'etichetta scritta a mano (Telegram, pannello): senza = + - @ all'inizio, che
+ * Excel leggerebbe come formula quando si apre un registro esportato.
+ */
+export function cleanLabelField(s: unknown): string {
+  return String(s ?? '').trim().replace(/^[=+\-@\s]+/, '').trim()
+}
+
 export interface UnknownLabel {
   title: string
   artist: string
@@ -127,6 +135,13 @@ export class UnknownStore {
     this.dir = dir
     this.index = index
     mkdirSync(dir, { recursive: true })
+    // contatore salvato: un numero scartato non torna a un brano nuovo dopo un riavvio
+    // (vecchi messaggi Telegram o pannelli aperti agirebbero sul brano sbagliato)
+    try {
+      this.next = Math.max(1, Math.floor(Number(readFileSync(join(dir, 'prossimo'), 'utf8'))) || 1)
+    } catch {
+      // primo avvio o file mancante: si riparte dai file presenti
+    }
     for (const f of readdirSync(dir)) {
       const m = /^(\d+)\.json$/.exec(f)
       if (!m) continue
@@ -171,6 +186,7 @@ export class UnknownStore {
   /** Nuovo sconosciuto; clip = file MP3 già scritto in clipTmp (o null). */
   add(at: string, seconds: number, fp: Uint32Array, clipTmp: string | null): Unknown {
     const n = String(this.next++)
+    writeFileSync(join(this.dir, 'prossimo'), String(this.next))
     const u: Unknown = { id: `sconosciuto/${n}`, heard: [at], seconds: Math.round(seconds), label: null }
     writeFileSync(join(this.dir, `${n}.fp`), fpToBytes(fp))
     if (clipTmp && existsSync(clipTmp)) renameSync(clipTmp, join(this.dir, `${n}.mp3`))
@@ -190,13 +206,14 @@ export class UnknownStore {
   setLabel(id: string, label: UnknownLabel): Unknown {
     const u = this.items.get(id)
     if (!u) throw new Error('brano sconosciuto non trovato')
-    if (!label.title.trim() || !label.artist.trim()) throw new Error('servono almeno titolo e interprete')
-    u.label = {
-      title: label.title.trim().slice(0, 300),
-      artist: label.artist.trim().slice(0, 300),
-      composer: label.composer.trim().slice(0, 500),
-      publisher: label.publisher.trim().slice(0, 300)
+    const l = {
+      title: cleanLabelField(label.title).slice(0, 300),
+      artist: cleanLabelField(label.artist).slice(0, 300),
+      composer: cleanLabelField(label.composer).slice(0, 500),
+      publisher: cleanLabelField(label.publisher).slice(0, 300)
     }
+    if (!l.title || !l.artist) throw new Error('servono almeno titolo e interprete')
+    u.label = l
     this.save(u)
     const n = this.num(id)!
     this.index.put({ id, title: u.label.title, artist: u.label.artist, fp: fpFromBytes(new Uint8Array(readFileSync(join(this.dir, `${n}.fp`)))) })

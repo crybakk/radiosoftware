@@ -7,7 +7,7 @@ import ffmpegStatic from 'ffmpeg-static'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { analyzeFile } from '../src/core/analyzer'
 import { RadioDb } from '../src/core/db'
-import { scanLibrary } from '../src/core/scanner'
+import { readFileInfo, scanLibrary } from '../src/core/scanner'
 import { LibraryService } from '../src/main/library'
 
 const ffmpeg = ffmpegStatic as unknown as string
@@ -20,13 +20,16 @@ function mp3(path: string, extra: string[] = [], seconds = 3): void {
 }
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'radio-scan-'))
-  for (const d of ['musica', 'natale', 'natale2', 'nas', join('nas', 'sotto')]) mkdirSync(join(dir, d))
+  for (const d of ['musica', 'natale', 'natale2', 'nas', join('nas', 'sotto'), 'scarico', 'fuori']) mkdirSync(join(dir, d))
   mp3(join(dir, 'musica', "L'amore # 100% è?.mp3"), ['-metadata', 'title=CITTÀ VUOTA', '-metadata', 'artist=Mina'])
   mp3(join(dir, 'musica', 'b.mp3'), ['-metadata', 'title=Originale'])
   mp3(join(dir, 'natale', 'jingle bells.mp3'))
   mp3(join(dir, 'natale2', 'altro.mp3'))
   mp3(join(dir, 'nas', 'n1.mp3'))
   mp3(join(dir, 'nas', 'sotto', 'n2.mp3'))
+  mp3(join(dir, 'scarico', 's1.mp3'))
+  mp3(join(dir, 'scarico', 's2.mp3'))
+  mp3(join(dir, 'fuori', 'nuovo.mp3'))
   writeFileSync(join(dir, 'musica', 'vuoto.mp3'), '')
   writeFileSync(join(dir, 'musica', 'finto.mp3'), 'questo non è audio '.repeat(100))
 })
@@ -113,6 +116,51 @@ describe('scansione della libreria', () => {
     expect(p.errors).toBe(2)
     expect(db.findByPath(join(dir, 'musica', 'vuoto.mp3'))).toBeNull()
     expect(db.findByPath(join(dir, 'musica', 'finto.mp3'))).toBeNull()
+    db.close()
+  })
+
+  it('un brano aggiunto alla libreria durante la scansione (scaricato dal server) non viene disabilitato', async () => {
+    const db = new RadioDb(':memory:')
+    db.addFolder(join(dir, 'scarico'), 'music')
+    const target = join(dir, 'scarico', 'nuovo.mp3')
+    const info = await readFileInfo(join(dir, 'fuori', 'nuovo.mp3'), 'music')
+    const fileState = db.fileState.bind(db)
+    let first = true
+    // la cartella è già stata letta: il file arriva "dopo", come un download di serverSync
+    db.fileState = (p) => {
+      if (first) {
+        first = false
+        renameSync(join(dir, 'fuori', 'nuovo.mp3'), target)
+        db.upsertScanned({ ...info, path: target })
+      }
+      return fileState(p)
+    }
+    try {
+      const p = await scanLibrary(db)
+      expect(p.disabled).toBe(0)
+      expect(db.findByPath(target)!.enabled).toBe(true)
+    } finally {
+      renameSync(target, join(dir, 'fuori', 'nuovo.mp3'))
+    }
+    db.close()
+  })
+
+  it('una cartella tolta durante la scansione non torna in rotazione', async () => {
+    const db = new RadioDb(':memory:')
+    db.addFolder(join(dir, 'scarico'), 'music')
+    await scanLibrary(db)
+    const folder = db.listFolders()[0]
+    const fileState = db.fileState.bind(db)
+    let first = true
+    db.fileState = (p) => {
+      if (first) {
+        first = false
+        db.removeFolder(folder.id)
+      }
+      return fileState(p)
+    }
+    await scanLibrary(db)
+    expect(db.rotationCandidates('music')).toHaveLength(0)
     db.close()
   })
 

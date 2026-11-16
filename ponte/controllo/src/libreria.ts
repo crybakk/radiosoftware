@@ -171,7 +171,9 @@ export class Library {
   }
 
   search(q: string, limit = 50): ServerTrack[] {
-    const words = norm(q).split(/\s+/).filter(Boolean)
+    // ricerca limitata: una richiesta enorme (anche da un utente di sola lettura) non deve
+    // bloccare il servizio per secondi. Bastano 200 caratteri e 8 parole diverse.
+    const words = [...new Set(norm(String(q).slice(0, 200)).split(/\s+/).filter(Boolean))].slice(0, 8)
     const out: ServerTrack[] = []
     for (const t of this.tracks.values()) {
       const hay = norm(`${t.artist} ${t.title}`)

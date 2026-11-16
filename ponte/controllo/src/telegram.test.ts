@@ -115,6 +115,17 @@ describe('bot Telegram', () => {
     expect(b.labelled[0]?.id).toBe('sconosciuto/1')
   })
 
+  it('un vecchio messaggio non agisce su un brano nuovo con lo stesso numero', async () => {
+    const { bot, labelled, discarded, calls } = setup()
+    // il messaggio 101 era per un brano sentito in un altro momento
+    await bot.sendUnknown({ id: 'sconosciuto/1', heard: ['2026-11-10T08:00:00Z'], seconds: 200, label: null })
+    await bot.handle(msg('X - Y', { reply_to_message: { message_id: 101 } }))
+    expect(labelled).toEqual([])
+    expect(calls.at(-1)!.body.text).toBe('Questo brano non è più in archivio.')
+    await bot.handle({ update_id: 3, callback_query: { id: 'cb', from: { first_name: 'Anna' }, data: 'scarta:sconosciuto/1', message: { message_id: 101, chat: { id: -100 } } } })
+    expect(discarded).toEqual([])
+  })
+
   it('"Non è musica" toglie il brano', async () => {
     const { bot, calls, discarded } = setup()
     await bot.handle(press('scarta:sconosciuto/1'))

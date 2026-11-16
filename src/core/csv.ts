@@ -6,6 +6,15 @@ export function csvField(v: string | number | null | undefined): string {
   return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
+/**
+ * Campo di testo del registro: se inizia con = + - @ (o tab/a capo) Excel lo leggerebbe come
+ * formula, quindi davanti si mette un apostrofo. Non si usa per il CSV della SIAE, che resta com'è.
+ */
+export function csvText(v: string | number | null | undefined): string {
+  const s = v == null ? '' : String(v)
+  return csvField(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s)
+}
+
 function pad(n: number): string {
   return String(n).padStart(2, '0')
 }
@@ -36,7 +45,7 @@ export function logToCsv(entries: LogEntry[]): string {
       e.siaeCode,
       e.source
     ]
-      .map(csvField)
+      .map(csvText)
       .join(';')
   })
   return '﻿' + [header.join(';'), ...rows].join('\r\n') + '\r\n'

@@ -6,3 +6,4 @@ Requires=docker.service
 [Service]
 Type=oneshot
 ExecStart=/opt/radio-ponte/sistema/applica-impostazioni.sh
+TimeoutStartSec=15min

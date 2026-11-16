@@ -27,7 +27,7 @@ export function slugify(text: string): string {
   return text
     .toLowerCase()
     .replace(/[*`_]/g, '')
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/[^\p{L}\p{M}\p{N}\s-]/gu, '')
     .trim()
     .replace(/\s/g, '-')
 }
@@ -91,6 +91,8 @@ interface Item {
   ordered: boolean
   start: number
   text: string
+  /** testo che continua la voce dopo il suo sottoelenco */
+  tail?: string
 }
 
 function renderList(items: Item[], opts: RenderOptions): string {
@@ -106,7 +108,8 @@ function renderList(items: Item[], opts: RenderOptions): string {
       // figli: le voci successive più rientrate
       const kids: Item[] = []
       while (i < items.length && items[i].indent > first.indent) kids.push(items[i++])
-      out += `<li>${renderInline(it.text, opts)}${kids.length ? renderList(kids, opts) : ''}</li>`
+      const tail = it.tail ? `<p>${renderInline(it.tail, opts)}</p>` : ''
+      out += `<li>${renderInline(it.text, opts)}${kids.length ? renderList(kids, opts) : ''}${tail}</li>`
     }
     // una voce di tipo diverso (o meno rientrata) apre un nuovo elenco
     out += ordered ? '</ol>' : '</ul>'
@@ -199,7 +202,12 @@ export function renderMarkdown(md: string, opts: RenderOptions = {}): string {
         }
         // riga che continua la voce precedente (rientrata), senza riga vuota in mezzo
         if (l.trim() && /^\s+/.test(l) && items.length) {
-          items[items.length - 1].text += ' ' + l.trim()
+          // va alla voce più vicina meno rientrata della riga (non sempre all'ultima voce di un sottoelenco)
+          const ind = /^\s*/.exec(l)![0].replace(/\t/g, '    ').length
+          const last = items[items.length - 1]
+          const target = [...items].reverse().find((x) => x.indent < ind) ?? last
+          if (target === last) last.text += ' ' + l.trim()
+          else target.tail = (target.tail ? target.tail + ' ' : '') + l.trim()
           i++
           continue
         }

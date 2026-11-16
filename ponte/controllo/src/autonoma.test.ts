@@ -27,6 +27,10 @@ describe('libreria del server', () => {
     expect(a.duration).toBeGreaterThan(69)
     expect(lib.get('Nomade - Io vagabondo.mp3')).toMatchObject({ artist: 'Nomade', title: 'Io vagabondo' })
     expect(lib.search('vasco ALBA').map((t) => t.id)).toEqual(['regia/Rock/a.mp3'])
+    // una richiesta enorme viene tagliata e non blocca il servizio
+    const t0 = Date.now()
+    expect(lib.search('a '.repeat(400_000) + 'zzqx')).toEqual(lib.search('a'))
+    expect(Date.now() - t0).toBeLessThan(500)
     // i dati della regia vincono sui tag e restano dopo una nuova scansione
     lib.setMeta('regia/c.mp3', { title: 'Se telefonando (2023 Remaster)', gainDb: -3.5 })
     lib.save()

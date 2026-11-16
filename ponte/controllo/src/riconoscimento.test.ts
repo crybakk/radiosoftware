@@ -139,6 +139,10 @@ describe('riconoscimento nelle esterne', () => {
     expect(unk2.get(u.id)?.label?.title).toBe('Nuovo')
     unk2.discard(u.id)
     expect(unk2.list()).toHaveLength(0)
+    // dopo un riavvio il numero scartato non torna a un brano nuovo
+    const unk3 = new UnknownStore(join(dir, 'sconosciuti'), again.index)
+    const nuovo = unk3.add('2026-11-15T21:00:00Z', 30, fingerprint(song(778, 30), LIBRARY_HOP), null)
+    expect(nuovo.id).not.toBe(u.id)
   })
 })
 

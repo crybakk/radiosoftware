@@ -174,3 +174,36 @@ cristian ha chiesto di sistemare tutto: i punti "da decidere" sono stati risolti
 - **Ruolo ospite del pannello:** vede ancora l'elenco degli ospiti e le clip dei brani sconosciuti.
 - **Guasto della voce sintetica o del modello AI:** può ancora far cadere il server o la regia. Per evitarlo bisognerebbe farli girare in un processo separato, che è un lavoro più grande.
 - **Annunci delle 2 di notte:** il giorno del passaggio all'ora legale non partono.
+
+# Controllo di sicurezza e caccia ai bug, giro 1 – 16/11/2026
+
+Il controllo di sicurezza ha seguito il metodo di Cloudflare (security-audit-skill): 22 aree del codice divise tra agenti indipendenti, ogni punto trovato riverificato da un altro agente, prove solo in locale in un ambiente chiuso (nessun contatto col server vero). Nessun punto critico o grave.
+
+## Sicurezza: corretti
+
+| Gravità | Problema | Correzione |
+|---|---|---|
+| Media | Un utente del pannello anche solo "ospite" poteva bloccare il server per secondi con una ricerca lunghissima nella libreria della diretta autonoma. | Ricerca limitata a 200 caratteri e 8 parole. |
+| Media | Lo stesso trucco, con il comando di ricerca remoto, bloccava la regia per circa 17 secondi a messaggio. | Stesso limite in regia. |
+| Bassa | Dopo un riavvio del server un brano sconosciuto nuovo poteva prendere il numero di uno scartato: una vecchia risposta su Telegram etichettava il brano sbagliato. | Numeri mai riusati; il bot controlla che il messaggio sia proprio di quel brano. |
+| Bassa | Un ospite ammesso poteva occupare tutte le porte audio con un'offerta WebRTC esagerata (microfono remoto e altri ospiti bloccati). | Offerte con solo audio e al massimo 4 flussi. |
+| Bassa | Etichette che iniziano con `=` diventavano formule di Excel nel registro esportato. | Come hai scelto: `= + - @` iniziali tolti dalle etichette scritte a mano e registro protetto; il CSV SIAE resta identico. |
+
+## Sicurezza: punti da verificare sul posto, già chiusi in via preventiva
+
+- **Regia:** la finestra non apre più pagine esterne (per esempio un file trascinato) e i comandi interni accettano richieste solo dalla regia stessa. Così nessuna pagina estranea può lanciare un "comando esterno".
+- **Ripristino dal server:** come hai scelto, gli eventi con un comando esterno ripartono spenti e la regia li elenca.
+- **Video da OBS:** l'installazione crea la frase segreta; se manca, il pannello avvisa.
+- **Impostazioni dal pannello:** il servizio del server che le applica rifiuta variabili `COMPOSE_`/`DOCKER_` nel `.env` e non segue collegamenti nella cartella delle richieste; ha un tempo massimo di 15 minuti.
+- **Rafforzamenti:** ffmpeg legge solo file locali quando analizza brani e logo; la frase segreta SRT non compare negli errori; un registro non scrivibile non blocca l'avvio del server; i mount accettano solo caratteri sicuri.
+
+## Bug corretti (16)
+
+- **Impostazioni del server:** il pannello mostrava "applicato" mentre il server lavorava ancora (o aveva fallito) e poteva aspettare per sempre; un valore vuoto nel file spegneva di nascosto il microfono remoto al primo salvataggio; valori tra virgolette con un commento; una password che finisce con `\` rompeva tutto il `.env`; una scelta scritta a mano non in elenco rendeva impossibile salvare.
+- **MusicBrainz, AcoustID, Discogs, Last.fm:** una chiave AcoustID sbagliata bloccava la ricerca senza dire perché; file rovinati riprovati all'infinito; fpcalc che non parte segnava tutti i brani come già provati; "Ferma" lento o che segnava il brano come provato; "Simon and Garfunkel" non trovava "Simon & Garfunkel"; un brano riscaricato dal server perdeva il collegamento a MusicBrainz.
+- **Guida:** una riga dei passi di installazione finiva sotto la voce sbagliata; collegamenti ai titoli con accenti fragili.
+- **Libreria:** un brano scaricato dal server durante "Aggiorna libreria" veniva tolto dalla rotazione; una cartella tolta durante l'aggiornamento tornava in rotazione; regia: chiavi strane in un messaggio di modifica brano davano errore.
+
+## Rimandato al giro 2
+
+Sette aree non sono state coperte per limite di budget e passano al giro 2: servizi esterni dei brani (lato rete), statistiche degli ascoltatori, scansione delle cartelle, tagli delle puntate e indirizzo delle esterne, download dei notiziari, e un secondo passaggio su limiti del server e voce/WebRTC.

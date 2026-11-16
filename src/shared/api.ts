@@ -125,6 +125,8 @@ export interface RadioApi {
   ponteRestore(name: string): Promise<void>
   /** Se all'avvio è stato ripristinato un backup: dove è stata messa la versione precedente. */
   restoredFrom(): Promise<string | null>
+  /** Eventi con un comando esterno spenti dopo il ripristino. */
+  restoredEventsOff(): Promise<string[]>
   onPonteStatus(cb: (s: PonteStatus) => void): () => void
   // libreria del server (diretta autonoma)
   serverSyncStatus(): Promise<ServerSyncStatus>

@@ -7,6 +7,23 @@ export type Fetch = (url: string, init: RequestInit) => Promise<Response>
 
 export class ServiceError extends Error {}
 
+/** Attesa che si interrompe subito se si preme "Ferma" (altrimenti dopo un 503 si resta fermi fino a 15 secondi). */
+export async function sleepOrAbort(sleep: (ms: number) => Promise<void>, ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return sleep(ms)
+  signal.throwIfAborted()
+  let off = (): void => {}
+  const stopped = new Promise<never>((_, reject) => {
+    const f = (): void => reject(signal.reason)
+    signal.addEventListener('abort', f, { once: true })
+    off = () => signal.removeEventListener('abort', f)
+  })
+  try {
+    await Promise.race([sleep(ms), stopped])
+  } finally {
+    off()
+  }
+}
+
 export class Throttled {
   private last = 0
   private readonly fetchFn: Fetch
@@ -23,13 +40,16 @@ export class Throttled {
     this.now = opts.now ?? (() => Date.now())
   }
 
-  /** JSON della risposta; null se 404. */
-  async json<T>(url: string, headers: Record<string, string>, signal?: AbortSignal): Promise<T | null> {
+  /**
+   * JSON della risposta; null se 404. errorJson: il servizio spiega l'errore nel JSON di una risposta 400
+   * (AcoustID fa così anche per la chiave sbagliata), che allora si restituisce.
+   */
+  async json<T>(url: string, headers: Record<string, string>, signal?: AbortSignal, errorJson = false): Promise<T | null> {
     for (let attempt = 0; ; attempt++) {
       const now = this.now()
       const at = Math.max(now, this.last + this.gapMs)
       this.last = at
-      if (at > now) await this.sleep(at - now)
+      if (at > now) await sleepOrAbort(this.sleep, at - now, signal)
       let r: Response
       try {
         r = await this.fetchFn(url, {
@@ -41,10 +61,14 @@ export class Throttled {
         throw new ServiceError(`${this.name} non raggiungibile`)
       }
       if ((r.status === 429 || r.status === 503 || r.status === 502) && attempt < 3) {
-        await this.sleep(5000 * (attempt + 1))
+        await sleepOrAbort(this.sleep, 5000 * (attempt + 1), signal)
         continue
       }
       if (r.status === 404) return null
+      if (r.status === 400 && errorJson) {
+        const body = (await r.json().catch(() => null)) as T | null
+        if (body) return body
+      }
       if (r.status === 401 || r.status === 403) throw new ServiceError(`${this.name}: chiave non valida o non autorizzata`)
       if (!r.ok) throw new ServiceError(`${this.name} ha risposto con l'errore ${r.status}`)
       return (await r.json()) as T

@@ -112,6 +112,17 @@ const MB_PENDING = `kind = 'music' AND enabled = 1 AND ((${MB_TODO} AND mb_check
 /** Musica cercata per titolo senza trovarla e mai provata con AcoustID (dall'audio). */
 const MB_ACOUSTID = "kind = 'music' AND enabled = 1 AND mb_checked_at IS NOT NULL AND mb_recording_id = '' AND acoustid_at IS NULL"
 
+export type MbTrack = Track & { recordingId: string; checked: boolean; acoustIdTried: boolean }
+
+function rowToMbTrack(r: Row): MbTrack {
+  return {
+    ...rowToTrack(r),
+    recordingId: String(r.mb_recording_id),
+    checked: r.mb_checked_at != null,
+    acoustIdTried: r.acoustid_at != null
+  }
+}
+
 function rowToTrack(r: Row): Track {
   return {
     id: Number(r.id),
@@ -406,6 +417,12 @@ export class RadioDb {
 
   // ---------- brani ----------
 
+  /** Id più alto tra i brani (0 se la libreria è vuota). */
+  lastTrackId(): number {
+    const r = this.db.prepare('SELECT MAX(id) AS n FROM tracks').get() as Row
+    return Number(r.n ?? 0)
+  }
+
   /** Stato del file già in libreria, per saltare i file non modificati. */
   fileState(path: string): { size: number; mtime: number } | null {
     const r = this.db.prepare('SELECT file_size, file_mtime FROM tracks WHERE path = ?').get(path) as Row | undefined
@@ -496,10 +513,11 @@ export class RadioDb {
 
   /**
    * Segna come disabilitati i brani i cui file non esistono più.
-   * I brani sotto `unreadableDirs` (cartelle che non si sono potute leggere, per esempio un NAS spento) restano come sono.
+   * I brani sotto `unreadableDirs` (cartelle che non si sono potute leggere, per esempio un NAS spento) restano come sono,
+   * e così quelli con id oltre `maxId` (aggiunti dopo l'inizio della scansione).
    */
-  disableMissing(existingPaths: Set<string>, folderPrefixes: string[], unreadableDirs: string[] = []): number {
-    const rows = this.db.prepare('SELECT id, path FROM tracks WHERE enabled = 1').all() as Row[]
+  disableMissing(existingPaths: Set<string>, folderPrefixes: string[], unreadableDirs: string[] = [], maxId = Number.MAX_SAFE_INTEGER): number {
+    const rows = this.db.prepare('SELECT id, path FROM tracks WHERE enabled = 1 AND id <= ?').all(maxId) as Row[]
     const stmt = this.db.prepare('UPDATE tracks SET enabled = 0, missing = 1 WHERE id = ?')
     let n = 0
     for (const r of rows) {
@@ -555,12 +573,12 @@ export class RadioDb {
     const before = this.getTrack(id)
     let manual = 0
     for (const [k, v] of Object.entries(edit) as [keyof TrackEdit, unknown][]) {
-      const col = EDIT_COLUMNS[k]
+      const col = Object.hasOwn(EDIT_COLUMNS, k) ? EDIT_COLUMNS[k] : undefined
       if (!col || v === undefined) continue
       sets.push(`${col} = ?`)
       values.push(typeof v === 'boolean' ? (v ? 1 : 0) : (v as string | number | null))
       // segnato come corretto a mano solo se il valore cambia davvero
-      const bit = (MANUAL_BITS as Partial<Record<keyof TrackEdit, number>>)[k]
+      const bit = Object.hasOwn(MANUAL_BITS, k) ? (MANUAL_BITS as Partial<Record<keyof TrackEdit, number>>)[k] : undefined
       if (bit && before && before[k] !== v) manual |= bit
     }
     if (manual) {
@@ -585,7 +603,9 @@ export class RadioDb {
       where.push('kind = ?')
       params.push(q.kind)
     }
-    const words = (q.text ?? '').trim().split(/\s+/).filter(Boolean)
+    // al massimo 200 caratteri e 8 parole diverse: una ricerca enorme (anche dal pannello remoto)
+    // non deve bloccare la regia per secondi
+    const words = [...new Set(String(q.text ?? '').slice(0, 200).trim().split(/\s+/).filter(Boolean))].slice(0, 8)
     for (const w of words) {
       // le parole non contengono spazi, quindi non possono "scavalcare" il separatore tra i campi
       where.push("minuscolo(title || ' ' || artist || ' ' || album) LIKE ? ESCAPE '\\'")
@@ -667,6 +687,18 @@ export class RadioDb {
         enabled: Number(r.enabled) === 1
       }
     })
+  }
+
+  /**
+   * Dopo un ripristino dal server: spegne gli eventi che lanciano un comando esterno, perché un
+   * backup arriva da fuori e non deve poter far eseguire programmi sul PC. Si riaccendono a mano.
+   * Restituisce i nomi degli eventi spenti.
+   */
+  disableCommandEvents(): string[] {
+    const off = this.listEvents().filter((e) => e.enabled && e.actions.some((a) => a?.type === 'command'))
+    const stmt = this.db.prepare('UPDATE schedule SET enabled = 0 WHERE id = ?')
+    for (const e of off) stmt.run(e.id)
+    return off.map((e) => e.label)
   }
 
   saveEvent(e: Omit<ScheduledEvent, 'id'> & { id?: number }): number {
@@ -916,15 +948,16 @@ export class RadioDb {
   // ---------- MusicBrainz ----------
 
   /** Musica a cui manca qualche dato per il report SIAE e non ancora cercata su MusicBrainz. */
-  mbPending(limit = 20, acoustId = false): (Track & { recordingId: string; checked: boolean; acoustIdTried: boolean })[] {
+  mbPending(limit = 20, acoustId = false): MbTrack[] {
     // con AcoustID tornano in coda anche i brani cercati per titolo senza trovarli e mai provati dall'audio
     const where = acoustId ? `(${MB_PENDING}) OR (${MB_ACOUSTID})` : MB_PENDING
-    return (this.db.prepare(`SELECT * FROM tracks WHERE ${where} ORDER BY id LIMIT ?`).all(limit) as Row[]).map((r) => ({
-      ...rowToTrack(r),
-      recordingId: String(r.mb_recording_id),
-      checked: r.mb_checked_at != null,
-      acoustIdTried: r.acoustid_at != null
-    }))
+    return (this.db.prepare(`SELECT * FROM tracks WHERE ${where} ORDER BY id LIMIT ?`).all(limit) as Row[]).map(rowToMbTrack)
+  }
+
+  /** Un brano con lo stato della ricerca su MusicBrainz (registrazione già trovata, già cercato...). */
+  mbTrack(id: number): MbTrack | null {
+    const r = this.db.prepare('SELECT * FROM tracks WHERE id = ?').get(id) as Row | undefined
+    return r ? rowToMbTrack(r) : null
   }
 
   mbStats(acoustId = false): { todo: number; checked: number; found: number } {

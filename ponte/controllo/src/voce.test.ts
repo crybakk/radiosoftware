@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { VoiceHub, type RtcSessionHandlers } from './voce.ts'
+import { checkOffer, VoiceHub, type RtcSessionHandlers } from './voce.ts'
 import { Relay, type Peer } from './relay.ts'
 
 function setup(liquidsoapOk = true) {
@@ -176,5 +176,21 @@ describe('microfono dal pannello', () => {
     ch.close()
     expect(ospite.last('mic')).toEqual({ t: 'mic', mic: { user: null, onAir: false } })
     expect(t.onAirCalls).toEqual([true, false])
+  })
+})
+
+describe('offerta del browser', () => {
+  const audio = (mid: number): string => `m=audio 9 UDP/TLS/RTP/SAVPF 111\r\nc=IN IP4 0.0.0.0\r\na=mid:${mid}\r\na=sendrecv\r\n`
+  const head = (n: number): string =>
+    `v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE ${Array.from({ length: n }, (_, i) => i).join(' ')}\r\n`
+  it('accetta la normale offerta con una traccia audio', () => {
+    expect(() => checkOffer(head(1) + audio(0))).not.toThrow()
+  })
+  it('rifiuta video, dati, troppe tracce o tracce separate (porte UDP per tutti)', () => {
+    expect(() => checkOffer(head(2) + audio(0) + 'm=video 9 UDP/TLS/RTP/SAVPF 96\r\n')).toThrow()
+    expect(() => checkOffer(head(2) + audio(0) + 'm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n')).toThrow()
+    expect(() => checkOffer(head(10) + Array.from({ length: 10 }, (_, i) => audio(i)).join(''))).toThrow()
+    expect(() => checkOffer('v=0\r\n' + audio(0) + audio(1))).toThrow()
+    expect(() => checkOffer('v=0\r\n')).toThrow()
   })
 })

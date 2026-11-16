@@ -169,6 +169,8 @@ export function s16ToFloat(buf: Uint8Array): Float32Array {
 export function ffmpegDecodeArgs(input: string, maxSeconds?: number): string[] {
   return [
     '-hide_banner', '-loglevel', 'error', '-nostdin',
+    // solo file locali: un file con dentro una playlist non può far aprire indirizzi di rete
+    '-protocol_whitelist', 'file',
     '-i', input,
     ...(maxSeconds ? ['-t', String(maxSeconds)] : []),
     '-vn', '-ac', '1', '-ar', String(SAMPLE_RATE), '-f', 's16le', 'pipe:1'

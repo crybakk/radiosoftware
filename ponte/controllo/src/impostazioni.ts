@@ -54,14 +54,14 @@ export const VOCI: Voce[] = [
   { chiave: 'BACKUP_DA_TENERE', gruppo: 'Radio', etichetta: 'Copie di backup della regia da tenere', tipo: 'numero', min: 1, max: 365, predefinito: '14', parti: ['pannello'] },
 
   // --- Dirette esterne ---
-  { chiave: 'ESTERNA_MOUNT', gruppo: 'Dirette esterne', etichetta: 'Mount', tipo: 'testo', forma: /^\/\S*$/, formaErrore: 'deve iniziare con / e non avere spazi', predefinito: '/', parti: ['audio'] },
+  { chiave: 'ESTERNA_MOUNT', gruppo: 'Dirette esterne', etichetta: 'Mount', tipo: 'testo', forma: /^\/[A-Za-z0-9._~\/-]*$/, formaErrore: 'deve iniziare con / e avere solo lettere, numeri e . _ ~ / -', predefinito: '/', parti: ['audio'] },
   { chiave: 'ESTERNA_UTENTE', gruppo: 'Dirette esterne', etichetta: 'Utente', tipo: 'testo', forma: /^\S+$/, formaErrore: 'senza spazi', predefinito: 'esterna', parti: ['audio'] },
   { chiave: 'ESTERNA_PASSWORD', gruppo: 'Dirette esterne', etichetta: 'Password', tipo: 'password', vuoto: true, predefinito: '', parti: ['audio'], aiuto: 'Vuota = ingresso delle dirette esterne spento.' },
 
   // --- Icecast secondario ---
   { chiave: 'ICECAST_ESTERNO_HOST', gruppo: 'Icecast secondario', etichetta: 'Indirizzo del server', tipo: 'testo', forma: /^[A-Za-z0-9.-]+$/, formaErrore: 'solo il nome o l\'IP, senza http:// e senza porta', vuoto: true, predefinito: '', parti: ['audio', 'pannello'], aiuto: 'Vuoto = Icecast secondario spento.' },
   { chiave: 'ICECAST_ESTERNO_PORTA', gruppo: 'Icecast secondario', etichetta: 'Porta', ...PORTA, predefinito: '8000', parti: ['audio', 'pannello'] },
-  { chiave: 'ICECAST_ESTERNO_MOUNT', gruppo: 'Icecast secondario', etichetta: 'Mount', tipo: 'testo', forma: /^\/\S+$/, formaErrore: 'deve iniziare con / e non avere spazi', predefinito: '/radio.mp3', parti: ['audio', 'pannello'] },
+  { chiave: 'ICECAST_ESTERNO_MOUNT', gruppo: 'Icecast secondario', etichetta: 'Mount', tipo: 'testo', forma: /^\/[A-Za-z0-9._~\/-]+$/, formaErrore: 'deve iniziare con / e avere solo lettere, numeri e . _ ~ / -', predefinito: '/radio.mp3', parti: ['audio', 'pannello'] },
   { chiave: 'ICECAST_ESTERNO_UTENTE', gruppo: 'Icecast secondario', etichetta: 'Utente per trasmettere', tipo: 'testo', predefinito: 'source', parti: ['audio'] },
   { chiave: 'ICECAST_ESTERNO_PASSWORD', gruppo: 'Icecast secondario', etichetta: 'Password per trasmettere', tipo: 'password', vuoto: true, predefinito: '', parti: ['audio'] },
   { chiave: 'ICECAST_ESTERNO_ADMIN_UTENTE', gruppo: 'Icecast secondario', etichetta: 'Utente amministratore (statistiche)', tipo: 'testo', vuoto: true, predefinito: 'admin', parti: ['pannello'], aiuto: 'Serve solo se la pagina pubblica di stato del secondario è chiusa.' },
@@ -107,7 +107,7 @@ export const VOCI: Voce[] = [
   { chiave: 'CONTROLLO_TOKEN', gruppo: 'Avanzate', etichetta: 'Token della regia', tipo: 'password', forma: /^\S{16,}$/, formaErrore: 'almeno 16 caratteri, senza spazi', predefinito: '', parti: ['pannello'], avanzato: true, aiuto: 'Va cambiato anche nella regia.' },
   { chiave: 'ESTERNA_PORTA', gruppo: 'Avanzate', etichetta: 'Porta delle dirette esterne (TCP)', ...PORTA, predefinito: '9010', parti: ['audio'], avanzato: true, aiuto: 'Va cambiata anche sul router e nelle app delle esterne.' },
   { chiave: 'ICECAST_PORTA', gruppo: 'Avanzate', etichetta: 'Porta HTTP diretta di Icecast', ...PORTA, predefinito: '8000', parti: ['icecast'], avanzato: true },
-  { chiave: 'ICECAST_MOUNT', gruppo: 'Avanzate', etichetta: 'Mount dell\'ascolto', tipo: 'testo', forma: /^\/\S+$/, formaErrore: 'deve iniziare con / e non avere spazi', predefinito: '/radio.mp3', parti: ['audio', 'https', 'pannello'], avanzato: true, aiuto: 'Cambia l\'indirizzo di ascolto: i link già dati agli ascoltatori smettono di funzionare.' },
+  { chiave: 'ICECAST_MOUNT', gruppo: 'Avanzate', etichetta: 'Mount dell\'ascolto', tipo: 'testo', forma: /^\/[A-Za-z0-9._~\/-]+$/, formaErrore: 'deve iniziare con / e avere solo lettere, numeri e . _ ~ / -', predefinito: '/radio.mp3', parti: ['audio', 'https', 'pannello'], avanzato: true, aiuto: 'Cambia l\'indirizzo di ascolto: i link già dati agli ascoltatori smettono di funzionare.' },
   { chiave: 'ICECAST_PASSWORD_SORGENTE', gruppo: 'Avanzate', etichetta: 'Password di Icecast per trasmettere', tipo: 'password', forma: /^\S+$/, formaErrore: 'senza spazi', predefinito: '', parti: ['audio', 'icecast'], avanzato: true },
   { chiave: 'ICECAST_PASSWORD_ADMIN', gruppo: 'Avanzate', etichetta: 'Password di amministrazione di Icecast', tipo: 'password', forma: /^\S+$/, formaErrore: 'senza spazi', predefinito: '', parti: ['icecast'], avanzato: true },
   { chiave: 'ICECAST_PASSWORD_RELAY', gruppo: 'Avanzate', etichetta: 'Password di Icecast per i relay', tipo: 'password', forma: /^\S+$/, formaErrore: 'senza spazi', predefinito: '', parti: ['icecast'], avanzato: true },
@@ -117,13 +117,25 @@ export const VOCI: Voce[] = [
 
 const PER_CHIAVE = new Map(VOCI.map((v) => [v.chiave, v]))
 
+/**
+ * Valore in uso: se manca nel file, o è vuoto per una voce che non può restare vuota, i servizi usano
+ * il predefinito (in docker-compose.yml con ${CHIAVE:-predefinito}).
+ */
+function valoreAttuale(attuali: Record<string, string>, v: Omit<Voce, 'forma'>): string {
+  const a = attuali[v.chiave]
+  return a === undefined || (a === '' && !v.vuoto) ? v.predefinito : a
+}
+
 // ---------- lettura e scrittura del file .env ----------
 
 /** Toglie le virgolette come fa Docker Compose (singole: testo così com'è; doppie: \" e \\). */
 function togliVirgolette(v: string): string {
   const t = v.trim()
-  if (t.length >= 2 && t[0] === "'" && t.endsWith("'")) return t.slice(1, -1)
-  if (t.length >= 2 && t[0] === '"' && t.endsWith('"')) return t.slice(1, -1).replace(/\\(["\\])/g, '$1')
+  // tra virgolette: quello che segue la virgoletta di chiusura (per esempio un commento) non conta
+  const singole = /^'([^']*)'/.exec(t)
+  if (singole) return singole[1]
+  const doppie = /^"((?:[^"\\]|\\.)*)"/.exec(t)
+  if (doppie) return doppie[1].replace(/\\(["\\])/g, '$1')
   // senza virgolette: " #" inizia un commento
   const i = t.search(/\s#/)
   return (i >= 0 ? t.slice(0, i) : t).trim()
@@ -167,6 +179,8 @@ export function controlla(voce: Voce, valore: unknown): string {
   if (typeof valore !== 'string') throw new Error(`${voce.etichetta}: valore non valido`)
   const v = valore.trim()
   if (/[\r\n']/.test(v)) throw new Error(`${voce.etichetta}: non può contenere a capo o apostrofi`)
+  // tra apici, una \ in fondo per Docker Compose "protegge" l'apice di chiusura: il file .env non si leggerebbe più
+  if (v.endsWith('\\')) throw new Error(`${voce.etichetta}: non può finire con \\`)
   if (v.length > 500) throw new Error(`${voce.etichetta}: troppo lungo`)
   if (!v) {
     if (voce.vuoto) return ''
@@ -227,7 +241,14 @@ export interface StatoApplica {
   esito?: { quando: string; ok: boolean; messaggio: string }
   /** la richiesta aspetta da troppo: il servizio sul server non c'è (va rilanciato installa-server.sh) */
   servizioAssente: boolean
+  /** l'ultima richiesta non ha ancora un esito (in attesa o "docker compose" ancora al lavoro) */
+  inCorso: boolean
+  /** l'ultima richiesta è senza esito da troppo: il riavvio si è bloccato o è finito senza scriverlo */
+  senzaRisposta: boolean
 }
+
+/** Dopo quanto un'applicazione senza esito si considera bloccata. */
+const ATTESA_MASSIMA_MS = 10 * 60_000
 
 export class Impostazioni {
   private readonly fileEnv: string
@@ -252,7 +273,7 @@ export class Impostazioni {
   elenco(): VoceVista[] {
     const attuali = this.leggi()
     return VOCI.map(({ forma: _f, ...v }) => {
-      const valore = attuali[v.chiave] ?? v.predefinito
+      const valore = valoreAttuale(attuali, v)
       return v.tipo === 'password' ? { ...v, valore: '', impostato: valore !== '' } : { ...v, valore }
     })
   }
@@ -267,7 +288,7 @@ export class Impostazioni {
   ): { cambiate: string[]; parti: Parte[] } {
     const testo = readFileSync(this.fileEnv, 'utf8')
     const attuali = leggiEnv(testo)
-    const valoreDi = (v: Voce): string => attuali[v.chiave] ?? v.predefinito
+    const valoreDi = (v: Voce): string => valoreAttuale(attuali, v)
     const svuota = new Set(opz.svuota ?? [])
     const cambi: Record<string, string> = {}
     for (const [k, grezzo] of Object.entries(nuovi)) {
@@ -297,15 +318,21 @@ export class Impostazioni {
     return { cambiate, parti }
   }
 
-  /** Chiede al server di applicare il file .env (riavvio delle sole parti cambiate). */
+  /**
+   * Chiede al server di applicare il file .env (riavvio delle sole parti cambiate). Il servizio sul server
+   * toglie subito il file "applica", prima di lanciare docker compose: l'ora della richiesta si tiene anche
+   * in "ultima-richiesta", così fino all'esito nuovo il pannello sa che il lavoro è ancora in corso.
+   */
   applica(): void {
-    writeFileSync(join(this.cartellaRichieste, 'applica'), new Date(this.now()).toISOString() + '\n')
+    const quando = new Date(this.now()).toISOString() + '\n'
+    writeFileSync(join(this.cartellaRichieste, 'ultima-richiesta'), quando)
+    writeFileSync(join(this.cartellaRichieste, 'applica'), quando)
   }
 
   stato(): StatoApplica {
     const fileRichiesta = join(this.cartellaRichieste, 'applica')
     const fileEsito = join(this.cartellaRichieste, 'esito.json')
-    const out: StatoApplica = { servizioAssente: false }
+    const out: StatoApplica = { servizioAssente: false, inCorso: false, senzaRisposta: false }
     if (existsSync(fileRichiesta)) {
       out.richiesta = readFileSync(fileRichiesta, 'utf8').trim()
       // il servizio sul server la toglie subito: se è lì da più di un minuto, il servizio non c'è
@@ -316,6 +343,18 @@ export class Impostazioni {
     } catch {
       // nessun esito ancora
     }
+    let ultima = NaN
+    try {
+      ultima = Date.parse(readFileSync(join(this.cartellaRichieste, 'ultima-richiesta'), 'utf8').trim())
+    } catch {
+      // nessuna richiesta fatta da questa versione
+    }
+    const esitoQuando = out.esito ? Date.parse(out.esito.quando) : NaN
+    // una richiesta ancora da prendere è sempre in corso, anche se c'è un esito più nuovo (di un riavvio
+    // partito prima di questa richiesta)
+    const senzaEsito = Number.isFinite(ultima) && !(esitoQuando >= ultima)
+    out.inCorso = out.richiesta !== undefined || senzaEsito
+    out.senzaRisposta = out.richiesta === undefined && senzaEsito && this.now() - ultima > ATTESA_MASSIMA_MS
     return out
   }
 

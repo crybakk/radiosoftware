@@ -15,4 +15,9 @@ chown 1000:1000 .env 2>/dev/null || true
 chmod 600 .env 2>/dev/null || true
 # guida d'uso per il pannello (la riempie installa-server.sh)
 mkdir -p guida
-docker compose up -d --build --remove-orphans "$@"
+# il pannello può modificare il .env: niente variabili che cambino i file o il progetto di docker compose
+if grep -qE '^[[:space:]]*(export[[:space:]]+)?(COMPOSE_|DOCKER_)' .env 2>/dev/null; then
+  echo "Errore: il file .env contiene variabili COMPOSE_ o DOCKER_: toglile e riprova." >&2
+  exit 1
+fi
+docker compose -f docker-compose.yml up -d --build --remove-orphans "$@"

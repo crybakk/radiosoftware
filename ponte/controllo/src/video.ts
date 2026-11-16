@@ -72,7 +72,7 @@ export function ffmpegArgs(i: VideoArgsInput): string[] {
   audioIn.push('-i', i.audioUrl)
   const args = ['-hide_banner', '-nostats', '-loglevel', 'info', '-stats_period', '5', '-stats']
   if (i.source === 'logo') {
-    args.push('-re', '-loop', '1', '-framerate', '15', '-i', i.logo, ...audioIn)
+    args.push('-re', '-loop', '1', '-framerate', '15', '-f', 'image2', '-protocol_whitelist', 'file', '-i', i.logo, ...audioIn)
     args.push(
       '-map', '0:v', '-map', '1:a',
       '-vf', `scale=1280:${MAX_HEIGHT}:force_original_aspect_ratio=decrease,pad=1280:${MAX_HEIGHT}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`,

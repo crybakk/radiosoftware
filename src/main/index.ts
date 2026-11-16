@@ -22,6 +22,7 @@ import { RotationService } from '../core/rotationService'
 import type { ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
 import { LibraryService } from './library'
 import { serveFile } from './media'
+import { dentroCartella, paginaRegia } from '../core/finestraSicura'
 import { applyPendingRestore, PonteService, type StudioReport } from './ponte'
 import { ServerLibrarySync } from './serverSync'
 import type { RemoteCommand, RemoteState } from '../core/remote'
@@ -43,6 +44,9 @@ function ffmpegPath(): string | null {
 }
 
 let win: BrowserWindow | null = null
+const RENDERER_FILE = join(import.meta.dirname, '../renderer/index.html')
+// l'indirizzo di sviluppo vale solo quando il programma non è installato
+const DEV_URL = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -67,8 +71,13 @@ function createWindow(): void {
     if (/^(https?:|mailto:)/i.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
-  if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
-  else void win.loadFile(join(import.meta.dirname, '../renderer/index.html'))
+  // la finestra mostra solo la regia: un file o un link trascinati sopra non la sostituiscono
+  win.webContents.on('will-navigate', (e, url) => {
+    if (!paginaRegia(url, RENDERER_FILE, DEV_URL)) e.preventDefault()
+  })
+  win.webContents.on('will-attach-webview', (e) => e.preventDefault())
+  if (DEV_URL) void win.loadURL(DEV_URL)
+  else void win.loadFile(RENDERER_FILE)
   win.on('closed', () => (win = null))
 }
 
@@ -93,6 +102,8 @@ if (primary) app.whenReady().then(() => {
     dialog.showErrorBox('Ripristino non riuscito', e instanceof Error ? e.message : String(e))
   }
   const db = new RadioDb(join(app.getPath('userData'), 'radio.db'))
+  // un backup arriva dal server: gli eventi con un comando esterno ripartono spenti
+  const commandEventsOff = restoredFrom ? db.disableCommandEvents() : []
   db.closeDanglingLog(new Date())
   const library = new LibraryService(db, ffmpegPath())
   const rotation = new RotationService(db)
@@ -213,7 +224,7 @@ if (primary) app.whenReady().then(() => {
     if (url.host === 'file') {
       // notiziari scaricati e file scelti al loro posto: solo quelli, non file qualsiasi
       const path = decodeURIComponent(url.pathname.replace(/^\//, ''))
-      const allowed = path.startsWith(newsDir) || path.startsWith(announceDir) || db.getSettings().news.some((n) => n.fallbackFile && n.fallbackFile === path)
+      const allowed = dentroCartella(path, newsDir) || dentroCartella(path, announceDir) || db.getSettings().news.some((n) => n.fallbackFile && n.fallbackFile === path)
       if (!allowed) return new Response('File non permesso', { status: 403 })
       const res = serveFile(path, request)
       res.headers.set('Access-Control-Allow-Origin', '*')
@@ -227,8 +238,13 @@ if (primary) app.whenReady().then(() => {
     return res
   })
 
+  const fromRegia = (e: Electron.IpcMainEvent): boolean => paginaRegia(e.senderFrame?.url ?? '', RENDERER_FILE, DEV_URL)
   const handle = <A extends unknown[], R>(channel: string, fn: (...args: A) => R | Promise<R>): void => {
-    ipcMain.handle(channel, (_e, ...args) => fn(...(args as A)))
+    ipcMain.handle(channel, (e, ...args) => {
+      // solo la pagina della regia può chiamare le funzioni del programma
+      if (!paginaRegia(e.senderFrame?.url ?? '', RENDERER_FILE, DEV_URL)) throw new Error('richiesta non permessa')
+      return fn(...(args as A))
+    })
   }
 
   // libreria
@@ -415,6 +431,7 @@ if (primary) app.whenReady().then(() => {
     app.quit()
   })
   handle('restoredFrom', () => restoredFrom)
+  handle('restoredEventsOff', () => commandEventsOff)
 
   // libreria del server (diretta autonoma)
   handle('serverSyncStatus', () => serverSync.status())
@@ -431,12 +448,13 @@ if (primary) app.whenReady().then(() => {
     if (res.canceled || !res.filePaths[0]) return null
     return serverSync.exportTo(res.filePaths[0])
   })
-  ipcMain.on('uplink:pcm', (_e, pcm: Uint8Array) => ponte.writePcm(pcm))
-  ipcMain.on('remote:state', (_e, state: RemoteState) => ponte.sendRemoteState(state))
+  ipcMain.on('uplink:pcm', (e, pcm: Uint8Array) => fromRegia(e) && ponte.writePcm(pcm))
+  ipcMain.on('remote:state', (e, state: RemoteState) => fromRegia(e) && ponte.sendRemoteState(state))
   // comandi dal pannello remoto: li esegue l'interfaccia, che ha il motore di messa in onda
   const waiting = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
   let remoteSeq = 0
-  ipcMain.on('remote:reply', (_e, id: number, ok: boolean, data: unknown, error: string) => {
+  ipcMain.on('remote:reply', (e, id: number, ok: boolean, data: unknown, error: string) => {
+    if (!fromRegia(e)) return
     const w = waiting.get(id)
     if (!w) return
     waiting.delete(id)
