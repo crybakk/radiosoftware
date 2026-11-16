@@ -8,6 +8,8 @@ import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { PonteStatus, StudioReport } from '../main/ponte'
 import type { ServerSyncStatus, ServerTrackRow } from '../main/serverSync'
 import type { MbStatus } from '../main/musicbrainz'
+import type { AiResult, AiStatus } from '../main/ai'
+import type { AiPlan } from '../core/aiRotation'
 import type { SiaeRow } from '../core/siae'
 import type { LibraryFolder, LogEntry, ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
 
@@ -84,6 +86,16 @@ export interface RadioApi {
   mbStop(): Promise<void>
   mbRetry(): Promise<MbStatus>
   onMbStatus(cb: (s: MbStatus) => void): () => void
+
+  // rotazioni generate dall'AI
+  aiStatus(): Promise<AiStatus>
+  aiDownload(): Promise<void>
+  aiCancelDownload(): Promise<void>
+  aiRemoveModel(): Promise<void>
+  aiGenerate(description: string): Promise<AiResult>
+  aiPreview(plan: AiPlan): Promise<AiResult>
+  aiApply(plan: AiPlan, replace: boolean): Promise<ScheduledEvent[]>
+  onAiStatus(cb: (s: AiStatus) => void): () => void
 
   onLibraryStatus(cb: (s: LibraryStatus) => void): () => void
 

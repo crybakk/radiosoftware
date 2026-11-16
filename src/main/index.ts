@@ -10,6 +10,9 @@ import { logToCsv } from '../core/csv'
 import { quarterRange, siaeCsv, siaeRows } from '../core/siae'
 import { syncServerPlays } from '../core/serverPlays'
 import { MusicBrainzService } from './musicbrainz'
+import { AiService, previewCounts } from './ai'
+import { llamaEngine } from './llm'
+import { AI_LABEL, cleanPlan, planEvents, summarize, type AiPlan } from '../core/aiRotation'
 import { RadioDb, type TrackEdit, type TrackSearch } from '../core/db'
 import { RotationService } from '../core/rotationService'
 import type { ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
@@ -132,6 +135,11 @@ if (primary) app.whenReady().then(() => {
     win?.webContents.send('serverSyncStatus', st)
   )
   const mb = new MusicBrainzService(db, (st) => win?.webContents.send('mbStatus', st))
+  const ai = new AiService({
+    dir: join(app.getPath('userData'), 'ai'),
+    engine: llamaEngine(),
+    onStatus: (st) => win?.webContents.send('aiStatus', st)
+  })
   // brani caricati dal pannello e scaricati in regia: analisi, impronta e MusicBrainz da soli
   serverSync.onCatalogued = (ids) => {
     void library.analyzeAll()
@@ -345,6 +353,32 @@ if (primary) app.whenReady().then(() => {
     void mb.start()
   })
   handle('mbStop', () => mb.stop())
+
+  // rotazioni generate dall'AI
+  handle('aiStatus', () => ai.status())
+  handle('aiDownload', () => {
+    void ai.download()
+  })
+  handle('aiCancelDownload', () => ai.cancelDownload())
+  handle('aiRemoveModel', () => ai.removeModel())
+  handle('aiGenerate', async (description: string) => {
+    db.saveSettings({ aiDescription: description })
+    return ai.generate(description, db.rotationCandidates('music'))
+  })
+  /** Ricontrolla un piano modificato a mano e ricalcola i brani di ogni fascia. */
+  handle('aiPreview', (plan: AiPlan) => {
+    const music = db.rotationCandidates('music')
+    const r = cleanPlan(plan, summarize(music))
+    return { ...r, ...previewCounts(r.plan, music), seconds: 0 }
+  })
+  /** Crea gli eventi del piano; replace = toglie prima quelli creati dall'AI le volte precedenti. */
+  handle('aiApply', (plan: AiPlan, replace: boolean) => {
+    const { plan: clean } = cleanPlan(plan, summarize(db.rotationCandidates('music')))
+    if (!clean.slots.length) throw new Error('nessuna fascia da creare')
+    if (replace) for (const e of db.listEvents()) if (e.label.startsWith(AI_LABEL)) db.deleteEvent(e.id)
+    for (const e of planEvents(clean)) db.saveEvent(e)
+    return db.listEvents()
+  })
   handle('mbRetry', () => mb.retry())
 
   // ponte
@@ -422,6 +456,7 @@ if (primary) app.whenReady().then(() => {
   app.on('before-quit', () => {
     clearInterval(syncTimer)
     mb.stop()
+    ai.stop()
     serverSync.stop()
     library.stop()
     ponte.stop()

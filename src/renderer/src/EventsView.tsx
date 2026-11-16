@@ -1,3 +1,4 @@
+import { AiRotationSection } from './AiRotationSection'
 import { useEffect, useState } from 'react'
 import { nextOccurrences } from '../../core/events'
 import {
@@ -295,6 +296,8 @@ export function EventsView({ radio }: { radio: Radio }) {
           </tbody>
         </table>
       </section>
+
+      <AiRotationSection initialText={radio.settings.aiDescription} onEvents={(list) => void radio.reloadEvents(list)} />
 
       {draft && (
         <EventEditor

@@ -81,6 +81,8 @@ export interface Settings {
   voice: VoiceSettings
   /** Nome della radio, per {radio} negli annunci. */
   radioName: string
+  /** Ultimo palinsesto scritto per le rotazioni generate dall'AI. */
+  aiDescription: string
 }
 
 export interface PonteSettings {
@@ -157,7 +159,8 @@ export const DEFAULT_SETTINGS: Settings = {
   ponte: DEFAULT_PONTE,
   news: [],
   voice: DEFAULT_VOICE,
-  radioName: ''
+  radioName: '',
+  aiDescription: ''
 }
 
 /** Profilo di rotazione attivato da un evento (per esempio "dalle 22 musica tranquilla"). */
