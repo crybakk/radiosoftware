@@ -139,4 +139,23 @@ describe('MusicBrainz nel database', () => {
     expect(db.incompleteMusic().total).toBe(1)
     db.close()
   })
+
+  it('cerca anche i generi di tutta la musica, una volta sola', () => {
+    const db = new RadioDb(join(dir, 'g.db'))
+    const base = { kind: 'music' as const, size: 1, mtime: 1, album: '', genre: 'Pop', duration: 200, bitrate: 320, sampleRate: 44100 }
+    // dati SIAE completi: prima non serviva cercarlo, adesso sì per i generi
+    const a = db.upsertScanned({ ...base, path: '/m/a.mp3', title: 'A', artist: 'X', year: null, composer: 'C', publisher: 'E', isrc: 'I' })
+    db.db.prepare("UPDATE tracks SET iswc = 'T' WHERE id = ?").run(a)
+    expect(db.mbPending().map((x) => [x.title, x.checked])).toEqual([['A', false]])
+    db.saveMb(a, 'rec-a', { genres: ['pop rock', 'rock'], year: 1990 })
+    expect(db.mbPending()).toEqual([])
+    expect(db.getTrack(a)).toMatchObject({ mbGenres: 'pop rock, rock', year: 1990 })
+    expect(db.listGenres()).toEqual(['Pop', 'pop rock', 'rock'])
+    db.saveMbArtistGenres('art', ['jazz'])
+    expect(db.mbArtistGenres('art')).toEqual(['jazz'])
+    expect(db.mbArtistGenres('altro')).toBeNull()
+    db.mbRequeue(a)
+    expect(db.mbPending().map((x) => [x.recordingId, x.checked])).toEqual([['rec-a', false]])
+    db.close()
+  })
 })

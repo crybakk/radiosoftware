@@ -1,5 +1,6 @@
 import type { RadioDb } from './db'
 import { pickJingle, pickMusic, type RotationRules } from './rotation'
+import { genreText } from './aiRotation'
 import type { RotationProfile, Track } from './types'
 
 /**
@@ -11,7 +12,8 @@ export function applyProfile(tracks: Track[], profile: RotationProfile | null): 
   const genres = profile.genres.map((g) => g.trim().toLowerCase()).filter(Boolean)
   const filtered = tracks.filter((t) => {
     if (genres.length) {
-      const g = t.genre.toLowerCase()
+      // genere del file e generi dei servizi (MusicBrainz, Discogs, Last.fm) insieme
+      const g = genreText(t).toLowerCase()
       if (!genres.some((x) => g.includes(x))) return false
     }
     if (profile.yearFrom != null && (t.year == null || t.year < profile.yearFrom)) return false

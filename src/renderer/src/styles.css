@@ -240,3 +240,21 @@ label.block { display: flex; flex-direction: column; gap: 4px; }
 .placeholders { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .placeholders button { font-family: ui-monospace, monospace; font-size: 12px; }
 .form-grid.sliders input[type='range'] { width: 100%; }
+
+/* rotazioni con l'AI */
+.ai-panel .ai-model { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.ai-panel .ai-model progress { width: 240px; }
+.ai-panel .ai-text { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.ai-panel .ai-text textarea { width: 100%; font: inherit; }
+.ai-warnings { color: #fcd34d; margin: 4px 0 8px; padding-left: 18px; }
+.ai-table { width: 100%; border-collapse: collapse; }
+.ai-table th { text-align: left; font-weight: 600; font-size: 12px; opacity: 0.8; padding: 4px; }
+.ai-table td { padding: 3px 4px; vertical-align: middle; }
+.ai-table input { width: 100%; min-width: 0; }
+.ai-table input[type='number'] { width: 76px; }
+.ai-table td.ai-years { white-space: nowrap; }
+.ai-table td.bad { color: #fca5a5; }
+.ai-days { display: flex; gap: 2px; }
+button.tiny { padding: 1px 5px; font-size: 11px; min-width: 20px; opacity: 0.5; }
+button.tiny.on { opacity: 1; background: var(--green); border-color: var(--green); color: #04130a; }
+.mb-panel .tag-service { margin: 6px 0 10px; }

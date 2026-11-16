@@ -21,6 +21,12 @@ export interface Track {
   album: string
   year: number | null
   genre: string
+  /** Generi di MusicBrainz, separati da virgole (vuoto se non ancora letti o non trovati). */
+  mbGenres: string
+  /** Generi e stili di Discogs, separati da virgole. */
+  dcGenres: string
+  /** Etichette di Last.fm (carattere, decennio…), separate da virgole. */
+  lfmTags: string
   composer: string
   publisher: string
   isrc: string
@@ -79,6 +85,14 @@ export interface Settings {
   voice: VoiceSettings
   /** Nome della radio, per {radio} negli annunci. */
   radioName: string
+  /** Ultimo palinsesto scritto per le rotazioni generate dall'AI. */
+  aiDescription: string
+  /** Token personale di Discogs (vuoto = Discogs non si usa). */
+  discogsToken: string
+  /** Chiave API di Last.fm. */
+  lastfmKey: string
+  /** Chiave dell'applicazione AcoustID. */
+  acoustidKey: string
 }
 
 export interface PonteSettings {
@@ -155,7 +169,11 @@ export const DEFAULT_SETTINGS: Settings = {
   ponte: DEFAULT_PONTE,
   news: [],
   voice: DEFAULT_VOICE,
-  radioName: ''
+  radioName: '',
+  aiDescription: '',
+  discogsToken: '',
+  lastfmKey: '',
+  acoustidKey: ''
 }
 
 /** Profilo di rotazione attivato da un evento (per esempio "dalle 22 musica tranquilla"). */

@@ -6,3 +6,4 @@ dist/
 ponte/.env
 ponte/musica/
 ponte/richieste/
+build-resources/

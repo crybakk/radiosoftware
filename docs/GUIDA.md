@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, voce sintetica per gli annunci (regia e server), dopo i notiziari automatici.
+**Ultimo aggiornamento:** 16/11/2026, impostazioni del server dal pannello (niente più terminale per cambiarle).
 
 ## Indice
 
@@ -12,7 +12,9 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
 4. [In onda: uso quotidiano](#4-in-onda-uso-quotidiano)
 5. [Libreria e scheda brano](#5-libreria-e-scheda-brano)
     - [Dati per il report SIAE (MusicBrainz)](#dati-per-il-report-siae-musicbrainz)
+    - [Discogs, Last.fm e AcoustID](#discogs-lastfm-e-acoustid)
 6. [Eventi a orario](#6-eventi-a-orario)
+    - [Rotazioni con l'AI](#rotazioni-con-lai)
 7. [Registro di trasmissione](#7-registro-di-trasmissione)
     - [Report SIAE trimestrale](#report-siae-trimestrale)
 8. [Impostazioni](#8-impostazioni)
@@ -127,11 +129,41 @@ Come funziona:
   **12 ore**. Si può fermare e riprendere quando vuoi, riparte da dove era rimasta;
 - usa internet, quindi conviene farla partire con la regia collegata a una rete senza limiti, o di notte.
 
+Insieme a questi dati legge anche i **generi** ufficiali di MusicBrainz (per le regole di rotazione e per le
+rotazioni generate dall'AI) e l'**anno** della prima uscita, se nel file manca. Se il brano non ha generi su
+MusicBrainz prende quelli dell'artista. I generi compaiono nella scheda brano sotto il percorso del file e si
+aggiungono al genere scritto nel file: nelle regole di rotazione e nel **Brano casuale** valgono tutti e due.
+Dopo l'aggiornamento la ricerca va rifatta una volta su tutta la musica, anche sui brani già completi: per quelli
+già trovati basta una richiesta (circa 6 ore per 20.000 brani).
+
 Il **codice opera SIAE** non è su MusicBrainz: va scritto nella scheda brano.
 **Riprova i brani non trovati** rimette in coda quelli già cercati che sono ancora incompleti, utile dopo qualche
 mese perché MusicBrainz si arricchisce.
 **Mostra la musica con dati mancanti** elenca i brani a cui mancano autori, editore o un codice (codice opera,
 ISWC o ISRC): con **Scheda** li completi a mano.
+
+### Discogs, Last.fm e AcoustID
+
+Altri tre servizi gratuiti completano i dati dei brani. Ognuno vuole una chiave personale, che si crea una volta
+sola dal sito del servizio e si incolla in **Impostazioni** → **Servizi per i dati dei brani** (sotto ogni campo
+c'è il link giusto), poi **Salva**.
+
+| Servizio | Cosa aggiunge | Dove si crea la chiave |
+|---|---|---|
+| **Discogs** | generi e stili dettagliati (es. "rock", "pop rock", "ballad") | discogs.com → Impostazioni → Developers → **Generate new token** |
+| **Last.fm** | etichette scelte dagli ascoltatori: carattere e decennio (es. "chill", "80s", "italian") | last.fm/api/account/create → copia la **API key** |
+| **AcoustID** | riconosce il brano **dall'audio** quando la ricerca per titolo su MusicBrainz non lo trova | acoustid.org/new-application → copia la **API key** |
+
+Poi, nella **Libreria**, riquadro **Dati dei brani: report SIAE e generi**:
+
+- **Cerca su Discogs** (circa 6 ore per 20.000 brani) e **Cerca su Last.fm** (circa 2 ore) partono quando
+  vuoi, si possono fermare e riprendono da dove erano rimasti;
+- **AcoustID** non ha un pulsante suo: con la chiave salvata, **Cerca su MusicBrainz** prova dall'audio i brani
+  che non trova per titolo (anche quelli già cercati in passato), una volta sola per brano;
+- **Riprova i brani non trovati** rimette in coda quelli senza risultato, utile dopo qualche mese.
+
+Generi ed etichette di tutti i servizi compaiono nella scheda brano e valgono, insieme al genere del file, nelle
+regole di rotazione, nel **Brano casuale** e nelle [Rotazioni con l'AI](#rotazioni-con-lai).
 
 ## 6. Eventi a orario
 
@@ -163,9 +195,38 @@ Scheda **Eventi** → **+ Nuovo evento**. Un evento esegue in ordine una serie d
 | Comando esterno | avvia un programma o uno script sul PC |
 | Replica di un programma | l'ultima puntata pubblicata del programma scelto, in streaming dal server (sezione 12, Repliche) |
 | Notiziario | l'ultima edizione di una fonte dei notiziari, scaricata in quel momento (sezione 8, [Notiziari](#notiziari)) |
+| Annuncio vocale | un testo letto dalla voce sintetica (sezione 8, [Voce sintetica](#voce-sintetica)) |
 
 Con **▶ Prova** esegui subito un evento per vedere come va. **Duplica** crea una copia da modificare.
 In alto vedi i prossimi eventi in programma e, se attivo, il profilo di rotazione in uso.
+
+### Rotazioni con l'AI
+
+Invece di creare a mano gli eventi **Regole di rotazione** fascia per fascia, puoi scrivere il palinsesto a parole
+e farli preparare all'AI. L'AI gira sul PC di regia, senza internet e gratis: serve solo scaricare il modello la
+prima volta.
+
+1. Scheda **Eventi** → riquadro **Rotazioni con l'AI** → **Apri**.
+2. La prima volta premi **Scarica il modello** (Qwen3 4B Instruct, circa 2,5 GB, licenza libera). Se lo
+   scaricamento si interrompe, **Riprendi lo scaricamento** riparte da dove era arrivato.
+3. Scrivi il **Palinsesto**, per esempio:
+   *"Dal lunedì al venerdì dalle 7 alle 10 pop italiano allegro, dalle 10 alle 13 successi degli anni 80 e 90.
+   Tutti i giorni dalle 22 alle 2 musica tranquilla, jazz e lounge. Sabato e domenica dalle 9 alle 12 rock, con
+   un jingle ogni 3 brani."* (**Usa l'esempio** lo scrive per te).
+4. **Prepara le fasce**: ci vuole da meno di un minuto a qualche minuto, a seconda del PC. La messa in onda
+   continua (l'AI lascia liberi due core del processore).
+5. Nell'**Anteprima** controlli ogni fascia: giorni, orari, generi, anni, separazione artista, jingle e quanti
+   **Brani** della libreria ci rientrano. Puoi correggere tutto a mano o togliere una fascia con ✕. Una fascia
+   con meno di 10 brani (⚠) userebbe tutta la musica.
+6. **Crea gli eventi**: per ogni fascia nasce un evento **Regole di rotazione** all'inizio e uno che torna alla
+   rotazione normale alla fine (se subito dopo non parte un'altra fascia). Si chiamano tutti **AI · …** e si
+   modificano come gli altri eventi. Con **Sostituisci gli eventi creati prima dall'AI** quelli vecchi vengono
+   tolti, così puoi rifare il palinsesto quante volte vuoi.
+
+L'AI sceglie **solo tra i generi della tua libreria**: quello scritto nei file e quelli di MusicBrainz (sezione 5,
+[Dati per il report SIAE](#dati-per-il-report-siae-musicbrainz)). Per avere più generi fai prima la ricerca su
+MusicBrainz. Se l'AI propone qualcosa che non c'è, l'anteprima lo toglie e lo scrive in giallo.
+Le rotazioni con l'AI sono solo in regia: il server, che fa da riserva, continua con la musica a caso.
 
 ## 7. Registro di trasmissione
 
@@ -317,8 +378,8 @@ spegnere AzuraCast:
 - usa un altro nome che punti all'IP di casa (per esempio `player.radio.it`) e una porta esterna libera,
   per esempio **9443**: sul router inoltra TCP 9443 esterna → porta 443 della VM, più UDP 9000, TCP 9010 e
   UDP 40000-40049 (AzuraCast non le usa). La 443 e la 8000 restano ad AzuraCast;
-- in `/opt/radio-ponte/.env` metti `DOMINIO=` quel nome e `ASCOLTO_URL=https://<nome>:9443/radio.mp3`,
-  poi `sudo /opt/radio-ponte/riavvia.sh`;
+- nel pannello, menu ☰ → **Impostazioni server**: in **Avanzate** metti quel nome come **Dominio** e, in
+  **Microfono remoto e ospiti**, `https://<nome>:9443/radio.mp3` come **Indirizzo di ascolto per gli ospiti**;
 - **certificato**: Let's Encrypt controlla solo la porta 80 (mai la 9443). Sposta sul router la TCP 80 verso
   la VM per qualche minuto, finché `docker compose logs caddy` (in `/opt/radio-ponte`) scrive
   "certificate obtained successfully", poi rimettila su AzuraCast. Il certificato dura 90 giorni: se le prove
@@ -326,15 +387,15 @@ spegnere AzuraCast:
 - pannello: `https://<nome>:9443`; nella regia **Porta del servizio di controllo** 9443 con HTTPS spuntato.
 
 Quando passi al server nuovo per davvero, togli AzuraCast, inoltra 80, 443 e 8000 alla VM, rimetti il dominio
-definitivo in `DOMINIO`, svuota `ASCOLTO_URL` e riavvia.
+definitivo come **Dominio** e svuota l'**Indirizzo di ascolto per gli ospiti** (sempre da **Impostazioni server**).
 
 ### Ascolto e Icecast secondario
 
 - Indirizzo per gli ascoltatori (sito, app, lettori): `https://<dominio>/radio.mp3` (MP3 a 128 kbit/s).
   Per i lettori che non usano https: `http://<dominio>:8000/radio.mp3`.
 - Titolo in onda e numero di ascoltatori: `https://<dominio>/status-json.xsl`.
-- **Icecast secondario**: se hai un Icecast su un altro server, scrivi i suoi dati in `/opt/radio-ponte/.env`
-  (`ICECAST_ESTERNO_HOST`, `_PORTA`, `_MOUNT`, `_UTENTE`, `_PASSWORD`) e poi `sudo /opt/radio-ponte/riavvia.sh`.
+- **Icecast secondario**: se hai un Icecast su un altro server, scrivi i suoi dati nel pannello, menu ☰ →
+  **Impostazioni server** → **Icecast secondario** (indirizzo, porta, mount, utente, password) e premi **Salva e applica**.
   Riceve sempre lo stesso segnale del principale, anche la musica di riserva: se il server di casa non è
   raggiungibile, gli ascoltatori passano al secondario e sentono la stessa cosa. Nei lettori che lo permettono,
   mettilo come indirizzo di riserva.
@@ -370,7 +431,7 @@ Usa la stessa app di prima (BUTT, Larix, Luci Live…), in modalità Icecast. Ca
 
 - **server**: il nome di dominio della radio;
 - **porta**: 9010;
-- **mount**, **utente** e **password**: quelli stampati dall'installazione (`ESTERNA_*` nel file `.env`).
+- **mount**, **utente** e **password**: quelli stampati dall'installazione (si vedono e si cambiano nel pannello: menu ☰ → **Impostazioni server** → **Dirette esterne**).
 
 Quando l'app si collega va in onda lei, con una breve dissolvenza. Quando si scollega torna da sola la regia
 (o la musica di riserva, se la regia è spenta).
@@ -395,7 +456,7 @@ conosce già.
   viene riconosciuto da solo e i passaggi già sentiti vanno nel registro. Se era parlato o rumore, premi
   **Non è musica**. Etichettare serve almeno il ruolo conduttore.
 - Il brano sconosciuto entra nel registro solo dopo che lo hai etichettato.
-- Per spegnere il riconoscimento: `RICONOSCIMENTO=no` nel file `.env` del server, poi `riavvia.sh`.
+- Per spegnere il riconoscimento: pannello, menu ☰ → **Impostazioni server** → **Riconoscimento brani e puntate**.
 
 ## 12. Pannello remoto e utenti
 
@@ -430,6 +491,26 @@ Cambiando la password, l'utente viene scollegato da tutti i dispositivi.
 attiva di base. La riga "Pannello remoto" dice se il collegamento è attivo e mostra l'indirizzo del pannello.
 
 Dopo 5 password sbagliate di fila dallo stesso indirizzo, il pannello blocca i tentativi per un minuto.
+
+### Impostazioni del server
+
+Menu ☰ → **Impostazioni server** (solo per gli amministratori). Qui trovi tutto quello che prima stava nel file
+`.env` del server, diviso in gruppi: Radio, Dirette esterne, Icecast secondario, Microfono remoto e ospiti,
+Dirette video, Riconoscimento brani e puntate, Allarmi (Telegram ed email).
+
+- Cambia i valori e premi **Salva e applica**. Prima di salvare il pannello ti dice cosa riparte: se tocca
+  l'audio (per esempio la password delle esterne) la radio resta muta per qualche secondo; se tocca solo il
+  pannello (per esempio Telegram o le email) l'audio non si ferma. Il server riparte da solo, solo nelle parti
+  che servono, e in alto compare **✓ Impostazioni applicate**.
+- **Password**: non si vedono. Lasciale vuote per tenere quelle di adesso; l'occhio 👁 mostra quello che stai
+  scrivendo; **Cancella** la toglie.
+- **Avanzate** (dominio, porte, frase segreta SRT, token della regia, password di Icecast, mount dell'ascolto):
+  sono bloccate. Se sbagliate, la regia o il pannello non si collegano più. Per cambiarle spunta
+  **Modifica avanzata** e conferma due volte; ricordati di cambiarle anche nella regia, sul router o nelle app.
+
+**Aggiornando da una versione precedente**: rilancia una volta `sudo bash installa-server.sh` dalla cartella
+`ponte` nuova. Installa il piccolo servizio che riavvia il server quando salvi dal pannello. Se manca, il
+pannello lo dice con una striscia rossa.
 
 ### Microfono dal pannello
 
@@ -602,7 +683,7 @@ brani, numero di ascoltatori dell'Icecast principale e diretta esterna segnata c
 copertina del programma in onda oppure il logo caricato nelle dirette video. Il titolo arriva comunque anche
 nel flusso Icecast, come prima.
 
-**Spazio su disco:** a 128 kbps un'ora di registrazione occupa circa 58 MB (`PUNTATE_BITRATE` nel `.env`). Le bozze
+**Spazio su disco:** a 128 kbps un'ora di registrazione occupa circa 58 MB (si cambia in **Impostazioni server** → **Qualità delle puntate registrate**). Le bozze
 non pubblicate restano finché non le elimini.
 
 ### Repliche
@@ -635,7 +716,7 @@ Scegli **Giorno** o **Settimana** (da lunedì) e la data, con ◀ ▶ per sposta
 - la tabella **per programma** (dalle fasce dei programmi): media, picco e ore di ascolto.
 
 **Icecast secondario:** il server prova prima la pagina pubblica `status-json.xsl` di quel server. Se è chiusa,
-metti nel `.env` del server `ICECAST_ESTERNO_ADMIN_UTENTE` e `ICECAST_ESTERNO_ADMIN_PASSWORD` (le credenziali di
+metti in **Impostazioni server** → **Icecast secondario** utente e password amministratore (le credenziali di
 amministrazione di quell'Icecast) e riavvia. Se non si riesce a leggere, le statistiche contano solo il principale
 e la pagina lo dice.
 
@@ -658,7 +739,7 @@ Gli annunci non entrano nel registro dei brani né nel report SIAE.
 
 ## 13. Allarmi e notifiche
 
-Il ponte avvisa via Telegram e/o email (da configurare nel `.env` del server; la scheda **Collegamento** ha
+Il ponte avvisa via Telegram e/o email (da configurare nel pannello, menu ☰ → **Impostazioni server** → **Allarmi**; la scheda **Collegamento** ha
 **Invia notifica di prova**):
 
 - regia scollegata dal ponte;
@@ -684,7 +765,7 @@ Chiunque sia nella chat può usarlo, anche per etichettare.
 2. Crea un gruppo (o usa quello degli allarmi), aggiungi il bot e scrivi un messaggio qualsiasi nel gruppo.
 3. Apri `https://api.telegram.org/bot<TOKEN>/getUpdates` nel browser: l'id della chat è il numero dopo
    `"chat":{"id":` (per i gruppi comincia con `-`).
-4. Nel `.env` del server metti `TELEGRAM_ETICHETTE_TOKEN` e `TELEGRAM_ETICHETTE_CHAT_ID`, poi `riavvia.sh`.
+4. Nel pannello, menu ☰ → **Impostazioni server** → **Allarmi**, metti token e id della chat del **Bot Telegram della radio** e premi **Salva e applica**.
 
 Il bot legge solo i comandi e le risposte ai suoi messaggi, non il resto della chat.
 
@@ -718,8 +799,8 @@ Il ponte tiene gli ultimi 14.
 | Problema | Cosa controllare |
 |---|---|
 | "Il ponte non risponde" | porta UDP 9000 non inoltrata sul router, indirizzo sbagliato, VM spenta |
-| "Frase segreta errata" | la frase segreta della regia è diversa da quella del `.env` |
-| "token del ponte errato" | il token della regia è diverso da quello del `.env` |
+| "Frase segreta errata" | la frase segreta della regia è diversa da quella del server (pannello: Impostazioni server → Avanzate) |
+| "token del ponte errato" | il token della regia è diverso da quello del server (pannello: Impostazioni server → Avanzate) |
 | Allarme Icecast secondario | host, porta, mount o password `ICECAST_ESTERNO_*` sbagliati, oppure server esterno spento |
 | Il pannello non si apre in https | il dominio non punta all'IP di casa, o le porte 80/443 non arrivano alla VM (`docker compose logs caddy`) |
 | La scheda audio scelta non è disponibile | il RodeCaster è scollegato o spento |
@@ -754,14 +835,18 @@ Il ponte tiene gli ultimi 14.
 | La voce dice male un nome | scrivilo come si pronuncia (es. "Elvis Prèsli"); per le sigle usa i punti o gli spazi |
 | L'annuncio del server va in onda un brano dopo | normale con la musica di riserva: il server prepara il brano successivo in anticipo |
 | Gli annunci del server non partono mai | partono solo quando trasmette il server (senza regia, studio ed esterne); controlla giorni, orario e **attivo** |
+| "modello non scaricato" | serve internet per scaricarlo la prima volta: premi **Riprendi lo scaricamento**, riparte da dove si era fermato |
+| L'AI sbaglia giorni od orari | scrivi giorni e orari in modo esplicito ("dal lunedì al venerdì dalle 7 alle 10") e correggi nell'anteprima prima di creare gli eventi |
+| Una fascia ha pochi brani (⚠) | aggiungi generi alla fascia, oppure fai la ricerca su MusicBrainz per avere più generi |
+| "chiave non valida" (Discogs, Last.fm o AcoustID) | ricopia la chiave dal sito del servizio in **Impostazioni** → **Servizi per i dati dei brani** e premi **Salva** |
+| Il riquadro non dice "AcoustID attivo" | manca la chiave di AcoustID, oppure la regia è una versione vecchia senza fpcalc: aggiornala |
 | Nel report mancano i brani della notte | il ponte non era raggiungibile quando hai aperto il report: premi **Aggiorna** con il ponte collegato |
 
 ## 16. In arrivo
 
-Prossime fasi (l'ordine può cambiare):
+Prossime fasi:
 
-- FluidStream, se un giorno servirà;
-- rotazioni generate dall'AI a partire da una descrizione del palinsesto.
+- FluidStream, se un giorno servirà.
 
 ## 17. Modifiche alla guida
 
@@ -782,3 +867,6 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Bot Telegram della radio: audio dei brani sconosciuti da etichettare rispondendo nella chat, "Non è musica", menu in sola lettura con stato, ascoltatori, puntate e brani etichettati |
 | 15/11/2026 | Notiziari scaricati in automatico: fonti in Impostazioni (feed di un podcast o link diretto), età massima, cosa fare se manca; azione **Notiziario** negli eventi |
 | 15/11/2026 | Voce sintetica gratuita (Paola o Riccardo) con regolazioni: azione **Annuncio vocale** negli eventi, notiziario mancante letto dalla voce, annunci a orario del server dal pannello |
+| 16/11/2026 | Rotazioni con l'AI: palinsesto scritto a parole, fasce in anteprima da correggere, eventi **AI · …** creati da soli; modello locale scaricato una volta; generi e anno da MusicBrainz |
+| 16/11/2026 | Discogs (generi e stili), Last.fm (etichette) e AcoustID (brani riconosciuti dall'audio): chiavi in Impostazioni, ricerca dalla Libreria |
+| 16/11/2026 | Impostazioni del server dal pannello (menu ☰ → Impostazioni server): tutti i valori del `.env`, riavvio automatico solo delle parti cambiate, valori avanzati protetti |
