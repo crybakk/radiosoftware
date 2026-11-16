@@ -163,6 +163,9 @@ describe('pagine: player pubblico su / e pannello su /dashboard', () => {
     const homeHtml = await home.text()
     expect(homeHtml).toContain('/player.js')
     expect(homeHtml).not.toContain('login-form')
+    // niente numero di ascoltatori sul player pubblico (scelta di cristian)
+    expect(homeHtml).not.toContain('listeners')
+    expect(await (await fetch(`${base}/player.js`)).text()).not.toContain('listeners')
     for (const p of ['/dashboard', '/dashboard/']) {
       const r = await fetch(base + p)
       expect(r.status).toBe(200)
