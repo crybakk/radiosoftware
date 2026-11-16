@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 15/11/2026, voce sintetica per gli annunci (regia e server), dopo i notiziari automatici.
+**Ultimo aggiornamento:** 16/11/2026, rotazioni con l'AI dal palinsesto scritto a parole e generi da MusicBrainz.
 
 ## Indice
 
@@ -13,6 +13,7 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
 5. [Libreria e scheda brano](#5-libreria-e-scheda-brano)
     - [Dati per il report SIAE (MusicBrainz)](#dati-per-il-report-siae-musicbrainz)
 6. [Eventi a orario](#6-eventi-a-orario)
+    - [Rotazioni con l'AI](#rotazioni-con-lai)
 7. [Registro di trasmissione](#7-registro-di-trasmissione)
     - [Report SIAE trimestrale](#report-siae-trimestrale)
 8. [Impostazioni](#8-impostazioni)
@@ -170,9 +171,38 @@ Scheda **Eventi** → **+ Nuovo evento**. Un evento esegue in ordine una serie d
 | Comando esterno | avvia un programma o uno script sul PC |
 | Replica di un programma | l'ultima puntata pubblicata del programma scelto, in streaming dal server (sezione 12, Repliche) |
 | Notiziario | l'ultima edizione di una fonte dei notiziari, scaricata in quel momento (sezione 8, [Notiziari](#notiziari)) |
+| Annuncio vocale | un testo letto dalla voce sintetica (sezione 8, [Voce sintetica](#voce-sintetica)) |
 
 Con **▶ Prova** esegui subito un evento per vedere come va. **Duplica** crea una copia da modificare.
 In alto vedi i prossimi eventi in programma e, se attivo, il profilo di rotazione in uso.
+
+### Rotazioni con l'AI
+
+Invece di creare a mano gli eventi **Regole di rotazione** fascia per fascia, puoi scrivere il palinsesto a parole
+e farli preparare all'AI. L'AI gira sul PC di regia, senza internet e gratis: serve solo scaricare il modello la
+prima volta.
+
+1. Scheda **Eventi** → riquadro **Rotazioni con l'AI** → **Apri**.
+2. La prima volta premi **Scarica il modello** (Qwen3 4B Instruct, circa 2,5 GB, licenza libera). Se lo
+   scaricamento si interrompe, **Riprendi lo scaricamento** riparte da dove era arrivato.
+3. Scrivi il **Palinsesto**, per esempio:
+   *"Dal lunedì al venerdì dalle 7 alle 10 pop italiano allegro, dalle 10 alle 13 successi degli anni 80 e 90.
+   Tutti i giorni dalle 22 alle 2 musica tranquilla, jazz e lounge. Sabato e domenica dalle 9 alle 12 rock, con
+   un jingle ogni 3 brani."* (**Usa l'esempio** lo scrive per te).
+4. **Prepara le fasce**: ci vuole da meno di un minuto a qualche minuto, a seconda del PC. La messa in onda
+   continua (l'AI lascia liberi due core del processore).
+5. Nell'**Anteprima** controlli ogni fascia: giorni, orari, generi, anni, separazione artista, jingle e quanti
+   **Brani** della libreria ci rientrano. Puoi correggere tutto a mano o togliere una fascia con ✕. Una fascia
+   con meno di 10 brani (⚠) userebbe tutta la musica.
+6. **Crea gli eventi**: per ogni fascia nasce un evento **Regole di rotazione** all'inizio e uno che torna alla
+   rotazione normale alla fine (se subito dopo non parte un'altra fascia). Si chiamano tutti **AI · …** e si
+   modificano come gli altri eventi. Con **Sostituisci gli eventi creati prima dall'AI** quelli vecchi vengono
+   tolti, così puoi rifare il palinsesto quante volte vuoi.
+
+L'AI sceglie **solo tra i generi della tua libreria**: quello scritto nei file e quelli di MusicBrainz (sezione 5,
+[Dati per il report SIAE](#dati-per-il-report-siae-musicbrainz)). Per avere più generi fai prima la ricerca su
+MusicBrainz. Se l'AI propone qualcosa che non c'è, l'anteprima lo toglie e lo scrive in giallo.
+Le rotazioni con l'AI sono solo in regia: il server, che fa da riserva, continua con la musica a caso.
 
 ## 7. Registro di trasmissione
 
@@ -761,14 +791,16 @@ Il ponte tiene gli ultimi 14.
 | La voce dice male un nome | scrivilo come si pronuncia (es. "Elvis Prèsli"); per le sigle usa i punti o gli spazi |
 | L'annuncio del server va in onda un brano dopo | normale con la musica di riserva: il server prepara il brano successivo in anticipo |
 | Gli annunci del server non partono mai | partono solo quando trasmette il server (senza regia, studio ed esterne); controlla giorni, orario e **attivo** |
+| "modello non scaricato" | serve internet per scaricarlo la prima volta: premi **Riprendi lo scaricamento**, riparte da dove si era fermato |
+| L'AI sbaglia giorni od orari | scrivi giorni e orari in modo esplicito ("dal lunedì al venerdì dalle 7 alle 10") e correggi nell'anteprima prima di creare gli eventi |
+| Una fascia ha pochi brani (⚠) | aggiungi generi alla fascia, oppure fai la ricerca su MusicBrainz per avere più generi |
 | Nel report mancano i brani della notte | il ponte non era raggiungibile quando hai aperto il report: premi **Aggiorna** con il ponte collegato |
 
 ## 16. In arrivo
 
-Prossime fasi (l'ordine può cambiare):
+Prossime fasi:
 
-- FluidStream, se un giorno servirà;
-- rotazioni generate dall'AI a partire da una descrizione del palinsesto.
+- FluidStream, se un giorno servirà.
 
 ## 17. Modifiche alla guida
 
@@ -789,3 +821,4 @@ Prossime fasi (l'ordine può cambiare):
 | 15/11/2026 | Bot Telegram della radio: audio dei brani sconosciuti da etichettare rispondendo nella chat, "Non è musica", menu in sola lettura con stato, ascoltatori, puntate e brani etichettati |
 | 15/11/2026 | Notiziari scaricati in automatico: fonti in Impostazioni (feed di un podcast o link diretto), età massima, cosa fare se manca; azione **Notiziario** negli eventi |
 | 15/11/2026 | Voce sintetica gratuita (Paola o Riccardo) con regolazioni: azione **Annuncio vocale** negli eventi, notiziario mancante letto dalla voce, annunci a orario del server dal pannello |
+| 16/11/2026 | Rotazioni con l'AI: palinsesto scritto a parole, fasce in anteprima da correggere, eventi **AI · …** creati da soli; modello locale scaricato una volta; generi e anno da MusicBrainz |
