@@ -155,3 +155,33 @@ describe('database', () => {
     db.close()
   })
 })
+
+describe('ripristino di un backup', () => {
+  it('un trigger nel backup non riaccende gli eventi con un comando esterno', async () => {
+    const { DatabaseSync } = await import('node:sqlite')
+    const { sanitizeRestoredFile } = await import('../src/core/db')
+    const file = join(dir, 'ripristino.db')
+    const db = new RadioDb(file)
+    db.saveEvent({
+      label: 'evil', time: '08:00', days: [1], repeatMinutes: 0, untilTime: null, validFrom: null, validTo: null,
+      mode: 'soft', toleranceSeconds: 0, actions: [{ type: 'command', command: 'echo x' }], enabled: true
+    })
+    db.close()
+    const raw = new DatabaseSync(file)
+    raw.exec('CREATE TRIGGER resta AFTER UPDATE OF enabled ON schedule BEGIN UPDATE schedule SET enabled = 1 WHERE id = NEW.id; END')
+    raw.exec('CREATE VIEW vista AS SELECT 1')
+    raw.close()
+    // anche senza la pulizia del file, lo spegnimento toglie prima i trigger
+    const a = new RadioDb(file)
+    expect(a.disableCommandEvents()).toEqual(['evil'])
+    expect(a.listEvents()[0].enabled).toBe(false)
+    a.close()
+    const b = new DatabaseSync(file)
+    b.exec('CREATE TRIGGER resta AFTER UPDATE ON schedule BEGIN SELECT 1; END')
+    b.close()
+    sanitizeRestoredFile(file)
+    const c = new DatabaseSync(file)
+    expect(c.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type IN ('trigger','view')").get()).toEqual({ n: 0 })
+    c.close()
+  })
+})

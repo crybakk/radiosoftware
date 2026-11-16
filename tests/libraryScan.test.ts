@@ -36,6 +36,25 @@ beforeAll(() => {
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('scansione della libreria', () => {
+  it('su Windows un file rinominato cambiando solo le maiuscole resta lo stesso brano', async () => {
+    const d = join(dir, 'maiuscole')
+    mkdirSync(d)
+    mp3(join(d, 'canzone.mp3'), ['-metadata', 'title=Prima'])
+    const db = new RadioDb(':memory:')
+    db.addFolder(d, 'music')
+    await scanLibrary(db, undefined, true)
+    const t = db.searchTracks({ text: 'Prima' }).tracks[0]
+    db.updateTrack(t.id, { title: 'Corretto a mano', kind: 'jingle' })
+    renameSync(join(d, 'canzone.mp3'), join(d, 'Canzone.mp3'))
+    const r = await scanLibrary(db, undefined, true)
+    expect(r.added).toBe(0)
+    expect(r.disabled).toBe(0)
+    const dopo = db.getTrack(t.id)!
+    expect(dopo.path).toBe(join(d, 'Canzone.mp3'))
+    expect(dopo).toMatchObject({ title: 'Corretto a mano', kind: 'jingle', enabled: true })
+    db.close()
+  })
+
   it('una nuova scansione non riabilita i brani disabilitati a mano e non cambia il tipo scelto a mano', async () => {
     const db = new RadioDb(':memory:')
     db.addFolder(join(dir, 'musica'), 'music')

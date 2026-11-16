@@ -34,7 +34,7 @@ class FakeChild implements ChildLike {
   }
 }
 
-function setup(withLogo = true) {
+function setup(withLogo = true, obsPassphrase = 'segreto1234') {
   const dir = mkdtempSync(join(tmpdir(), 'video-'))
   const logo = join(dir, 'logo.png')
   if (withLogo) writeFileSync(logo, 'x')
@@ -44,7 +44,7 @@ function setup(withLogo = true) {
     logo: () => (withLogo ? logo : null),
     audioUrl: 'http://liquidsoap:8093/programma',
     obsPort: 9020,
-    obsPassphrase: 'segreto1234',
+    obsPassphrase,
     spawn: (_cmd, args) => {
       const child = new FakeChild()
       children.push({ args, child })
@@ -106,6 +106,14 @@ describe('dirette video', () => {
     expect(() => v.run({ type: 'start', source: 'logo', destinations: ['youtube'] }, 'anna')).toThrow(/già accesa/)
     v.run({ type: 'stop' }, 'anna')
     expect(children[0].child.killed).toBe(true)
+    expect(v.status().state).toBe('spenta')
+  })
+
+  it('OBS senza frase segreta: la diretta non parte', () => {
+    const { v, children } = setup(true, '')
+    v.run({ type: 'config', youtubeKey: 'abcd-efgh-ijkl' }, 'admin')
+    expect(() => v.run({ type: 'start', source: 'obs', destinations: ['youtube'] }, 'anna')).toThrow(/frase segreta/)
+    expect(children).toHaveLength(0)
     expect(v.status().state).toBe('spenta')
   })
 

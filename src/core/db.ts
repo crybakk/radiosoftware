@@ -105,6 +105,27 @@ CREATE TABLE IF NOT EXISTS settings (
 
 type Row = Record<string, unknown>
 
+/**
+ * Toglie trigger e viste da un database: la regia non ne usa, quindi in un backup arrivato da fuori
+ * sarebbero codice estraneo che gira a ogni modifica (per esempio per riaccendere gli eventi spenti).
+ */
+export function dropSchemaCode(db: DatabaseSync): string[] {
+  const rows = db.prepare("SELECT type, name FROM sqlite_master WHERE type IN ('trigger', 'view')").all() as Row[]
+  for (const r of rows) db.exec(`DROP ${r.type === 'view' ? 'VIEW' : 'TRIGGER'} IF EXISTS "${String(r.name).replace(/"/g, '""')}"`)
+  return rows.map((r) => String(r.name))
+}
+
+/** Prepara un backup scaricato prima di aprirlo come database della regia. */
+export function sanitizeRestoredFile(file: string): void {
+  const db = new DatabaseSync(file)
+  try {
+    db.exec('PRAGMA trusted_schema = OFF')
+    dropSchemaCode(db)
+  } finally {
+    db.close()
+  }
+}
+
 /** Musica attiva a cui manca un dato che MusicBrainz può dare (autori, editore, ISRC, ISWC). */
 const MB_TODO = "kind = 'music' AND enabled = 1 AND (composer = '' OR publisher = '' OR isrc = '' OR iswc = '')"
 /** Musica attiva da cercare su MusicBrainz: dati SIAE mancanti mai cercati, oppure generi non ancora letti. */
@@ -448,6 +469,11 @@ export class RadioDb {
     this.db.prepare('UPDATE tracks SET enabled = 0, missing = 1 WHERE id = ?').run(id)
   }
 
+  /** Nuovo percorso dello stesso file (per esempio rinominato cambiando solo le maiuscole su Windows). */
+  renameTrackPath(id: number, path: string): void {
+    this.db.prepare('UPDATE tracks SET path = ? WHERE id = ?').run(path, id)
+  }
+
   /** Inserisce o aggiorna un file scansionato. Se il file è cambiato, l'analisi va rifatta. */
   upsertScanned(f: ScannedFile): number {
     const existing = this.db.prepare('SELECT id FROM tracks WHERE path = ?').get(f.path) as Row | undefined
@@ -585,6 +611,13 @@ export class RadioDb {
       sets.push('manual_fields = manual_fields | ?')
       values.push(manual)
     }
+    // titolo o interprete corretti a mano: l'abbinamento a MusicBrainz era probabilmente sbagliato,
+    // quindi si toglie e il brano torna in coda per MusicBrainz, AcoustID, Discogs e Last.fm
+    // (gli autori già scritti restano: sono campi protetti solo se corretti a mano)
+    const renamed = before && ((edit.title !== undefined && edit.title !== before.title) || (edit.artist !== undefined && edit.artist !== before.artist))
+    if (renamed) {
+      sets.push("mb_recording_id = ''", 'mb_checked_at = NULL', 'mb_genres_at = NULL', 'acoustid_at = NULL', 'dc_at = NULL', 'lfm_at = NULL')
+    }
     // abilitato/disabilitato a mano: è una scelta dell'utente, la scansione non la cambia più
     if (edit.enabled !== undefined) sets.push('missing = 0')
     // tipo cambiato a mano: la scansione non lo riporta a quello della cartella
@@ -695,9 +728,14 @@ export class RadioDb {
    * Restituisce i nomi degli eventi spenti.
    */
   disableCommandEvents(): string[] {
+    // prima via eventuali trigger del backup, che potrebbero annullare lo spegnimento
+    dropSchemaCode(this.db)
     const off = this.listEvents().filter((e) => e.enabled && e.actions.some((a) => a?.type === 'command'))
     const stmt = this.db.prepare('UPDATE schedule SET enabled = 0 WHERE id = ?')
     for (const e of off) stmt.run(e.id)
+    if (this.listEvents().some((e) => e.enabled && e.actions.some((a) => a?.type === 'command'))) {
+      throw new Error('ripristino: non è stato possibile spegnere gli eventi con un comando esterno')
+    }
     return off.map((e) => e.label)
   }
 

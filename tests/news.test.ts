@@ -294,3 +294,19 @@ describe('notiziario con il link della puntata sempre uguale', () => {
     expect(third.item?.publishedAt).toBe(Date.parse('2026-11-15T20:00:00Z'))
   })
 })
+
+describe('feed costruiti apposta', () => {
+  it('tanti tag <link> senza fine non bloccano la regia', () => {
+    const item = `<item><title>x</title>${'<link rel="enclosure" '.repeat(2900)}</item>`
+    const t0 = Date.now()
+    expect(parseFeed(`<rss><channel>${item.repeat(8)}</channel></rss>`)).toBeNull()
+    expect(Date.now() - t0).toBeLessThan(1500)
+  })
+
+  it('legge ancora link con rel e href in qualsiasi ordine', () => {
+    const atom = (l: string) => `<feed><entry><title>T</title><updated>2026-11-16T08:00:00Z</updated>${l}</entry></feed>`
+    expect(parseFeed(atom('<link href="https://a/1.mp3" rel="enclosure" type="audio/mpeg"/>'))?.url).toBe('https://a/1.mp3')
+    expect(parseFeed(atom('<link rel="alternate" href="https://a/pagina"/><link\nrel=\'enclosure\'\nhref=\'https://a/2.mp3\'/>'))?.url).toBe('https://a/2.mp3')
+    expect(parseFeed('<rss><channel><item><title>A</title><media:content url="https://a/3.mp3"/></item></channel></rss>')?.url).toBe('https://a/3.mp3')
+  })
+})

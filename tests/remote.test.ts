@@ -276,6 +276,34 @@ describe('collegamento della regia (ponte finto)', () => {
     link.stop()
   })
 
+  it('le ricerche vanno una alla volta e troppe insieme vengono rifiutate', async () => {
+    FakeWs.all = []
+    let running = 0
+    let maxRunning = 0
+    const link = new RemoteLink(
+      async () => {
+        running++
+        maxRunning = Math.max(maxRunning, running)
+        await sleep(10)
+        running--
+        return []
+      },
+      () => {},
+      FakeWs as never
+    )
+    link.start('ws://ponte/ws/regia', TOKEN)
+    await until(() => FakeWs.all[0]?.sent.length === 1)
+    const ws = FakeWs.all[0]
+    ws.receive({ t: 'auth-ok' })
+    for (let i = 0; i < 10; i++) ws.receive({ t: 'cmd', id: `s${i}`, by: 'anna', cmd: { type: 'search', q: 'x' } })
+    await until(() => ws.sent.filter((m) => m.t === 'reply').length === 10)
+    const replies = ws.sent.filter((m) => m.t === 'reply')
+    expect(maxRunning).toBe(1)
+    expect(replies.filter((m) => m.ok)).toHaveLength(4)
+    expect(replies.filter((m) => !m.ok)[0].error).toMatch(/troppe ricerche/)
+    link.stop()
+  })
+
   it('un comando fallito non blocca i successivi', async () => {
     FakeWs.all = []
     const link = new RemoteLink(

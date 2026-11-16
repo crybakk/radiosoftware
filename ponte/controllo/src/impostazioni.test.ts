@@ -89,7 +89,7 @@ describe('impostazioni dal pannello', () => {
     expect(() => imp.salva({ ICECAST_MAX_ASCOLTATORI: 'tanti' }, { avanzate: false })).toThrow(/numero/)
     expect(() => imp.salva({ ESTERNA_MOUNT: 'senza-barra' }, { avanzate: false })).toThrow(/\//)
     expect(() => imp.salva({ PROCESSORE_AUDIO: 'esagerato' }, { avanzate: false })).toThrow(/scelta/)
-    expect(() => imp.salva({ NOME_RADIO: "l'altra" }, { avanzate: false })).toThrow(/apostrofi/)
+    expect(() => imp.salva({ NOME_RADIO: "l'altra $X" }, { avanzate: false })).toThrow(/apostrofo/)
     expect(() => imp.salva({ NOME_RADIO: 'a\nB=c' }, { avanzate: false })).toThrow()
     expect(() => imp.salva({ PIPPO: '1' }, { avanzate: false })).toThrow(/sconosciuta/)
     expect(() => imp.salva({ ESTERNA_PORTA: '8000' }, { avanzate: true })).toThrow(/diversa/)
@@ -185,5 +185,16 @@ describe('mount', () => {
     expect(controlla(v, '/radio.mp3')).toBe('/radio.mp3')
     expect(() => controlla(v, '/radio{x}')).toThrow()
     expect(() => controlla(v, '/a"b')).toThrow()
+  })
+})
+
+describe('apostrofi', () => {
+  it("un nome con l'apostrofo si salva tra virgolette doppie e si rilegge uguale", () => {
+    const v = VOCI.find((x) => x.chiave === 'NOME_RADIO')!
+    expect(scriviValore("Radio dell'Isola")).toBe(`"Radio dell'Isola"`)
+    const testo = aggiornaEnv('NOME_RADIO=x\n', { NOME_RADIO: "Radio dell'Isola" })
+    expect(leggiEnv(testo).NOME_RADIO).toBe("Radio dell'Isola")
+    expect(scriviValore('con spazio')).toBe("'con spazio'")
+    expect(v.chiave).toBe('NOME_RADIO')
   })
 })

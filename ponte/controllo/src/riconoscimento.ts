@@ -138,7 +138,9 @@ export class UnknownStore {
     // contatore salvato: un numero scartato non torna a un brano nuovo dopo un riavvio
     // (vecchi messaggi Telegram o pannelli aperti agirebbero sul brano sbagliato)
     try {
-      this.next = Math.max(1, Math.floor(Number(readFileSync(join(dir, 'prossimo'), 'utf8'))) || 1)
+      const n = Math.floor(Number(readFileSync(join(dir, 'prossimo'), 'utf8')))
+      // un file rovinato ("Infinity", testo) non deve dare numeri impossibili
+      this.next = Number.isSafeInteger(n) && n > 0 ? n : 1
     } catch {
       // primo avvio o file mancante: si riparte dai file presenti
     }

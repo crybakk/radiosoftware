@@ -712,7 +712,7 @@ function renderVideo() {
     `In OBS: Impostazioni → Stream → Servizio "Personalizzato", Server srt://${location.hostname}:${video.obsPort}` +
     (video.obsPassphrase ? '?passphrase=<frase segreta VIDEO_OBS_PASSPHRASE>' : '') +
     ', chiave vuota. Uscita 1280×720, x264, intervallo fotogrammi chiave 2 s, 2500-4000 kbps. Prima avvia qui, poi "Avvia trasmissione" in OBS.'+
-    (video.obsPassphrase ? '' : ' Attenzione: manca la frase segreta del video da OBS (Impostazioni del server): chiunque raggiunga la porta potrebbe mandare il suo video.')
+    (video.obsPassphrase ? '' : ' Attenzione: manca la frase segreta del video da OBS (Impostazioni del server): senza, la diretta da OBS non parte.')
   $('video-delay').value = video.delayMs
   $('video-settings').hidden = me.role !== 'amministratore'
   if (video.hasLogo && logoShown !== true) {

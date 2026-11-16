@@ -66,6 +66,7 @@ export const VOCI: Voce[] = [
   { chiave: 'ICECAST_ESTERNO_PASSWORD', gruppo: 'Icecast secondario', etichetta: 'Password per trasmettere', tipo: 'password', vuoto: true, predefinito: '', parti: ['audio'] },
   { chiave: 'ICECAST_ESTERNO_ADMIN_UTENTE', gruppo: 'Icecast secondario', etichetta: 'Utente amministratore (statistiche)', tipo: 'testo', vuoto: true, predefinito: 'admin', parti: ['pannello'], aiuto: 'Serve solo se la pagina pubblica di stato del secondario è chiusa.' },
   { chiave: 'ICECAST_ESTERNO_ADMIN_PASSWORD', gruppo: 'Icecast secondario', etichetta: 'Password amministratore (statistiche)', tipo: 'password', vuoto: true, predefinito: '', parti: ['pannello'] },
+  { chiave: 'ICECAST_ESTERNO_HTTPS', gruppo: 'Icecast secondario', etichetta: 'Statistiche lette in HTTPS', tipo: 'sino', predefinito: 'no', parti: ['pannello'], aiuto: 'Sì se il secondario risponde in HTTPS sulla stessa porta: la password amministratore non passa in chiaro.' },
 
   // --- Microfono remoto e ospiti ---
   { chiave: 'MICROFONO_REMOTO', gruppo: 'Microfono remoto e ospiti', etichetta: 'Microfono remoto dal pannello', tipo: 'sino', predefinito: 'si', parti: ['audio', 'pannello'] },
@@ -76,7 +77,7 @@ export const VOCI: Voce[] = [
 
   // --- Dirette video ---
   { chiave: 'DIRETTE_VIDEO', gruppo: 'Dirette video', etichetta: 'Dirette su YouTube e Facebook', tipo: 'sino', predefinito: 'si', parti: ['pannello'], aiuto: 'Le chiavi delle dirette e il logo si impostano nella sezione Dirette video.' },
-  { chiave: 'VIDEO_OBS_PASSPHRASE', gruppo: 'Dirette video', etichetta: 'Frase segreta per OBS', tipo: 'password', ...FRASE, predefinito: '', parti: ['pannello'], aiuto: 'Da 10 a 79 caratteri. Vuota = nessuna cifratura.' },
+  { chiave: 'VIDEO_OBS_PASSPHRASE', gruppo: 'Dirette video', etichetta: 'Frase segreta per OBS', tipo: 'password', ...FRASE, predefinito: '', parti: ['pannello'], aiuto: 'Da 10 a 79 caratteri. Senza frase la diretta da OBS non parte.' },
 
   // --- Riconoscimento e puntate ---
   { chiave: 'RICONOSCIMENTO', gruppo: 'Riconoscimento brani e puntate', etichetta: 'Riconoscimento dei brani nelle dirette esterne', tipo: 'sino', predefinito: 'si', parti: ['pannello'] },
@@ -153,7 +154,9 @@ export function leggiEnv(testo: string): Record<string, string> {
 
 /** Valore pronto per il file: tra apici singoli se contiene caratteri che Compose interpreterebbe ($, #, spazi…). */
 export function scriviValore(v: string): string {
-  return /^[A-Za-z0-9_./:,@+-]*$/.test(v) ? v : `'${v}'`
+  if (/^[A-Za-z0-9_./:,@+-]*$/.test(v)) return v
+  // con un apostrofo ("Radio dell'Isola") tra virgolette doppie: controlla() ha già escluso $ \ " e `
+  return v.includes("'") ? `"${v}"` : `'${v}'`
 }
 
 /** Riscrive il file cambiando solo le righe dei valori dati; quelli che mancano si aggiungono in fondo. */
@@ -178,7 +181,9 @@ export function aggiornaEnv(testo: string, valori: Record<string, string>): stri
 export function controlla(voce: Voce, valore: unknown): string {
   if (typeof valore !== 'string') throw new Error(`${voce.etichetta}: valore non valido`)
   const v = valore.trim()
-  if (/[\r\n']/.test(v)) throw new Error(`${voce.etichetta}: non può contenere a capo o apostrofi`)
+  if (/[\r\n]/.test(v)) throw new Error(`${voce.etichetta}: non può andare a capo`)
+  // l'apostrofo si scrive tra virgolette doppie, dove Docker Compose interpreta $ \ " e `
+  if (v.includes("'") && /[$\\"`]/.test(v)) throw new Error(`${voce.etichetta}: con un apostrofo non può contenere $ \\ " o \``)
   // tra apici, una \ in fondo per Docker Compose "protegge" l'apice di chiusura: il file .env non si leggerebbe più
   if (v.endsWith('\\')) throw new Error(`${voce.etichetta}: non può finire con \\`)
   if (v.length > 500) throw new Error(`${voce.etichetta}: troppo lungo`)

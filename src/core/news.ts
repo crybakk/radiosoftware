@@ -117,15 +117,38 @@ function feedBlocks(xml: string): string[] {
   return out
 }
 
+/**
+ * Tag di apertura `<name ...>` in un blocco, al massimo `max` e lunghi al massimo 4000 caratteri.
+ * Scansione lineare: un feed costruito apposta (tanti tag senza `>`) non blocca la regia.
+ */
+function openTags(b: string, name: string, max = 50): string[] {
+  const out: string[] = []
+  const lower = b.toLowerCase()
+  const open = `<${name.toLowerCase()}`
+  let end = -1
+  for (let i = lower.indexOf(open); i >= 0 && out.length < max; i = lower.indexOf(open, i + open.length)) {
+    const next = lower.charAt(i + open.length)
+    if (next && !/[\s/>]/.test(next)) continue
+    if (end < i) end = lower.indexOf('>', i)
+    if (end < 0) break
+    if (end - i <= 4000) out.push(b.slice(i, end + 1))
+  }
+  return out
+}
+
+/** Valore di un attributo dentro un tag già isolato. */
+function attr(tag: string, name: string): string | undefined {
+  return new RegExp(`\\s${name}\\s*=\\s*["']([^"']{1,4000})["']`, 'i').exec(tag)?.[1]
+}
+
 /** Ultima puntata di un feed RSS o Atom: link del file audio, titolo e data. */
 export function parseFeed(xml: string): { url: string; title: string; publishedAt: number } | null {
   const items = feedBlocks(xml)
     .map((b) => {
       const enc =
-        /<enclosure\b[^>]{0,2000}?\burl\s*=\s*["']([^"']{1,4000})["']/i.exec(b)?.[1] ??
-        /<link\b[^>]{0,2000}?\brel\s*=\s*["']enclosure["'][^>]{0,2000}?\bhref\s*=\s*["']([^"']{1,4000})["']/i.exec(b)?.[1] ??
-        /<link\b[^>]{0,2000}?\bhref\s*=\s*["']([^"']{1,4000})["'][^>]{0,2000}?\brel\s*=\s*["']enclosure["']/i.exec(b)?.[1] ??
-        /<media:content\b[^>]{0,2000}?\burl\s*=\s*["']([^"']{1,4000})["']/i.exec(b)?.[1]
+        openTags(b, 'enclosure').map((t) => attr(t, 'url')).find(Boolean) ??
+        openTags(b, 'link').filter((t) => attr(t, 'rel')?.toLowerCase() === 'enclosure').map((t) => attr(t, 'href')).find(Boolean) ??
+        openTags(b, 'media:content').map((t) => attr(t, 'url')).find(Boolean)
       if (!enc) return null
       const title = decode(/<title\b[^>]{0,2000}>([\s\S]{0,2000}?)<\/title>/i.exec(b)?.[1] ?? '').slice(0, 300)
       const date = /<(pubDate|published|updated|dc:date)\b[^>]{0,2000}>([\s\S]{0,200}?)<\/\1>/i.exec(b)?.[2]

@@ -193,6 +193,8 @@ export class VideoLive {
         if (destinations.includes('youtube') && !this.cfg.youtubeKey) throw new Error('manca la chiave di YouTube (Impostazioni delle dirette video)')
         if (destinations.includes('facebook') && !this.cfg.facebookKey) throw new Error('manca la chiave di Facebook (Impostazioni delle dirette video)')
         if (source === 'logo' && !this.o.logo()) throw new Error("carica prima l'immagine del logo")
+        // senza frase segreta chiunque raggiunga la porta potrebbe mandare il suo video in onda
+        if (source === 'obs' && !this.o.obsPassphrase) throw new Error('manca la frase segreta per OBS (Impostazioni del server → Dirette video)')
         if (!this.o.audioUrl) throw new Error("manca l'indirizzo dell'audio della radio (VIDEO_AUDIO_URL nel file .env)")
         this.wanted = { source, destinations, by }
         this.retries = 0
