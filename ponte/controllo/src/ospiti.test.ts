@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -127,5 +127,41 @@ describe('ospiti', () => {
     expect(mixer).toEqual(['ospite1 true', 'ospite1 false'])
     expect(p.last('state')).toEqual({ t: 'state', state: 'dentro', onAir: false })
     expect(slot.status()).toEqual({ user: null, onAir: false })
+  })
+
+  it('chi viene cacciato non rientra con lo stesso link; gli altri con quel link restano', async () => {
+    const { g } = setup()
+    const inv = (await g.command({ type: 'invite', label: 'x' }, 'c')) as any
+    const a = join_(g, inv.token, 'A')
+    const b = join_(g, inv.token, 'B')
+    const [ga] = g.list()
+    await g.command({ type: 'kick', id: ga.id }, 'c')
+    expect(a.p.last('state').state).toBe('chiuso')
+    expect(g.validInvite(inv.token)).toBeNull()
+    expect(g.listInvites()).toEqual([])
+    expect(b.p.closed).toBeNull()
+    expect(g.list().map((x) => x.name)).toEqual(['B'])
+    // la pagina riaperta con quel link non entra più
+    const again = new FakePeer()
+    g.attach(again, inv, 'h').message(JSON.stringify({ t: 'join', name: 'A' }))
+    expect(again.last('state').state).toBe('chiuso')
+  })
+
+  it("sala d'attesa piena: si avvisa e la connessione si chiude", async () => {
+    const { g } = setup()
+    const inv = (await g.command({ type: 'invite', label: '' }, 'c')) as any
+    for (let i = 0; i < 10; i++) join_(g, inv.token, `O${i}`)
+    const x = join_(g, inv.token, 'Ultimo')
+    expect(x.p.last('state').state).toBe('pieno')
+    expect(x.p.closed).toBe(1000)
+    expect(g.list()).toHaveLength(10)
+  })
+
+  it('file dei link rovinato: copiato da parte, si riparte senza link', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'osp-'))
+    writeFileSync(join(dir, 'inviti.json'), '[{"token": rotto')
+    const g = new Guests({ file: join(dir, 'inviti.json'), slots: [], station: 'R', listenUrl: '' })
+    expect(g.listInvites()).toEqual([])
+    expect(readdirSync(dir).filter((f) => f.startsWith('inviti.json.rovinato-'))).toHaveLength(1)
   })
 })

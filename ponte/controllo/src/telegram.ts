@@ -14,6 +14,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { Unknown, UnknownLabel } from './riconoscimento.ts'
+import { setAsideBroken } from './statoFile.ts'
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -98,8 +99,9 @@ export class LabelBot {
     if (existsSync(d.stateFile)) {
       try {
         this.state = { offset: 0, messages: {}, ...(JSON.parse(readFileSync(d.stateFile, 'utf8')) as Partial<State>) }
-      } catch {
-        // file rovinato: si riparte
+      } catch (e) {
+        // file rovinato: si riparte (il file si copia da parte)
+        setAsideBroken(d.stateFile, e, this.log)
       }
     }
   }
@@ -192,6 +194,13 @@ export class LabelBot {
     })
   }
 
+  /** Toglie i pulsanti da un messaggio del bot ("message is not modified" non è un errore). */
+  private async removeButton(messageId: number): Promise<void> {
+    await this.call('editMessageReplyMarkup', { chat_id: this.d.chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }).catch((e: unknown) => {
+      if (!(e instanceof Error && /not modified/i.test(e.message))) this.log(`pulsante non tolto: ${e instanceof Error ? e.message : String(e)}`)
+    })
+  }
+
   /** Manda nella chat l'audio di un brano sconosciuto. */
   async sendUnknown(u: Unknown): Promise<void> {
     const file = this.d.clipFile(u.id)
@@ -240,7 +249,18 @@ export class LabelBot {
       }
       const id = cb.data?.startsWith('scarta:') ? cb.data.slice(7) : ''
       let text = 'Già tolto'
-      if (id && this.d.get(id)) {
+      const u = id ? this.d.get(id) : undefined
+      if (u?.label) {
+        // già etichettato (qui o dal pannello): non si scarta più, e il pulsante si toglie
+        await this.call('answerCallbackQuery', {
+          callback_query_id: cb.id,
+          text: `Già etichettato come "${u.label.artist} - ${u.label.title}": non si può più segnare come "non è musica".`,
+          show_alert: true
+        }).catch(() => {})
+        if (cb.message) await this.removeButton(cb.message.message_id)
+        return
+      }
+      if (u) {
         this.d.discard(id, who(cb.from))
         text = 'Tolto dall\'archivio'
         if (cb.message) {
@@ -261,6 +281,8 @@ export class LabelBot {
     if (!label) return void (await this.reply('Non ho capito: scrivi "Artista - Titolo" (con il trattino in mezzo).', m.message_id))
     try {
       this.d.label(target, label, who(m.from))
+      // il pulsante "Non è musica" non serve più
+      await this.removeButton(m.reply_to_message!.message_id)
       await this.reply(`✅ Salvato: ${label.artist} - ${label.title}${label.composer ? ` (autori: ${label.composer})` : ''}. Da ora viene riconosciuto.`, m.message_id)
     } catch (e) {
       await this.reply(`Non salvato: ${e instanceof Error ? e.message : String(e)}`, m.message_id)

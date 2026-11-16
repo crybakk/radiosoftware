@@ -10,6 +10,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { setAsideBroken } from './statoFile.ts'
 
 export interface Slot {
   /** Giorni della settimana, 0 = domenica … 6 = sabato. */
@@ -124,6 +125,8 @@ export class Programs {
   private readonly file: string
   private data: Data
   private readonly now: () => number
+  /** Bozze nate da registrazioni interrotte all'improvviso, con la durata ancora da leggere. */
+  private readonly interrupted = new Set<string>()
 
   constructor(dir: string, now: () => number = () => Date.now()) {
     this.dir = dir
@@ -134,27 +137,73 @@ export class Programs {
     if (existsSync(this.file)) {
       try {
         const d = JSON.parse(readFileSync(this.file, 'utf8')) as Partial<Data>
+        if (!d || typeof d !== 'object' || (d.programs !== undefined && !Array.isArray(d.programs)) || (d.episodes !== undefined && !Array.isArray(d.episodes))) {
+          throw new Error('contenuto non valido')
+        }
         this.data = {
           settings: { ...this.data.settings, ...d.settings },
           programs: d.programs ?? [],
           episodes: d.episodes ?? []
         }
-      } catch {
-        // file rovinato: si riparte vuoti ma non lo si sovrascrive finché non si salva qualcosa
+      } catch (e) {
+        // file rovinato: si riparte vuoti, ma prima lo si copia da parte (il primo salvataggio lo sovrascrive)
+        setAsideBroken(this.file, e)
       }
     }
-    // registrazioni rimaste a metà (spegnimento): diventano bozze
-    for (const e of this.data.episodes) {
-      if (e.status === 'registrazione') {
-        e.status = 'bozza'
-        e.size = this.fileSize(this.rawFile(e.id))
+    // registrazioni rimaste a metà (il server si è spento di colpo, senza chiuderle): diventano bozze,
+    // con la durata vera letta dal file più tardi (vedi Recorder); senza audio si tolgono come in endRecording.
+    // Se il server riparte dentro la stessa fascia, il Recorder continua la stessa puntata (resumable).
+    let dropped = false
+    for (const e of [...this.data.episodes]) {
+      if (e.status !== 'registrazione') continue
+      const st = this.fileStat(this.rawFile(e.id))
+      if (!st || st.size < 10_000) {
+        rmSync(this.rawFile(e.id), { force: true })
+        this.data.episodes = this.data.episodes.filter((x) => x !== e)
+        dropped = true
+        continue
       }
+      Object.assign(e, { status: 'bozza', size: st.size, recordedTo: Math.max(e.recordedFrom, st.mtimeMs) })
+      this.interrupted.add(e.id)
     }
+    if (dropped) this.save()
+  }
+
+  /** Bozze rimaste da una registrazione interrotta all'improvviso (in questo avvio). */
+  interruptedDrafts(): Episode[] {
+    return this.data.episodes.filter((e) => this.interrupted.has(e.id) && e.status === 'bozza').map((e) => ({ ...e }))
+  }
+
+  /** La registrazione interrotta riprende (il server è ripartito dentro la fascia): si accoda allo stesso file. */
+  resumeRecording(id: string): Episode {
+    const e = this.episode(id)
+    if (!e || !this.interrupted.has(id) || e.status !== 'bozza') throw new Error('puntata non trovata')
+    this.interrupted.delete(id)
+    e.status = 'registrazione'
+    this.save()
+    return { ...e }
+  }
+
+  /** Durata letta dal file di una bozza interrotta (la registrazione non è stata chiusa e la durata era 0). */
+  setInterruptedLength(id: string, length: number): void {
+    const e = this.episode(id)
+    if (!e || !this.interrupted.delete(id) || e.status !== 'bozza') return
+    e.length = Math.max(0, Math.round(length))
+    this.save()
   }
 
   private save(): void {
     writeFileSync(`${this.file}.tmp`, JSON.stringify(this.data, null, 1))
     renameSync(`${this.file}.tmp`, this.file)
+  }
+
+  private fileStat(f: string): { size: number; mtimeMs: number } | null {
+    try {
+      const st = statSync(f)
+      return st.isFile() ? { size: st.size, mtimeMs: st.mtimeMs } : null
+    } catch {
+      return null
+    }
   }
 
   private fileSize(f: string): number {

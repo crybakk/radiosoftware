@@ -376,6 +376,7 @@ if (primary) app.whenReady().then(() => {
   })
   handle('aiCancelDownload', () => ai.cancelDownload())
   handle('aiRemoveModel', () => ai.removeModel())
+  handle('aiCancelGenerate', () => ai.cancelGeneration())
   handle('aiGenerate', async (description: string) => {
     db.saveSettings({ aiDescription: description })
     return ai.generate(description, db.rotationCandidates('music'))
@@ -419,6 +420,7 @@ if (primary) app.whenReady().then(() => {
   handle('serverSyncList', (filter: 'esclusi' | 'tutti', q: string) => serverSync.list(filter, q))
   handle('serverSyncChoice', (id: number, choice: boolean | null) => serverSync.setChoice(id, choice))
   handle('serverSyncNow', () => serverSync.syncNow(true))
+  handle('serverSyncConfirmRemove', () => serverSync.confirmRemovals())
   handle('serverSyncStop', () => serverSync.stop())
   handle('serverSyncExport', async () => {
     const res = await dialog.showOpenDialog(win!, {

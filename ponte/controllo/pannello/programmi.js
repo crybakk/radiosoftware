@@ -65,6 +65,9 @@ function drawProgs(s) {
   const rec = s.recording.map((r) => `${byId[r.programId]?.title ?? r.programId} (fino alle ${hhmm(new Date(r.to).toISOString())})`)
   $('progs-status').textContent = rec.length ? `● Si sta registrando: ${rec.join(', ')}.` : 'Nessuna registrazione in corso.'
   $('progs-status').className = rec.length ? 'rec' : 'hint'
+  // gli ospiti del pannello (solo lettura) non vedono bozze né registrazioni in corso (il server non le manda)
+  $('progs-status').hidden = !s.canEdit
+  $('drafts-card').hidden = !s.canEdit
   const drafts = s.episodes.filter((e) => e.status === 'bozza' || e.status === 'registrazione')
   $('drafts').replaceChildren(...(drafts.length ? drafts.map((e) => draftItem(e, byId[e.programId])) : [el('li', 'hint', 'Nessuna puntata da rivedere.')]))
   $('drafts-badge').textContent = drafts.filter((e) => e.status === 'bozza').length ? `${drafts.filter((e) => e.status === 'bozza').length} da rivedere` : ''

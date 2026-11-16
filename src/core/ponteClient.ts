@@ -270,6 +270,8 @@ export interface ServerPlay {
   title: string
   artist: string
   duration: number
+  /** Quando il server ha scritto la voce, se diverso dall'inizio (brano etichettato dopo): non serve all'importazione. */
+  added?: string
   /** Solo per i brani sconosciuti etichettati dal pannello. */
   composer?: string
   publisher?: string

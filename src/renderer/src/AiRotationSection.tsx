@@ -151,7 +151,14 @@ export function AiRotationSection({
                 Usa l'esempio
               </button>
             )}
-            {st.busy && <span className="hint">Può volerci qualche minuto; la messa in onda continua.</span>}
+            {st.busy && (
+              <>
+                <span className="hint">Può volerci qualche minuto; la messa in onda continua.</span>
+                <button className="small ghost" onClick={() => void api.aiCancelGenerate()}>
+                  Interrompi
+                </button>
+              </>
+            )}
           </div>
           {err && <div className="banner error inline-banner">{err}</div>}
           {msg && <div className="banner ok inline-banner">{msg}</div>}

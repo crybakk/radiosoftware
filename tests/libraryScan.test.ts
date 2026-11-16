@@ -116,15 +116,15 @@ describe('scansione della libreria', () => {
     db.close()
   })
 
-  it('la ricerca ignora maiuscole e minuscole anche per le lettere accentate', async () => {
+  it('la ricerca ignora maiuscole, minuscole e accenti', async () => {
     const db = new RadioDb(':memory:')
     db.addFolder(join(dir, 'musica'), 'music')
     await scanLibrary(db)
     expect(db.searchTracks({ text: 'CITTÀ' }).total).toBe(1)
     expect(db.searchTracks({ text: 'città vuota' }).total).toBe(1)
     expect(db.searchTracks({ text: 'mina città' }).total).toBe(1)
-    // gli accenti invece contano (scelta voluta)
-    expect(db.searchTracks({ text: 'citta' }).total).toBe(0)
+    // anche senza accenti ("citta" trova "CITTÀ")
+    expect(db.searchTracks({ text: 'citta' }).total).toBe(1)
     // % e _ restano caratteri normali
     expect(db.searchTracks({ text: '%' }).total).toBe(0)
     expect(db.searchTracks({ text: '_' }).total).toBe(0)

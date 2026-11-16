@@ -153,6 +153,28 @@ async function playlistTracks(db: RadioDb, path: string): Promise<{ tracks: Trac
   return { tracks, missing }
 }
 
+/**
+ * Tempo massimo per preparare notiziario e annuncio vocale: oltre si salta (il lavoro continua da solo,
+ * es. la voce che si scarica la prima volta, e sarà pronto la volta dopo) e l'evento va avanti.
+ */
+export const EXTERNAL_TIMEOUT_MS = 3 * 60_000
+
+function inTime<T>(p: Promise<T>, what: string, slow: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${what} troppo ${slow} (più di ${EXTERNAL_TIMEOUT_MS / 60_000} minuti): saltato`)), EXTERNAL_TIMEOUT_MS)
+    p.then(
+      (v) => {
+        clearTimeout(t)
+        resolve(v)
+      },
+      (e: unknown) => {
+        clearTimeout(t)
+        reject(e)
+      }
+    )
+  })
+}
+
 /** Traduce le azioni di un evento in passi per il motore, eseguendo quelle "esterne". */
 export async function expandEvent(db: RadioDb, event: ScheduledEvent, fx: EventEffects): Promise<EngineStep[]> {
   const steps: EngineStep[] = []
@@ -220,7 +242,7 @@ export async function expandEvent(db: RadioDb, event: ScheduledEvent, fx: EventE
       case 'news': {
         let r: { track: Track | null; note: string } = { track: null, note: 'notiziari non disponibili' }
         try {
-          if (fx.news) r = await fx.news(a.sourceId)
+          if (fx.news) r = await inTime(fx.news(a.sourceId), 'scaricamento', 'lento')
         } catch (err) {
           r = { track: null, note: err instanceof Error ? err.message : String(err) }
         }
@@ -231,7 +253,7 @@ export async function expandEvent(db: RadioDb, event: ScheduledEvent, fx: EventE
       case 'voice': {
         let r: { track: Track | null; note: string } = { track: null, note: 'voce sintetica non disponibile' }
         try {
-          if (fx.voice) r = await fx.voice(a.text)
+          if (fx.voice) r = await inTime(fx.voice(a.text), 'preparazione', 'lenta')
         } catch (err) {
           r = { track: null, note: err instanceof Error ? err.message : String(err) }
         }

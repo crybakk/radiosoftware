@@ -5,13 +5,15 @@
  * - L'ospite apre il link, scrive il nome e aspetta: nel pannello compare "in attesa".
  * - Il conduttore lo fa entrare: l'ospite riceve un posto audio (massimo 3 insieme), si collega
  *   in WebRTC e sente il programma con le altre voci, senza la propria.
- * - Il conduttore lo mette in onda, lo toglie, lo chiude.
+ * - Il conduttore lo mette in onda, lo toglie, lo chiude. Se lo caccia, il link usato si revoca
+ *   (un link vale per più ospiti, ma chi è stato cacciato non rientra con quello).
  */
 import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import type { GuestCommand, GuestInfo, GuestInvite } from './protocol.ts'
 import type { Peer } from './relay.ts'
 import type { VoiceHub } from './voce.ts'
+import { setAsideBroken } from './statoFile.ts'
 
 const INVITE_HOURS = 24
 const MAX_WAITING = 10
@@ -57,8 +59,9 @@ export class Guests {
     if (existsSync(o.file)) {
       try {
         for (const i of JSON.parse(readFileSync(o.file, 'utf8')) as GuestInvite[]) this.invites.set(i.token, i)
-      } catch {
-        // file rovinato: si riparte senza link
+      } catch (e) {
+        // file rovinato: si riparte senza link (il file si copia da parte)
+        setAsideBroken(o.file, e)
       }
     }
     for (const s of o.slots) s.onChange = () => this.emit()
@@ -143,9 +146,16 @@ export class Guests {
         return null
       }
       case 'reject':
-      case 'kick':
-        this.drop(this.get(cmd.id), cmd.type === 'reject' ? 'rifiutato' : 'chiuso')
+        this.drop(this.get(cmd.id), 'rifiutato')
         return null
+      case 'kick': {
+        const g = this.get(cmd.id)
+        this.drop(g, 'chiuso')
+        // chi viene cacciato non deve poter rientrare con lo stesso link: il link si revoca
+        // (gli altri ospiti già collegati con quel link restano dentro)
+        if (this.invites.delete(g.invite.token)) this.save()
+        return null
+      }
       case 'air': {
         const g = this.get(cmd.id)
         if (!g.slot) throw new Error("l'ospite è ancora in sala d'attesa")
@@ -181,7 +191,9 @@ export class Guests {
         if (msg.t === 'join' && !guest) {
           if (!this.validInvite(invite.token)) return this.sendTo(peer, { t: 'state', state: 'chiuso', onAir: false })
           if ([...this.guests.values()].filter((g) => g.state === 'attesa').length >= MAX_WAITING) {
-            return this.sendTo(peer, { t: 'state', state: 'pieno', onAir: false })
+            // sala piena: si avvisa e si chiude la connessione (si riprova riaprendo il link)
+            this.sendTo(peer, { t: 'state', state: 'pieno', onAir: false })
+            return peer.close(1000, 'pieno')
           }
           const name = String(msg.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40) || invite.label || 'Ospite'
           guest = { id: `o${++this.seq}`, name, peer, invite, state: 'attesa', slot: null, since: this.now() }

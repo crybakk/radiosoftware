@@ -6,6 +6,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { basename, extname, join, relative, sep } from 'node:path'
 import { parseFile } from 'music-metadata'
+import { setAsideBroken } from './statoFile.ts'
 
 export interface ServerTrack {
   /** Percorso relativo alla cartella della libreria (con "/"). */
@@ -66,8 +67,9 @@ export class Library {
     if (existsSync(indexFile)) {
       try {
         for (const t of JSON.parse(readFileSync(indexFile, 'utf8')) as ServerTrack[]) this.tracks.set(t.id, t)
-      } catch {
-        // indice rovinato: si rifà con la prossima scansione
+      } catch (e) {
+        // indice rovinato: si rifà con la prossima scansione (il file si copia da parte)
+        setAsideBroken(indexFile, e)
       }
     }
   }

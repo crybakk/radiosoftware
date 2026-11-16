@@ -69,10 +69,14 @@ export function serverId(path: string, folders: LibraryFolder[]): string | null 
   }
   if (!best) return null
   const root = norm(best.path)
-  const name = root.split('/').pop() || 'musica'
   const rel = p.slice(root.length + 1)
-  const parts = [name, ...rel.split('/')].map(cleanPart)
-  return `regia/${parts.join('/')}`
+  return folderPrefix(best) + rel.split('/').map(cleanPart).join('/')
+}
+
+/** Inizio dei percorsi sul server dei brani di una cartella della libreria ("regia/<nome>/"). */
+export function folderPrefix(f: Pick<LibraryFolder, 'path'>): string {
+  const name = f.path.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || 'musica'
+  return `regia/${cleanPart(name)}/`
 }
 
 /** Nomi validi anche sul server Linux: niente parti vuote, "..", o che iniziano col punto. */
@@ -94,12 +98,22 @@ export interface SyncItem {
   track: Track
 }
 
-/** Cosa caricare e cosa togliere dal server. */
-export function planSync(wanted: SyncItem[], remote: { id: string; size: number }[]): { upload: SyncItem[]; remove: string[] } {
+/** Oltre questo numero di brani da togliere in una volta, non si toglie nulla finché non lo confermi. */
+export const MAX_REMOVE_UNCONFIRMED = 20
+
+/**
+ * Cosa caricare e cosa togliere dal server.
+ * keep: brani che non sono nella selezione ma non vanno tolti (mancano solo per ora in regia).
+ */
+export function planSync(
+  wanted: SyncItem[],
+  remote: { id: string; size: number }[],
+  keep: (id: string) => boolean = () => false
+): { upload: SyncItem[]; remove: string[] } {
   const there = new Map(remote.map((r) => [r.id, r.size]))
   const want = new Set(wanted.map((w) => w.id))
   return {
     upload: wanted.filter((w) => there.get(w.id) !== w.size),
-    remove: remote.filter((r) => !want.has(r.id)).map((r) => r.id)
+    remove: remote.filter((r) => !want.has(r.id) && !keep(r.id)).map((r) => r.id)
   }
 }

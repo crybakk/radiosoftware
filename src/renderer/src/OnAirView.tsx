@@ -114,7 +114,8 @@ export function OnAirView({ radio }: { radio: Radio }) {
           <ul className="track-list queue-list">
             {s.queue.map((q, i) => (
               <li key={q.uid} className={q.origin === 'event' ? 'event' : ''}>
-                <div className="t-eta">{hhmm(q.eta)}</div>
+                {/* in MANUALE la coda non parte da sola: l'orario previsto non avrebbe senso */}
+                <div className="t-eta">{s.mode === 'auto' || q.origin === 'event' ? hhmm(q.eta) : ''}</div>
                 <div className="t-main">
                   <div className="t-title">{q.track.title}</div>
                   <div className="t-artist">

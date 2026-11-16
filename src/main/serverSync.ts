@@ -7,7 +7,8 @@
  * - Titoli corretti e volume misurato vengono mandati al server, anche per i file copiati a mano.
  */
 import { createReadStream, createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { access, copyFile, mkdir, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -15,7 +16,16 @@ import { catalogParts, withCounter } from '../core/catalog'
 import { NotAudioError, readFileInfo } from '../core/scanner'
 import type { RadioDb } from '../core/db'
 import { PonteError, type LibraryMeta, type PonteClient, type UploadedTrack } from '../core/ponteClient'
-import { exclusionReason, gainFor, onServer, planSync, serverId, type SyncItem } from '../core/serverLibrary'
+import {
+  exclusionReason,
+  folderPrefix,
+  gainFor,
+  MAX_REMOVE_UNCONFIRMED,
+  onServer,
+  planSync,
+  serverId,
+  type SyncItem
+} from '../core/serverLibrary'
 import type { Track } from '../core/types'
 
 export interface ServerSyncStatus {
@@ -27,13 +37,15 @@ export interface ServerSyncStatus {
   toUpload: number | null
   toUploadMb: number | null
   uploadedTodayMb: number
-  running: 'copia' | 'invio' | null
+  running: 'copia' | 'invio' | 'cancellazione' | null
   progress: string
   lastRun: string | null
   lastError: string | null
   lastResult: string | null
   /** Impronte audio sul server (null = non ancora controllato). */
   fingerprintsOnServer: number | null
+  /** Brani da togliere dal server che aspettano la conferma (troppi in una volta). */
+  toConfirmRemove: number
 }
 
 export interface ServerTrackRow {
@@ -47,7 +59,7 @@ export interface ServerTrackRow {
 }
 
 const MB = 1024 * 1024
-/** Se la selezione chiede di togliere troppi brani dal server, meglio fermarsi e chiedere. */
+/** Impronte: se l'invio chiede di toglierne troppe dal server, meglio fermarsi e chiedere. */
 const MAX_REMOVE_SHARE = 0.2
 /** Il server non accetta file più grandi di così (MAX_UPLOAD_BYTES in ponte/controllo/src/server.ts). */
 export const SERVER_MAX_FILE = 300 * MB
@@ -74,8 +86,11 @@ export class ServerLibrarySync {
     lastRun: null,
     lastError: null,
     lastResult: null,
-    fingerprintsOnServer: null
+    fingerprintsOnServer: null,
+    toConfirmRemove: 0
   }
+  /** Brani che l'ultimo invio voleva togliere dal server, in attesa di "Conferma cancellazioni". */
+  private pendingRemove: string[] = []
   /** Brani appena scaricati dal server e catalogati (per avviare analisi, impronte e MusicBrainz). */
   onCatalogued: (trackIds: number[]) => void = () => {}
   private abort: AbortController | null = null
@@ -125,6 +140,37 @@ export class ServerLibrarySync {
       } else excluded++
     }
     return { items, excluded }
+  }
+
+  /**
+   * Brani da non togliere dal server anche se non sono nella selezione: quelli che in regia mancano solo per ora
+   * (disabilitati perché il file non si trova, oppure sotto una cartella che adesso non si legge, per esempio un NAS
+   * spento). Si tolgono solo i brani esclusi (regola o scelta a mano) o tolti davvero dalla libreria.
+   */
+  async keepOnServer(): Promise<(id: string) => boolean> {
+    const min = this.db.getSettings().ponte.libraryMinKbps
+    const folders = this.db.listFolders()
+    const keep = new Set<string>()
+    for (const row of this.db.musicForServer()) {
+      const { track, choice } = row
+      if (track.enabled) continue
+      // "missing" distingue il file sparito (disabilitato dalla scansione) dal brano disabilitato a mano;
+      // se il database non lo dice, nel dubbio si tiene
+      const missing = (row as { missing?: boolean }).missing ?? true
+      if (!missing || !onServer({ ...track, enabled: true }, choice, min)) continue
+      const id = serverId(track.path, folders)
+      if (id) keep.add(id)
+    }
+    const offline: string[] = []
+    for (const f of folders) {
+      if (f.kind !== 'music') continue
+      const ok = await access(f.path, constants.R_OK)
+        .then(() => stat(f.path))
+        .then((st) => st.isDirectory())
+        .catch(() => false)
+      if (!ok) offline.push(folderPrefix(f))
+    }
+    return (id) => keep.has(id) || offline.some((pre) => id.startsWith(pre))
   }
 
   status(): ServerSyncStatus {
@@ -235,20 +281,21 @@ export class ServerLibrarySync {
     try {
       const { items } = this.selection()
       const remote = await c.listLibrary()
-      const plan = planSync(items, remote)
+      const plan = planSync(items, remote, await this.keepOnServer())
       const meta = (it: SyncItem): LibraryMeta => metaFor(it.id, it.track, s.targetLoudness)
 
-      // togliere: con un limite di sicurezza (per esempio cartella della libreria scollegata)
+      // togliere: oltre il limite di sicurezza non si toglie nulla, si aspetta "Conferma cancellazioni"
       let removed = 0
-      if (plan.remove.length > 50 && plan.remove.length > remote.length * MAX_REMOVE_SHARE) {
-        throw new Error(
-          `la selezione toglierebbe ${plan.remove.length} brani dal server su ${remote.length}: controlla che le cartelle della libreria siano collegate`
-        )
+      if (plan.remove.length > MAX_REMOVE_UNCONFIRMED) {
+        this.pendingRemove = plan.remove
+      } else {
+        this.pendingRemove = []
+        for (const id of plan.remove) {
+          await c.deleteLibraryFile(id)
+          removed++
+        }
       }
-      for (const id of plan.remove) {
-        await c.deleteLibraryFile(id)
-        removed++
-      }
+      this.emit({ toConfirmRemove: this.pendingRemove.length })
 
       // titoli e volumi: una volta al giorno o quando lo chiedi
       if (manual || this.lastMetaDay !== today()) {
@@ -337,6 +384,7 @@ export class ServerLibrarySync {
             : '; il server è allineato') +
         (tooBig ? `; ${tooBig} saltati perché troppo grandi (oltre ${Math.round(Math.min(SERVER_MAX_FILE, s.ponte.libraryDailyMb * MB) / MB)} MB)` : '') +
         (refused ? `; ${refused} rifiutati dal server (${refusedMsg})` : '') +
+        (this.pendingRemove.length ? `; ${this.pendingRemove.length} brani da togliere dal server aspettano la tua conferma` : '') +
         '.'
       this.emit({ lastResult: result, lastRun: new Date().toISOString() })
       return result
@@ -349,6 +397,47 @@ export class ServerLibrarySync {
       this.emit({ running: null, progress: '', uploadedTodayMb: Math.round(this.budget().bytes / MB) })
     }
   }
+  /**
+   * "Conferma cancellazioni": toglie dal server, una volta, i brani che l'ultimo invio ha lasciato in attesa.
+   * Si ricontrolla prima: un brano rimesso nella selezione (o tornato leggibile) nel frattempo non si toglie.
+   */
+  async confirmRemovals(): Promise<string> {
+    if (this.st.running) throw new Error('un\'altra copia è già in corso')
+    const c = this.client()
+    if (!c) throw new Error('ponte non configurato (indirizzo e token nella scheda Collegamento)')
+    const asked = this.pendingRemove
+    if (!asked.length) return 'Nessun brano da togliere in attesa di conferma.'
+    const ac = new AbortController()
+    this.abort = ac
+    this.emit({ running: 'cancellazione', progress: 'controllo dei brani sul server…', lastError: null })
+    const done = new Set<string>()
+    try {
+      const remote = await c.listLibrary()
+      const still = new Set(planSync(this.selection().items, remote, await this.keepOnServer()).remove)
+      const todo = asked.filter((id) => still.has(id))
+      for (const id of todo) {
+        if (ac.signal.aborted) throw new Error('cancellazione interrotta')
+        await c.deleteLibraryFile(id)
+        done.add(id)
+        if (done.size % 20 === 0) this.emit({ progress: `tolti ${done.size} di ${todo.length}` })
+      }
+      const removed = done.size
+      this.pendingRemove = []
+      const result = `Tolti dal server ${removed} brani${asked.length - todo.length ? ` (${asked.length - todo.length} non più da togliere)` : ''}.`
+      this.emit({ lastResult: result, toConfirmRemove: 0, onServer: remote.length - removed })
+      return result
+    } catch (e) {
+      // quelli già tolti non sono più da confermare
+      this.pendingRemove = this.pendingRemove.filter((id) => !done.has(id))
+      const msg = e instanceof Error ? e.message : String(e)
+      this.emit({ lastError: msg, toConfirmRemove: this.pendingRemove.length })
+      throw e
+    } finally {
+      this.abort = null
+      this.emit({ running: null, progress: '' })
+    }
+  }
+
   /**
    * Brani caricati dal pannello sul server: si scaricano nella prima cartella della musica come
    * "Artista/Titolo.ext", si aggiungono alla libreria e sul server prendono il percorso della regia,

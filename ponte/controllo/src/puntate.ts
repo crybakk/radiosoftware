@@ -5,6 +5,9 @@
  * minuti di margine): se sì, ffmpeg legge il programma in onda dal flusso interno di Liquidsoap e lo
  * salva in registrazioni/<puntata>.mp3. Se ffmpeg si ferma (Liquidsoap riavviato, rete interna) riparte
  * da solo e accoda l'audio allo stesso file. A fine fascia la registrazione diventa una bozza.
+ * Se il server si spegne di colpo e riparte dentro la stessa fascia, la puntata continua nello stesso
+ * file; altrimenti la registrazione interrotta resta una bozza con la durata letta dal file.
+ * Con il disco quasi pieno (noSpace) non si avvia nessuna registrazione nuova.
  */
 import { spawn as nodeSpawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
@@ -97,6 +100,19 @@ export interface RecorderDeps {
   onDraft?: (e: Episode) => void
   /** Cambio dell'elenco delle registrazioni in corso. */
   onChange?: () => void
+  /** Motivo per non registrare (disco quasi pieno), null se si può. Si ricontrolla a ogni giro. */
+  noSpace?: () => string | null
+}
+
+/**
+ * Bozze rimaste da registrazioni interrotte all'improvviso (server spento di colpo): la durata non
+ * era stata scritta, la si legge dal file.
+ */
+export async function fixInterrupted(programs: Programs, seconds: (file: string) => Promise<number> = mp3Seconds): Promise<void> {
+  for (const e of programs.interruptedDrafts()) {
+    const length = await seconds(programs.rawFile(e.id)).catch(() => 0)
+    programs.setInterruptedLength(e.id, length)
+  }
 }
 
 interface Running {
@@ -118,6 +134,8 @@ export class Recorder {
   private readonly log: (s: string) => void
   private readonly running = new Map<string, Running>()
   private timer: ReturnType<typeof setInterval> | null = null
+  /** Programmi già segnalati nel log come "non registrati per il disco pieno". */
+  private readonly noSpaceLogged = new Set<string>()
 
   constructor(d: RecorderDeps) {
     this.d = d
@@ -127,8 +145,10 @@ export class Recorder {
   }
 
   start(intervalMs = 15_000): void {
+    // prima si riprendono le registrazioni interrotte nella fascia in corso, poi si sistemano le altre
     this.tick()
     this.timer = setInterval(() => this.tick(), intervalMs)
+    void fixInterrupted(this.d.programs, this.d.seconds ?? mp3Seconds).catch((err: unknown) => this.fail('durata delle registrazioni interrotte', err))
   }
 
   private fail(what: string, err: unknown): void {
@@ -151,7 +171,16 @@ export class Recorder {
         // fascia allungata o fascia attaccata alla successiva: si continua nello stesso file
         if (r && !r.stopping && slot && slot.to > r.to) r.to = slot.to
         if (r && (!slot || now >= r.to)) void this.finish(r)
-        else if (!r && slot) this.begin(p.id, now, slot.to)
+        else if (!r && slot) {
+          const full = this.d.noSpace?.() ?? null
+          if (full) {
+            if (!this.noSpaceLogged.has(p.id)) this.log(`registrazione di ${p.title} non avviata: ${full}`)
+            this.noSpaceLogged.add(p.id)
+            continue
+          }
+          this.noSpaceLogged.delete(p.id)
+          this.begin(p.id, now, slot)
+        }
       } catch (err) {
         this.fail(`registrazione di ${p.title}`, err)
       }
@@ -160,8 +189,12 @@ export class Recorder {
     for (const r of this.running.values()) if (!this.d.programs.get(r.programId)) void this.finish(r, true)
   }
 
-  private begin(programId: string, now: number, to: number): void {
-    const e = this.d.programs.startRecording(programId, now)
+  private begin(programId: string, now: number, slot: { from: number; to: number }): void {
+    const to = slot.to
+    // server ripartito dopo uno spegnimento improvviso dentro la stessa fascia: si continua la stessa
+    // puntata, accodando l'audio allo stesso file (come quando ffmpeg riparte), invece di farne un'altra
+    const old = this.d.programs.interruptedDrafts().find((x) => x.programId === programId && x.recordedFrom >= slot.from)
+    const e = old ? this.d.programs.resumeRecording(old.id) : this.d.programs.startRecording(programId, now)
     const r: Running = {
       episodeId: e.id,
       programId,
@@ -179,7 +212,7 @@ export class Recorder {
       r.proc?.kill()
     })
     this.running.set(programId, r)
-    this.log(`registrazione avviata: ${e.title}`)
+    this.log(`registrazione ${old ? 'ripresa' : 'avviata'}: ${e.title}`)
     this.launch(r)
     this.d.onChange?.()
   }

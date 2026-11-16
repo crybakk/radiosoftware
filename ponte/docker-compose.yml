@@ -47,21 +47,21 @@ services:
     depends_on:
       - icecast
 
-  # Icecast principale: gli ascoltatori si collegano qui (https://DOMINIO/radio.mp3 tramite Caddy,
-  # oppure http://DOMINIO:8000/radio.mp3 per i lettori che non usano https)
+  # Icecast principale: gli ascoltatori si collegano qui tramite Caddy (https://DOMINIO/radio.mp3,
+  # oppure http://DOMINIO:8000/radio.mp3 per i lettori che non usano https). La porta 8000 la pubblica
+  # Caddy, che blocca /admin in chiaro: l'amministrazione si apre solo da https://DOMINIO/admin/.
   icecast:
     image: libretime/icecast:2.4.4
     restart: unless-stopped
     environment:
       ICECAST_SOURCE_PASSWORD: ${ICECAST_PASSWORD_SORGENTE:?manca ICECAST_PASSWORD_SORGENTE nel file .env}
       ICECAST_ADMIN_PASSWORD: ${ICECAST_PASSWORD_ADMIN:?manca ICECAST_PASSWORD_ADMIN nel file .env}
-      ICECAST_RELAY_PASSWORD: ${ICECAST_PASSWORD_ADMIN}
+      # password propria (non quella di amministrazione); riavvia.sh la crea nel .env se manca
+      ICECAST_RELAY_PASSWORD: ${ICECAST_PASSWORD_RELAY:?manca ICECAST_PASSWORD_RELAY nel file .env (la crea riavvia.sh)}
       ICECAST_HOSTNAME: ${DOMINIO:-localhost}
       ICECAST_MAX_CLIENTS: ${ICECAST_MAX_ASCOLTATORI:-1000}
       ICECAST_MAX_SOURCES: "5"
       ICECAST_LOCATION: ${NOME_RADIO:-Radio}
-    ports:
-      - "${ICECAST_PORTA:-8000}:8000/tcp"
 
   controllo:
     build: ./controllo
@@ -106,6 +106,8 @@ services:
     ports:
       - "80:80/tcp"
       - "443:443/tcp"
+      # ascolto senza https (prima la pubblicava Icecast: stesso indirizzo per gli ascoltatori)
+      - "${ICECAST_PORTA:-8000}:8000/tcp"
     depends_on:
       - controllo
       - icecast

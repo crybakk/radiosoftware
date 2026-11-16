@@ -63,6 +63,43 @@ describe('annunci a orario del server', () => {
   })
 })
 
+describe('annunci a orario: ora legale', () => {
+  it('quando finisce l\'ora legale un orario fisso va una volta sola, "ogni ora" va ogni ora vera', async () => {
+    const tz = process.env.TZ
+    process.env.TZ = 'Europe/Rome'
+    try {
+      const store = new AnnounceStore(join(mkdtempSync(join(tmpdir(), 'ann-')), 'annunci.json'))
+      await store.save({ radio: '', items: [item({ id: 'fisso', text: 'Fisso.', time: '02:30' }), item({ id: 'ora', text: 'Ogni ora.', time: '*:30' })] })
+      let now = new Date('2026-10-25T00:30:10Z') // 02:30 ora legale
+      const spoken: string[] = []
+      const s = new AnnounceScheduler({
+        store,
+        speak: async (text) => {
+          spoken.push(text)
+          return { file: `/m/.annunci/annuncio-${spoken.length}.mp3`, seconds: 2 }
+        },
+        onAir: async () => true,
+        context: () => ({}),
+        stationName: 'R',
+        folder: '.annunci',
+        now: () => now,
+        log: () => {}
+      })
+      await s.tick()
+      expect(now.getHours()).toBe(2)
+      now = new Date('2026-10-25T00:31:10Z') // il minuto dopo
+      await s.tick()
+      now = new Date('2026-10-25T01:30:10Z') // di nuovo 02:30, ora solare
+      expect(now.getHours()).toBe(2)
+      await s.tick()
+      expect(spoken).toEqual(['Fisso.', 'Ogni ora.', 'Ogni ora.'])
+    } finally {
+      if (tz === undefined) delete process.env.TZ
+      else process.env.TZ = tz
+    }
+  })
+})
+
 describe('annuncio nella diretta autonoma e nella riserva', () => {
   const tracks: ServerTrack[] = [{ id: 'a/uno.mp3', title: 'Uno', artist: 'A', duration: 200, bitrate: 320, gainDb: 0, mtime: 0, size: 0 }]
   const lib = {

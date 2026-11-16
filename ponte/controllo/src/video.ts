@@ -10,6 +10,7 @@
 import { spawn as nodeSpawn } from 'node:child_process'
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import type { VideoCommand, VideoDestination, VideoSource, VideoStatus } from './protocol.ts'
+import { setAsideBroken } from './statoFile.ts'
 
 export const MAX_HEIGHT = 720
 const YOUTUBE_URL = 'rtmp://a.rtmp.youtube.com/live2/'
@@ -122,8 +123,9 @@ export class VideoLive {
     if (existsSync(o.file)) {
       try {
         Object.assign(this.cfg, JSON.parse(readFileSync(o.file, 'utf8')) as Partial<VideoConfig>)
-      } catch {
-        // file rovinato: si riparte senza chiavi
+      } catch (e) {
+        // file rovinato: si riparte senza chiavi (il file si copia da parte)
+        setAsideBroken(o.file, e)
       }
     }
     this.st = {

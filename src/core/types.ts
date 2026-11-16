@@ -93,6 +93,11 @@ export interface Settings {
   lastfmKey: string
   /** Chiave dell'applicazione AcoustID. */
   acoustidKey: string
+  /**
+   * Modalità della regia (AUTOMATICO / MANUALE), salvata a ogni cambio: dopo un riavvio
+   * o un blackout la regia riparte com'era (in automatico riprende a suonare da sola).
+   */
+  playoutMode: 'auto' | 'manual'
 }
 
 export interface PonteSettings {
@@ -173,7 +178,8 @@ export const DEFAULT_SETTINGS: Settings = {
   aiDescription: '',
   discogsToken: '',
   lastfmKey: '',
-  acoustidKey: ''
+  acoustidKey: '',
+  playoutMode: 'manual'
 }
 
 /** Profilo di rotazione attivato da un evento (per esempio "dalle 22 musica tranquilla"). */

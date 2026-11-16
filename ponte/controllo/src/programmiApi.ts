@@ -13,7 +13,8 @@
  *   GET  /api/programmi                         programmi, puntate, registrazioni in corso
  *   POST /api/programmi                         {azione: salva|elimina|impostazioni}   (amministratori)
  *   PUT  /api/programmi/copertina?id=           copertina PNG o JPG                    (amministratori)
- *   GET  /api/puntate/audio?id=                 audio della bozza o della puntata (con Range)
+ *   GET  /api/puntate/audio?id=                 audio della bozza o della puntata (con Range; bozze e
+ *                                               registrazioni in corso solo per chi può comandare)
  *   POST /api/puntate                           {azione: pubblica|modifica|ritira|ripubblica|elimina} (conduttori)
  *
  * Regia (token): GET /api/programmi/regia   puntate pubblicate di ogni programma (repliche)
@@ -193,8 +194,9 @@ export async function handleProgramApi(req: IncomingMessage, res: ServerResponse
   }
   if (req.method === 'GET' && path === '/api/puntate/audio') {
     const e = P.episode(url.searchParams.get('id') ?? '')
-    if (!e) return json(res, 404, { error: 'puntata non trovata' }), true
-    const file = e.status === 'bozza' || e.status === 'registrazione' ? P.rawFile(e.id) : P.episodeFile(e.id)
+    // bozze e registrazioni in corso: non per gli ospiti del pannello (solo lettura)
+    if (!e || (isDraft(e) && !can(me.role, 'comandare'))) return json(res, 404, { error: 'puntata non trovata' }), true
+    const file = isDraft(e) ? P.rawFile(e.id) : P.episodeFile(e.id)
     sendFile(req, res, file, 'audio/mpeg', { 'Cache-Control': 'no-store', 'Content-Disposition': 'inline' })
     return true
   }
@@ -276,13 +278,18 @@ function programInput(v: unknown): Partial<Program> {
   }
 }
 
+/** Bozza da rivedere o registrazione in corso (non ancora pubblicata). */
+const isDraft = (e: Episode): boolean => e.status === 'bozza' || e.status === 'registrazione'
+
 function panelState(d: ProgramApiDeps, me: PublicUser): Record<string, unknown> {
   const P = d.programs
+  // gli ospiti del pannello (solo lettura) vedono solo le puntate pubblicate (anche quelle ritirate)
+  const all = can(me.role, 'comandare')
   return {
     settings: P.settings(),
     programs: P.list(),
-    episodes: P.episodes() as Episode[],
-    recording: d.recorder?.recording() ?? [],
+    episodes: P.episodes().filter((e) => all || !isDraft(e)),
+    recording: all ? (d.recorder?.recording() ?? []) : [],
     canAdmin: can(me.role, 'utenti'),
     canEdit: can(me.role, 'comandare')
   }

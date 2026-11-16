@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { RadioDb } from '../src/core/db'
 import type { ServerPlay } from '../src/core/ponteClient'
 import { importPlays, serverIndex, syncServerPlays } from '../src/core/serverPlays'
-import { missingFields, normalizeAuthors, quarterOf, quarterRange, siaeCsv, siaeRows } from '../src/core/siae'
+import { dropOverlapped, missingFields, normalizeAuthors, quarterOf, quarterRange, siaeCsv, siaeRows } from '../src/core/siae'
 import type { LogEntry } from '../src/core/types'
 import { makeTrack } from './helpers'
 
@@ -52,8 +52,9 @@ describe('report SIAE', () => {
     const rows = siaeRows(
       [
         entry({ trackId: 900 }),
-        entry({ trackId: 900, source: 'riserva', endedAt: null }),
-        entry({ source: 'autonoma', title: 'ALBACHIARA', artist: 'vasco rossi' }),
+        // in un altro momento, se no si sovrapporrebbero alla regia
+        entry({ trackId: 900, source: 'riserva', startedAt: '2026-02-02T10:00:00.000Z', endedAt: null }),
+        entry({ source: 'autonoma', title: 'ALBACHIARA', artist: 'vasco rossi', startedAt: '2026-02-03T10:00:00.000Z', endedAt: '2026-02-03T10:03:00.000Z' }),
         entry({ trackId: 900, playedSeconds: 12 }), // saltato subito: non conta
         entry({ kind: 'jingle', title: 'Sigla' }),
         entry({ source: 'flusso esterno', title: 'Radio amica' }),
@@ -66,6 +67,30 @@ describe('report SIAE', () => {
     expect(rows[1]).toMatchObject({ title: 'Sally', uses: 1, isrc: 'ITABC0000001', trackId: null })
     expect(missingFields(rows[0])).toEqual([])
     expect(missingFields(rows[1])).toEqual(['autori', 'editore'])
+  })
+
+  it('dove la regia si sovrappone alla riserva o alla diretta autonoma conta solo il server', () => {
+    const at = (h: string): string => `2026-02-01T${h}:00.000Z`
+    const regia = [
+      entry({ title: 'Prima', startedAt: at('09:50'), endedAt: at('09:53') }), // prima della riserva: conta
+      entry({ title: 'Durante', startedAt: at('10:01'), endedAt: at('10:04') }), // 4G caduto: la sentiva solo la regia
+      entry({ title: 'A cavallo', startedAt: at('10:05'), endedAt: at('10:08') }), // finisce durante la diretta autonoma
+      entry({ title: 'Aperta', startedAt: at('10:30'), endedAt: null, playedSeconds: 60 }), // senza fine (crash)
+      entry({ title: 'Dopo', startedAt: at('10:40'), endedAt: at('10:43') }), // dopo la diretta autonoma: conta
+      entry({ title: 'Durante esterna', startedAt: at('11:01'), endedAt: at('11:04') }) // le esterne restano come sono
+    ]
+    const server = [
+      entry({ title: 'Riserva', source: 'riserva', startedAt: at('10:00'), endedAt: at('10:05') }),
+      entry({ title: 'Autonoma', source: 'autonoma', startedAt: at('10:07'), endedAt: null, playedSeconds: 1500 }),
+      entry({ title: 'Esterna', source: 'esterna', startedAt: at('11:00'), endedAt: at('11:05') })
+    ]
+    const kept = dropOverlapped([...regia, ...server]).map((e) => e.title)
+    expect(kept).toEqual(['Prima', 'Dopo', 'Durante esterna', 'Riserva', 'Autonoma', 'Esterna'])
+    expect(siaeRows([...regia, ...server], new Map()).map((r) => r.title).sort()).toEqual(
+      ['Autonoma', 'Dopo', 'Durante esterna', 'Esterna', 'Prima', 'Riserva']
+    )
+    // senza passaggi del server non cambia nulla
+    expect(dropOverlapped(regia)).toEqual(regia)
   })
 
   it('CSV nel tracciato del fac simile senza il prezzo', () => {
@@ -117,8 +142,14 @@ describe('brani suonati dal server: dati non validi', () => {
       { at: '2026-11-15T03:00:00Z', source: 'esterna', id: 'sconosciuto/1', title: 'Buono', artist: 'Y', duration: 180, composer: 'Z' }
     ] as unknown as ServerPlay[]
     expect(importPlays(db, plays, new Map())).toBe(1)
+    // voce etichettata dopo, con "added" dal registro del server: si importa come le altre
+    const late: ServerPlay = { at: '2026-11-15T04:00:00Z', added: '2026-11-18T09:00:00.000Z', source: 'esterna', id: 'sconosciuto/2', title: 'Etichettato', artist: 'W', duration: 200 }
+    expect(importPlays(db, [late], new Map())).toBe(1)
     const log = db.listLog(new Date('2026-11-15T00:00:00Z'), new Date('2026-11-16T00:00:00Z'))
-    expect(log.map((e) => [e.title, e.startedAt])).toEqual([['Buono', '2026-11-15T03:00:00.000Z']])
+    expect(log.map((e) => [e.title, e.startedAt])).toEqual([
+      ['Buono', '2026-11-15T03:00:00.000Z'],
+      ['Etichettato', '2026-11-15T04:00:00.000Z']
+    ])
     db.close()
   })
 })

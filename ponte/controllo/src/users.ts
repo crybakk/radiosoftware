@@ -2,6 +2,7 @@
 import { createHash, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { promisify } from 'node:util'
+import { setAsideBroken } from './statoFile.ts'
 
 const scryptAsync = promisify(scrypt) as (password: string, salt: string, keylen: number) => Promise<Buffer>
 
@@ -44,9 +45,17 @@ export function sameSecret(a: string, b: string): boolean {
 }
 
 function readJson(path: string): unknown {
+  let text: string
   try {
-    return JSON.parse(readFileSync(path, 'utf8'))
+    text = readFileSync(path, 'utf8')
   } catch {
+    return undefined // file che non c'è ancora
+  }
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    // file rovinato: si riparte senza, ma prima lo si copia da parte
+    setAsideBroken(path, e)
     return undefined
   }
 }

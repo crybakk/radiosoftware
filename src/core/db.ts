@@ -235,13 +235,35 @@ const EDIT_COLUMNS: Record<keyof TrackEdit, string> = {
   mixPoint: 'mix_point'
 }
 
+/**
+ * Campi corretti a mano dalla scheda brano (colonna manual_fields, una cifra binaria per campo):
+ * quando il file cambia sul disco la scansione e la nuova analisi non li sovrascrivono.
+ * Autori, editore e ISRC sono già protetti a parte (il file li riempie solo se vuoti).
+ */
+const MANUAL_BITS = {
+  title: 1,
+  artist: 2,
+  album: 4,
+  year: 8,
+  genre: 16,
+  cueIn: 32,
+  cueOut: 64,
+  mixPoint: 128
+} as const satisfies Partial<Record<keyof TrackEdit, number>>
+
+/** Espressione SQL: il valore della colonna resta com'è se il campo è stato corretto a mano, altrimenti prende `?`. */
+function unlessManual(col: string, field: keyof typeof MANUAL_BITS): string {
+  return `${col}=CASE WHEN manual_fields & ${MANUAL_BITS[field]} THEN ${col} ELSE ? END`
+}
+
 export class RadioDb {
   readonly db: DatabaseSync
 
   constructor(file: string) {
     this.db = new DatabaseSync(file)
-    // minuscolo() di SQLite tocca solo le lettere ASCII: per la ricerca serve anche "À" → "à"
-    this.db.function('minuscolo', { deterministic: true }, (v) => (typeof v === 'string' ? v.toLowerCase() : v))
+    // minuscolo() di SQLite tocca solo le lettere ASCII: per la ricerca serve anche "À" → "à",
+    // e senza accenti ("citta" trova "città" e "CITTÀ")
+    this.db.function('minuscolo', { deterministic: true }, (v) => (typeof v === 'string' ? perRicerca(v) : v))
     this.db.exec(SCHEMA)
     this.migrate()
   }
@@ -272,6 +294,8 @@ export class RadioDb {
     if (!cols.includes('acoustid_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN acoustid_at TEXT')
     this.db.exec('CREATE TABLE IF NOT EXISTS lfm_artists (name TEXT PRIMARY KEY, tags TEXT NOT NULL, checked_at TEXT NOT NULL)')
     this.db.exec('CREATE TABLE IF NOT EXISTS mb_artists (id TEXT PRIMARY KEY, genres TEXT NOT NULL, checked_at TEXT NOT NULL)')
+    // v0.10: campi corretti a mano (titolo, artista, ..., punti di mix); nei database esistenti nessuno è segnato
+    if (!cols.includes('manual_fields')) this.db.exec('ALTER TABLE tracks ADD COLUMN manual_fields INTEGER NOT NULL DEFAULT 0')
     if (!cols.includes('fp_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN fp_at TEXT')
     this.db.exec(
       'CREATE TABLE IF NOT EXISTS fingerprints (track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE, fp BLOB NOT NULL)'
@@ -325,6 +349,7 @@ export class RadioDb {
     }
     // campi aggiunti nelle versioni successive: completati con i predefiniti
     out.ponte = { ...DEFAULT_PONTE, ...(out.ponte && typeof out.ponte === 'object' ? out.ponte : {}) }
+    if (out.playoutMode !== 'auto') out.playoutMode = 'manual'
     return out
   }
 
@@ -413,7 +438,9 @@ export class RadioDb {
       this.db
         .prepare(
           `UPDATE tracks SET kind=CASE WHEN kind_manual = 1 THEN kind ELSE ? END,
-             enabled=CASE WHEN missing = 1 THEN 1 ELSE enabled END, missing=0, title=?, artist=?, album=?, year=?, genre=?,
+             enabled=CASE WHEN missing = 1 THEN 1 ELSE enabled END, missing=0,
+             ${unlessManual('title', 'title')}, ${unlessManual('artist', 'artist')}, ${unlessManual('album', 'album')},
+             ${unlessManual('year', 'year')}, ${unlessManual('genre', 'genre')},
              composer=CASE WHEN composer='' THEN ? ELSE composer END,
              publisher=CASE WHEN publisher='' THEN ? ELSE publisher END,
              isrc=CASE WHEN isrc='' THEN ? ELSE isrc END,
@@ -490,7 +517,8 @@ export class RadioDb {
   saveAnalysis(id: number, a: AnalysisResult): void {
     this.db
       .prepare(
-        `UPDATE tracks SET duration=?, loudness=?, cue_in=?, cue_out=?, mix_point=?, analyzed_at=datetime('now') WHERE id=?`
+        `UPDATE tracks SET duration=?, loudness=?, ${unlessManual('cue_in', 'cueIn')}, ${unlessManual('cue_out', 'cueOut')},
+           ${unlessManual('mix_point', 'mixPoint')}, analyzed_at=datetime('now') WHERE id=?`
       )
       .run(a.duration, a.loudness, a.cueIn, a.cueOut, a.mixPoint, id)
   }
@@ -524,11 +552,20 @@ export class RadioDb {
   updateTrack(id: number, edit: TrackEdit): Track | null {
     const sets: string[] = []
     const values: (string | number | null)[] = []
+    const before = this.getTrack(id)
+    let manual = 0
     for (const [k, v] of Object.entries(edit) as [keyof TrackEdit, unknown][]) {
       const col = EDIT_COLUMNS[k]
       if (!col || v === undefined) continue
       sets.push(`${col} = ?`)
       values.push(typeof v === 'boolean' ? (v ? 1 : 0) : (v as string | number | null))
+      // segnato come corretto a mano solo se il valore cambia davvero
+      const bit = (MANUAL_BITS as Partial<Record<keyof TrackEdit, number>>)[k]
+      if (bit && before && before[k] !== v) manual |= bit
+    }
+    if (manual) {
+      sets.push('manual_fields = manual_fields | ?')
+      values.push(manual)
     }
     // abilitato/disabilitato a mano: è una scelta dell'utente, la scansione non la cambia più
     if (edit.enabled !== undefined) sets.push('missing = 0')
@@ -552,7 +589,7 @@ export class RadioDb {
     for (const w of words) {
       // le parole non contengono spazi, quindi non possono "scavalcare" il separatore tra i campi
       where.push("minuscolo(title || ' ' || artist || ' ' || album) LIKE ? ESCAPE '\\'")
-      params.push(`%${escapeLike(w.toLowerCase())}%`)
+      params.push(`%${escapeLike(perRicerca(w))}%`)
     }
     const clause = where.join(' AND ')
     const total = Number(
@@ -567,11 +604,13 @@ export class RadioDb {
   }
 
   /** Musica della libreria con dimensione del file e scelta a mano per il server. */
-  musicForServer(): { track: Track; size: number; choice: boolean | null }[] {
+  musicForServer(): { track: Track; size: number; choice: boolean | null; missing: boolean }[] {
     return (this.db.prepare("SELECT * FROM tracks WHERE kind = 'music'").all() as Row[]).map((r) => ({
       track: rowToTrack(r),
       size: Number(r.file_size),
-      choice: r.server_choice == null ? null : Number(r.server_choice) === 1
+      choice: r.server_choice == null ? null : Number(r.server_choice) === 1,
+      // file sparito (disabilitato dalla scansione), diverso dal brano disabilitato a mano
+      missing: Number(r.missing) === 1
     }))
   }
 
@@ -1030,6 +1069,14 @@ export class RadioDb {
       stmt.run(now.toISOString(), Math.round(played * 10) / 10, Number(r.id))
     }
   }
+}
+
+/** Testo per la ricerca: minuscolo e senza accenti. I testi solo ASCII (la gran parte) non passano dalla normalizzazione. */
+export function perRicerca(s: string): string {
+  const low = s.toLowerCase()
+  // eslint-disable-next-line no-control-regex
+  if (!/[^\x00-\x7f]/.test(low)) return low
+  return low.normalize('NFD').replace(/\p{M}/gu, '')
 }
 
 function escapeLike(s: string): string {

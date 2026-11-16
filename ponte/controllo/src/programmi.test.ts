@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -9,7 +9,7 @@ import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import { activeSlot, Programs, slug } from './programmi.ts'
 import { handleProgramApi, sendFile, type ProgramApiDeps } from './programmiApi.ts'
-import { isPublishing, publishEpisode, Recorder, type Proc } from './puntate.ts'
+import { fixInterrupted, isPublishing, publishEpisode, Recorder, type Proc } from './puntate.ts'
 import type { PublicUser } from './users.ts'
 
 const tmp = (): string => mkdtempSync(join(tmpdir(), 'programmi-'))
@@ -104,6 +104,36 @@ describe('archivio dei programmi', () => {
     writeFileSync(p.rawFile(e.id), Buffer.alloc(20_000))
     const again = new Programs(p.dir)
     expect(again.episode(e.id)).toMatchObject({ status: 'bozza', size: 20_000 })
+  })
+
+  it('dopo uno spegnimento improvviso: senza audio la registrazione sparisce, altrimenti si legge la durata vera', async () => {
+    const p = new Programs(tmp())
+    const prog = p.saveProgram({ title: 'Sera' })
+    const piccola = p.startRecording(prog.id, Date.now())
+    writeFileSync(p.rawFile(piccola.id), Buffer.alloc(5000))
+    const senzaFile = p.startRecording(prog.id, Date.now())
+    const buona = p.startRecording(prog.id, Date.now())
+    writeFileSync(p.rawFile(buona.id), Buffer.alloc(20_000))
+    const again = new Programs(p.dir)
+    expect(again.episode(piccola.id)).toBeUndefined()
+    expect(existsSync(again.rawFile(piccola.id))).toBe(false)
+    expect(again.episode(senzaFile.id)).toBeUndefined()
+    expect(again.episode(buona.id)).toMatchObject({ status: 'bozza', length: 0 })
+    await fixInterrupted(again, async () => 1234)
+    expect(again.episode(buona.id)).toMatchObject({ status: 'bozza', length: 1234 })
+    // salvato: un altro riavvio non la tocca più
+    expect(new Programs(p.dir).episode(buona.id)).toMatchObject({ status: 'bozza', length: 1234 })
+  })
+
+  it('programmi.json rovinato: copiato da parte prima di essere sovrascritto', () => {
+    const dir = tmp()
+    writeFileSync(join(dir, 'programmi.json'), '{"programs": [ rotto')
+    const p = new Programs(dir)
+    expect(p.list()).toEqual([])
+    p.saveProgram({ title: 'Nuovo' })
+    const copies = readdirSync(dir).filter((f) => f.startsWith('programmi.json.rovinato-'))
+    expect(copies).toHaveLength(1)
+    expect(readFileSync(join(dir, copies[0]), 'utf8')).toBe('{"programs": [ rotto')
   })
 })
 
@@ -234,6 +264,52 @@ describe('registrazione automatica', () => {
     const rec4 = new Recorder({ programs: w, url: 'x', now: () => clock, spawn: () => new FakeProc(), log: () => {} })
     expect(() => rec4.tick()).not.toThrow()
   }, 10_000)
+
+  it('server ripartito di colpo dentro la fascia: la stessa puntata continua nello stesso file', async () => {
+    clock = at('2026-11-16T21:10:00').getTime()
+    const p = new Programs(tmp())
+    const prog = p.saveProgram({ title: 'Sera', slots: [{ days: [1], start: '21:00', end: '22:00' }] })
+    // registrazione iniziata alle 21:00 e mai chiusa (spegnimento improvviso)
+    const e = p.startRecording(prog.id, at('2026-11-16T20:58:00').getTime())
+    writeFileSync(p.rawFile(e.id), Buffer.alloc(12_000, 1))
+    // un'altra, di una fascia passata: resta una bozza con la sua durata
+    const vecchia = p.startRecording(prog.id, at('2026-11-09T20:58:00').getTime())
+    writeFileSync(p.rawFile(vecchia.id), Buffer.alloc(12_000, 3))
+    const again = new Programs(p.dir)
+    const spawned: FakeProc[] = []
+    const rec = new Recorder({ programs: again, url: 'x', now: () => clock, spawn: () => (spawned.push(new FakeProc()), spawned.at(-1)!), seconds: async () => 600, log: () => {} })
+    rec.start(60_000)
+    expect(rec.recording()).toEqual([expect.objectContaining({ episodeId: e.id })])
+    expect(again.episodes()).toHaveLength(2)
+    spawned[0].stdout.write(Buffer.alloc(8000, 2))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(again.episode(vecchia.id)).toMatchObject({ status: 'bozza', length: 600 })
+    clock = at('2026-11-16T22:03:00').getTime()
+    rec.tick()
+    await new Promise((r) => setTimeout(r, 50))
+    await rec.stop()
+    expect(again.episode(e.id)).toMatchObject({ status: 'bozza', size: 20_000, recordedFrom: at('2026-11-16T20:58:00').getTime() })
+    const data = readFileSync(again.rawFile(e.id))
+    expect([data[0], data[12_000]]).toEqual([1, 2])
+  })
+
+  it('disco quasi pieno: la registrazione non parte, e parte quando lo spazio torna', async () => {
+    clock = at('2026-11-16T21:10:00').getTime()
+    const p = new Programs(tmp())
+    p.saveProgram({ title: 'Sera', slots: [{ days: [1], start: '21:00', end: '22:00' }] })
+    let full: string | null = 'disco pieno'
+    const logs: string[] = []
+    const rec = new Recorder({ programs: p, url: 'x', now: () => clock, spawn: () => new FakeProc(), seconds: async () => 0, log: (s) => logs.push(s), noSpace: () => full })
+    rec.tick()
+    rec.tick()
+    expect(rec.recording()).toHaveLength(0)
+    expect(p.episodes()).toHaveLength(0)
+    expect(logs.filter((l) => l.includes('disco pieno'))).toHaveLength(1)
+    full = null
+    rec.tick()
+    expect(rec.recording()).toHaveLength(1)
+    await rec.stop()
+  })
 
   it('scarta le registrazioni senza audio', async () => {
     clock = at('2026-11-16T21:10:00').getTime()
@@ -394,15 +470,23 @@ describe('indirizzi HTTP', () => {
 
   it('permessi del pannello e elenco per la regia', async () => {
     const ospite = { name: 'o', role: 'ospite' } as PublicUser
-    const { base, e, prog } = await start(ospite, true)
+    const { base, e, prog, p } = await start(ospite, true)
     const state = (await (await fetch(`${base}/api/programmi`)).json()) as Record<string, any>
     expect(state.canAdmin).toBe(false)
-    expect(state.episodes[0].status).toBe('bozza')
+    // gli ospiti del pannello non vedono né ascoltano le bozze
+    expect(state.episodes).toEqual([])
+    expect(state.recording).toEqual([])
+    expect((await fetch(`${base}/api/puntate/audio?id=${e.id}`)).status).toBe(404)
+    // pubblicata: la vedono e la ascoltano anche loro
+    writeFileSync(p.episodeFile(e.id), Buffer.alloc(1000))
+    p.published(e.id, { title: 'Puntata', description: '', length: 60 })
+    const after = (await (await fetch(`${base}/api/programmi`)).json()) as Record<string, any>
+    expect(after.episodes.map((x: { id: string }) => x.id)).toEqual([e.id])
     expect((await fetch(`${base}/api/puntate/audio?id=${e.id}`)).status).toBe(200)
     expect((await fetch(`${base}/api/programmi`, { method: 'POST', body: JSON.stringify({ azione: 'salva', programma: { title: 'Y' } }) })).status).toBe(403)
     expect((await fetch(`${base}/api/puntate`, { method: 'POST', body: JSON.stringify({ azione: 'elimina', id: e.id }) })).status).toBe(403)
     const regia = (await (await fetch(`${base}/api/programmi/regia`)).json()) as Record<string, unknown>[]
-    expect(regia.find((x) => x.id === prog.id)).toMatchObject({ title: 'Sera', episodes: [] })
+    expect(regia.find((x) => x.id === prog.id)).toMatchObject({ title: 'Sera', episodes: [{ id: e.id, title: 'Puntata' }] })
   })
 
   it('un file che non si legge non fa cadere il server', async () => {

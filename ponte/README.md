@@ -81,6 +81,8 @@ Valori da compilare (le spiegazioni sono nel file):
 | `CONTROLLO_TOKEN` | Token lungo e casuale, da inserire uguale nella regia. Si può generare con `openssl rand -hex 24` |
 | `PANNELLO_ADMIN_PASSWORD` | Password dell'utente `admin` del pannello remoto (almeno 8 caratteri) |
 | `ICECAST_PASSWORD_SORGENTE`, `ICECAST_PASSWORD_ADMIN` | Password dell'Icecast principale (`openssl rand -hex 12`) |
+| `ICECAST_PASSWORD_RELAY` | Password del relay di Icecast, diversa dall'amministrazione (se manca la crea `riavvia.sh`) |
+| `SPAZIO_MINIMO_MB` | MB liberi da lasciare sul disco (2048 di base): sotto, niente registrazioni né file ricevuti, e allarme |
 | `ICECAST_ESTERNO_*` | Facoltativi: dati dell'Icecast secondario (host, porta, mount, utente, password) |
 | `ESTERNA_PASSWORD` | Password per l'app delle dirette esterne (vuota = ingresso spento) |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SMTP_*`, `EMAIL_*` | Facoltativi: dove ricevere gli allarmi |
@@ -115,7 +117,9 @@ Con **Invia notifica di prova** controlli che Telegram o l'email arrivino.
 - `https://<dominio>/radio.mp3`: lo stream per siti, app e lettori (MP3, `ICECAST_BITRATE` kbit/s).
 - `http://<dominio>:8000/radio.mp3`: lo stesso senza https.
 - `https://<dominio>/status-json.xsl`: titolo in onda e numero di ascoltatori (JSON di Icecast).
-- `http://<dominio>:8000/admin/`: amministrazione di Icecast (utente `admin`, `ICECAST_PASSWORD_ADMIN`).
+- `https://<dominio>/admin/`: amministrazione di Icecast (utente `admin`, `ICECAST_PASSWORD_ADMIN`), solo in
+  HTTPS. Sulla porta 8000 (in chiaro) l'ascolto funziona come prima, ma `/admin` è bloccato: la porta la
+  pubblica Caddy, che passa a Icecast tutto il resto, così la password non viaggia mai leggibile in rete.
 
 Titolo e artista arrivano dalla regia (o dal file, per la diretta autonoma e la musica di riserva).
 

@@ -267,6 +267,41 @@ describe('backup', () => {
   })
 })
 
+describe('disco quasi pieno', () => {
+  it('caricamenti, libreria della regia e backup rifiutati con 507 e il motivo; allarme aperto', async () => {
+    const { port, exited } = await startServer({ SPAZIO_MINIMO_MB: '999999999' })
+    const base = `http://127.0.0.1:${port}`
+    const auth = { Authorization: `Bearer ${TOKEN}` }
+    const admin = await login(port, 'admin', 'adminadmin')
+    const up = await fetch(`${base}/api/autonoma/carica?nome=prova.mp3`, { method: 'PUT', headers: { Cookie: admin.cookie! }, body: new Uint8Array(1000) })
+    expect(up.status).toBe(507)
+    expect((await up.json()).error).toMatch(/spazio sul disco/)
+    const lib = await fetch(`${base}/api/libreria?id=regia/Rock/a.mp3`, { method: 'PUT', headers: auth, body: new Uint8Array(1000) })
+    expect(lib.status).toBe(507)
+    const bk = await fetch(`${base}/api/backup`, { method: 'PUT', headers: auth, body: new Uint8Array(1000) })
+    expect(bk.status).toBe(507)
+    const st = await (await fetch(`${base}/api/stato`, { headers: auth })).json()
+    expect(st.alarms.map((a: { key: string }) => a.key)).toContain('disco_pieno')
+    expect(await died(exited)).toBe(false)
+  }, 20_000)
+})
+
+describe('prova degli annunci', () => {
+  it('testo troppo lungo: 400; più di una prova ogni 5 secondi: 429', async () => {
+    const { port } = await startServer()
+    const admin = await login(port, 'admin', 'adminadmin')
+    const prova = (text: string) =>
+      fetch(`http://127.0.0.1:${port}/api/annunci/prova`, { method: 'POST', headers: { Cookie: admin.cookie!, 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
+    const long = await prova('x'.repeat(3001))
+    expect(long.status).toBe(400)
+    expect((await long.json()).error).toMatch(/troppo lungo/)
+    // testo vuoto: risposta 400 senza usare la voce, ma la prova conta
+    expect((await prova(' ')).status).toBe(400)
+    const again = await prova('Ciao')
+    expect(again.status).toBe(429)
+  }, 20_000)
+})
+
 describe('brani caricati dal pannello', () => {
   it('due caricamenti dello stesso file insieme: tutti e due riescono e il file non è un miscuglio', async () => {
     const { port, music } = await startServer()

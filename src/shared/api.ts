@@ -100,6 +100,7 @@ export interface RadioApi {
   aiCancelDownload(): Promise<void>
   aiRemoveModel(): Promise<void>
   aiGenerate(description: string): Promise<AiResult>
+  aiCancelGenerate(): Promise<void>
   aiPreview(plan: AiPlan): Promise<AiResult>
   aiApply(plan: AiPlan, replace: boolean): Promise<ScheduledEvent[]>
   onAiStatus(cb: (s: AiStatus) => void): () => void
@@ -131,6 +132,8 @@ export interface RadioApi {
   /** Scelta a mano: true = sul server, false = no, null = decide la regola. */
   serverSyncChoice(id: number, choice: boolean | null): Promise<void>
   serverSyncNow(): Promise<string>
+  /** Esegue le cancellazioni sul server rimaste in attesa di conferma (più di 20 in una volta). */
+  serverSyncConfirmRemove(): Promise<string>
   serverSyncStop(): Promise<void>
   /** Copia la selezione su un disco scelto dall'utente; null se annullato. */
   serverSyncExport(): Promise<string | null>

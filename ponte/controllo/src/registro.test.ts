@@ -36,4 +36,33 @@ describe('registro dei brani suonati dal server', () => {
     const log = new PlayLog(file, () => Date.parse('2026-11-15T12:00:00Z'))
     expect(log.list(new Date('2026-01-01'), new Date('2027-01-01'))).toEqual([])
   })
+
+  it('riserva e autonoma: si scrivono i secondi suonati davvero, sotto i 30 secondi niente', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'reg-')), 'r.jsonl')
+    let now = Date.parse('2026-11-15T12:00:00Z')
+    const log = new PlayLog(file, () => now)
+    const started: string[] = []
+    log.onAdd = (e) => started.push(e.title)
+    log.begin({ source: 'riserva', id: 'regia/a.mp3', title: 'A', artist: 'X', duration: 240 })
+    // il titolo in onda cambia subito, la voce si scrive alla fine
+    expect(started).toEqual(['A'])
+    expect(log.list(new Date('2026-01-01'), new Date('2027-01-01'))).toEqual([])
+    now += 95_000
+    // il brano dopo chiude il precedente
+    log.begin({ source: 'riserva', id: 'regia/b.mp3', title: 'B', artist: 'Y', duration: 200 })
+    now += 10_000
+    // la regia torna: la riserva finisce (B è durato 10 secondi: non conta)
+    expect(log.end(['autonoma'])).toBeNull()
+    expect(log.end(['riserva'])).toBeNull()
+    log.begin({ source: 'autonoma', id: 'caricati/c.mp3', title: 'C', artist: 'Z', duration: 60 })
+    now += 600_000
+    // eventi persi: non più della durata del brano
+    log.end()
+    const all = log.list(new Date('2026-01-01'), new Date('2027-01-01'))
+    expect(all.map((p) => [p.title, p.source, p.duration, p.at])).toEqual([
+      ['A', 'riserva', 95, '2026-11-15T12:00:00.000Z'],
+      ['C', 'autonoma', 60, '2026-11-15T12:01:45.000Z']
+    ])
+    expect(started).toEqual(['A', 'B', 'C'])
+  })
 })

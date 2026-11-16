@@ -4,7 +4,7 @@
  * riceve le notifiche tramite il callback `notify`.
  */
 
-export type AlarmKey = 'silenzio' | 'studio_scollegato' | 'regia_muta' | 'collegamento_instabile' | 'icecast_principale' | 'icecast_esterno'
+export type AlarmKey = 'silenzio' | 'studio_scollegato' | 'regia_muta' | 'collegamento_instabile' | 'icecast_principale' | 'icecast_esterno' | 'disco_pieno'
 
 export interface AlarmConfig {
   /** Secondi di regia scollegata dal ponte prima di avvisare. */
@@ -38,6 +38,10 @@ const MESSAGES: Record<AlarmKey, [string, string]> = {
     '✅ Il collegamento della regia è tornato stabile.'
   ],
   icecast_principale: ["❌ Il ponte non riesce a mandare il segnale all'Icecast principale.", "✅ Il ponte trasmette di nuovo all'Icecast principale."],
+  disco_pieno: [
+    '💾 Disco del server quasi pieno: niente registrazione delle puntate, caricamenti e backup rifiutati.',
+    '✅ Di nuovo spazio sul disco del server.'
+  ],
   icecast_esterno: ["❌ Il ponte non riesce a mandare il segnale all'Icecast secondario (esterno).", "✅ Il ponte trasmette di nuovo all'Icecast secondario (esterno)."]
 }
 
@@ -156,6 +160,12 @@ export class Alarms {
       this.close('studio_scollegato')
     }
     if (external) this.externalConnected = true
+  }
+
+  /** Spazio sul disco del server sotto la soglia (true) o tornato (false). */
+  setDiskFull(full: boolean, detail = ''): void {
+    if (full) this.open('disco_pieno', detail)
+    else this.close('disco_pieno')
   }
 
   onHeartbeat(): void {

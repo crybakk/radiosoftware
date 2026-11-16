@@ -74,14 +74,47 @@ export const sherpaEngine: EngineFactory = async (dir, id, v) => {
 
 export type Spawn = (cmd: string, args: string[]) => ChildProcess
 
-const run = (spawn: Spawn, cmd: string, args: string[]): Promise<void> =>
+/** Esegue un programma; se non finisce entro `timeoutMs` lo chiude (un ffmpeg o un tar bloccati non bloccano gli annunci). */
+const run = (spawn: Spawn, cmd: string, args: string[], timeoutMs = 120_000): Promise<void> =>
   new Promise((resolve, reject) => {
     const p = spawn(cmd, args)
     let err = ''
+    const timer = setTimeout(() => {
+      err = `${cmd} non ha finito in ${Math.round(timeoutMs / 1000)} secondi`
+      p.kill('SIGKILL')
+    }, timeoutMs)
     p.stderr?.on('data', (d: Buffer) => (err = (err + d.toString()).slice(-2000)))
-    p.on('error', reject)
-    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err.trim().split('\n').at(-1) || `uscito con codice ${code}`))))
+    p.on('error', (e) => {
+      clearTimeout(timer)
+      reject(e)
+    })
+    p.on('close', (code) => {
+      clearTimeout(timer)
+      if (code === 0) resolve()
+      else reject(new Error(err.trim().split('\n').at(-1) || `uscito con codice ${code}`))
+    })
   })
+
+/** Rifiuta se la promessa non arriva entro `ms` (il lavoro può continuare, ma chi aspetta va avanti). */
+const within = <T>(p: Promise<T>, ms: number, msg: string): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(msg)), ms)
+    p.then(
+      (v) => {
+        clearTimeout(t)
+        resolve(v)
+      },
+      (e: unknown) => {
+        clearTimeout(t)
+        reject(e)
+      }
+    )
+  })
+
+/** Archivio di una voce: le voci vere sono 30-65 MB, oltre è sicuramente sbagliato. */
+const MAX_VOICE_BYTES = 300 * 1024 * 1024
+/** Testo più lungo accettato (circa 3-4 minuti di voce). */
+export const MAX_TEXT = 3000
 
 /** WAV mono a 16 bit da campioni float. */
 export function wav(samples: Float32Array, rate: number): Buffer {
@@ -108,6 +141,10 @@ export interface SynthDeps {
   /** Cartella dei file prodotti (si tengono gli ultimi 200). */
   outDir: string
   ffmpeg: string
+  /** Tempo massimo per produrre una frase (ms; normale 60 s). */
+  sentenceTimeoutMs?: number
+  /** Tempo massimo per ffmpeg (ms; normale 120 s). */
+  ffmpegTimeoutMs?: number
   engine?: EngineFactory
   spawn?: Spawn
   fetch?: (url: string, init?: RequestInit) => Promise<Response>
@@ -121,6 +158,10 @@ export class Synth {
   private readonly fetch: (url: string, init?: RequestInit) => Promise<Response>
   private readonly downloading = new Map<string, Promise<void>>()
   private readonly engines = new Map<string, Promise<TtsEngine>>()
+  /** Annunci in preparazione (lo stesso testo chiesto due volte si prepara una volta sola). */
+  private readonly making = new Map<string, Promise<void>>()
+  /** Un annuncio alla volta: la voce usa molto processore (N100, server piccolo). */
+  private queue: Promise<unknown> = Promise.resolve()
 
   constructor(d: SynthDeps) {
     this.d = d
@@ -152,16 +193,31 @@ export class Synth {
         const url = voiceUrl(id)
         await mkdir(this.d.voicesDir, { recursive: true })
         const archive = join(this.d.voicesDir, `${id}.tar.bz2`)
+        // si estrae in una cartella a parte e si sposta solo alla fine: una voce a metà
+        // (spegnimento, disco pieno) non sembra mai installata
+        const tmpDir = join(this.d.voicesDir, `.tmp-${id}`)
         try {
           const r = await this.fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(20 * 60_000) })
           if (!r.ok) throw new Error(`scaricamento della voce non riuscito (${r.status})`)
+          if (Number(r.headers.get('content-length') ?? 0) > MAX_VOICE_BYTES) throw new Error('scaricamento della voce troppo grande')
           const buf = Buffer.from(await r.arrayBuffer())
           if (!buf.length) throw new Error('scaricamento della voce vuoto')
+          if (buf.length > MAX_VOICE_BYTES) throw new Error('scaricamento della voce troppo grande')
           await writeFile(archive, buf)
+          await rm(tmpDir, { recursive: true, force: true })
+          await mkdir(tmpDir, { recursive: true })
           // tar c'è sia su Linux sia su Windows 10/11
-          await run(this.spawn, 'tar', ['-xjf', archive, '-C', this.d.voicesDir])
+          await run(this.spawn, 'tar', ['-xjf', archive, '-C', tmpDir], 10 * 60_000)
+          const name = `vits-piper-${id}`
+          const got = join(tmpDir, name)
+          if (!existsSync(join(got, `${id}.onnx`)) || !existsSync(join(got, 'tokens.txt')) || !existsSync(join(got, 'espeak-ng-data'))) {
+            throw new Error('voce non trovata dopo lo scaricamento')
+          }
+          await rm(this.voiceDir(id), { recursive: true, force: true })
+          await rename(got, this.voiceDir(id))
         } finally {
           await rm(archive, { force: true })
+          await rm(tmpDir, { recursive: true, force: true })
         }
         if (!this.hasVoice(id)) throw new Error('voce non trovata dopo lo scaricamento')
       })().finally(() => this.downloading.delete(id))
@@ -183,7 +239,9 @@ export class Synth {
     if (!e) {
       // si tengono pronte al massimo 3 combinazioni (ognuna occupa memoria)
       if (this.engines.size >= 3) this.engines.delete(this.engines.keys().next().value!)
-      e = this.engine(this.voiceDir(v.voice), v.voice, v)
+      e = this.engine(this.voiceDir(v.voice), v.voice, v).catch((err: unknown) => {
+        throw new Error(`la voce non si apre (${err instanceof Error ? err.message : String(err)}): toglila e scaricala di nuovo`)
+      })
       e.catch(() => this.engines.delete(key))
       this.engines.set(key, e)
     }
@@ -196,41 +254,69 @@ export class Synth {
    */
   async speak(text: string, settings: Partial<VoiceSettings>): Promise<{ file: string; seconds: number }> {
     const v = cleanVoice(settings)
+    if (text.length > MAX_TEXT) throw new Error(`testo troppo lungo (massimo ${MAX_TEXT} caratteri)`)
     const parts = sentences(text)
     if (!parts.length) throw new Error('testo vuoto')
-    if (text.length > 3000) throw new Error('testo troppo lungo (massimo 3000 caratteri)')
     await mkdir(this.d.outDir, { recursive: true })
     const key = createHash('sha1').update(JSON.stringify([parts, v])).digest('hex').slice(0, 16)
     const mp3 = join(this.d.outDir, `annuncio-${key}.mp3`)
     if (!existsSync(mp3)) {
-      await this.installVoice(v.voice)
-      const engine = await this.getEngine(v)
-      const pause = new Float32Array(Math.round(v.sentencePause * engine.sampleRate))
-      const chunks: Float32Array[] = []
-      for (const [i, s] of parts.entries()) {
-        if (i) chunks.push(pause)
-        chunks.push(await engine.generate(s, v.speed))
+      let p = this.making.get(key)
+      if (!p) {
+        // la voce si scarica fuori dalla fila (può volerci molto); la produzione è una alla volta
+        p = this.installVoice(v.voice)
+          .then(() => {
+            const job = this.queue.then(() => (existsSync(mp3) ? undefined : this.make(parts, v, key, mp3)))
+            this.queue = job.catch(() => {})
+            return job
+          })
+          .finally(() => this.making.delete(key))
+        this.making.set(key, p)
       }
-      const all = new Float32Array(chunks.reduce((n, c) => n + c.length, 0))
-      let at = 0
-      for (const c of chunks) {
-        all.set(c, at)
-        at += c.length
-      }
-      const wavFile = join(this.d.outDir, `annuncio-${key}.wav`)
-      const tmp = join(this.d.outDir, `annuncio-${key}.tmp.mp3`)
-      try {
-        await writeFile(wavFile, wav(all, engine.sampleRate))
-        await run(this.spawn, this.d.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', wavFile, '-af', voiceFilter(v, engine.sampleRate), '-ar', '44100', '-ac', '1', '-b:a', '128k', tmp])
-        await rename(tmp, mp3)
-      } finally {
-        await rm(wavFile, { force: true })
-        await rm(tmp, { force: true })
-      }
-      this.prune()
+      await p
     }
     // MP3 a 128 kbit/s costanti: la durata viene dalla dimensione
     return { file: mp3, seconds: Math.max(1, Math.round((statSync(mp3).size * 8) / 128_000)) }
+  }
+
+  private async make(parts: string[], v: VoiceSettings, key: string, mp3: string): Promise<void> {
+    const engine = await this.getEngine(v)
+    const pause = new Float32Array(Math.round(v.sentencePause * engine.sampleRate))
+    const chunks: Float32Array[] = []
+    const limit = this.d.sentenceTimeoutMs ?? 60_000
+    for (const [i, s] of parts.entries()) {
+      if (i) chunks.push(pause)
+      try {
+        chunks.push(await within(engine.generate(s, v.speed), limit, 'la voce non risponde'))
+      } catch (e) {
+        // motore bloccato o rotto: la prossima volta se ne apre uno nuovo
+        this.engines.delete(`${v.voice}|${v.expressiveness}|${v.rhythm}`)
+        throw e
+      }
+    }
+    const all = new Float32Array(chunks.reduce((n, c) => n + c.length, 0))
+    let at = 0
+    for (const c of chunks) {
+      all.set(c, at)
+      at += c.length
+    }
+    if (!all.length) throw new Error('la voce non ha prodotto audio')
+    const wavFile = join(this.d.outDir, `annuncio-${key}.wav`)
+    const tmp = join(this.d.outDir, `annuncio-${key}.tmp.mp3`)
+    try {
+      await writeFile(wavFile, wav(all, engine.sampleRate))
+      await run(
+        this.spawn,
+        this.d.ffmpeg,
+        ['-hide_banner', '-loglevel', 'error', '-y', '-i', wavFile, '-af', voiceFilter(v, engine.sampleRate), '-ar', '44100', '-ac', '1', '-b:a', '128k', tmp],
+        this.d.ffmpegTimeoutMs ?? 120_000
+      )
+      await rename(tmp, mp3)
+    } finally {
+      await rm(wavFile, { force: true })
+      await rm(tmp, { force: true })
+    }
+    this.prune()
   }
 
   /** Tiene solo gli ultimi 200 annunci prodotti. */

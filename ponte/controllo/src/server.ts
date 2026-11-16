@@ -67,7 +67,8 @@ import { programContext, Synth } from './sintesi.ts'
 import { activeSlot, Programs } from './programmi.ts'
 import { apiNowPlaying, icecastListeners, NowPlaying } from './nowplaying.ts'
 import { ListenerLog, period, readSecondary, report, type SecondaryConfig } from './ascoltatori.ts'
-import { Recorder } from './puntate.ts'
+import { fixInterrupted, Recorder } from './puntate.ts'
+import { DEFAULT_MIN_FREE_MB, DiskGuard } from './disco.ts'
 import { handleProgramApi } from './programmiApi.ts'
 import { Impostazioni, NOMI_PARTI } from './impostazioni.ts'
 
@@ -208,6 +209,20 @@ let lastMetadata: { artist: string; title: string; at: string } | null = null
 const MUSIC_DIR = env('CARTELLA_MUSICA', '/musica')
 const UPLOAD_DIR = join(MUSIC_DIR, 'caricati')
 const MAX_UPLOAD_BYTES = 300 * 1024 * 1024
+
+// spazio sul disco: sotto la soglia niente registrazioni né file ricevuti, e allarme finché non torna
+const disk = new DiskGuard({
+  dirs: [DATA_DIR, MUSIC_DIR],
+  minFreeMB: num('SPAZIO_MINIMO_MB', DEFAULT_MIN_FREE_MB),
+  onAlarm: (full, detail) => alarms.setDiskFull(full, detail)
+})
+disk.check()
+setInterval(() => disk.check(), 60_000)
+/** Prima di ricevere un file: con il disco quasi pieno si risponde 507 con il motivo. */
+function needSpace(dir: string): void {
+  const full = disk.check(dir)
+  if (full) throw new HttpError(507, full)
+}
 const library = new Library(MUSIC_DIR, join(DATA_DIR, 'libreria.json'))
 
 async function lqPost(path: string, body: unknown = {}): Promise<boolean> {
@@ -228,6 +243,8 @@ const auto = new AutonomousPlayer(library, {
 auto.onChange = (st) => relay.setAuto(st)
 auto.onActive = (on, by) => {
   alarms.setAutonomous(on)
+  // diretta autonoma fermata: il suo brano finisce qui
+  if (!on) playLog.end(['autonoma'])
   const text = on
     ? `📻 Diretta autonoma avviata${by ? ` da ${by}` : ''}: il ponte suona la libreria del server al posto della regia.`
     : `🏠 Diretta autonoma fermata${by ? ` da ${by}` : ''}.`
@@ -240,14 +257,20 @@ relay.auto = auto
 const playLog = new PlayLog(join(DATA_DIR, 'registro-server.jsonl'))
 const logPlay = (source: PlaySource, file: string): void => {
   const t = library.byPath(file)
-  if (!t) return console.log(`[registro] ${source}: brano non in libreria ${file}`)
-  playLog.add({ source, id: t.id, title: t.title, artist: t.artist, duration: t.duration })
+  if (!t) {
+    // il brano prima è comunque finito
+    playLog.end()
+    return console.log(`[registro] ${source}: brano non in libreria ${file}`)
+  }
+  // si scrive quando finisce, con i secondi suonati davvero
+  playLog.begin({ source, id: t.id, title: t.title, artist: t.artist, duration: t.duration })
 }
 // titolo in onda per le app (formato AzuraCast): ogni brano del registro, più i metadati della regia
 const nowPlaying = new NowPlaying()
 playLog.onAdd = (e) => nowPlaying.set({ artist: e.artist, title: e.title, duration: e.duration, at: Date.parse(e.at), source: e.source })
 let esternaSince: number | null = null
-auto.onPlay = (t) => t.id.startsWith('.annunci/') || playLog.add({ source: 'autonoma', id: t.id, title: t.title, artist: t.artist, duration: t.duration })
+// gli annunci non vanno nel registro, ma chiudono il brano di prima
+auto.onPlay = (t) => void (t.id.startsWith('.annunci/') ? playLog.end() : playLog.begin({ source: 'autonoma', id: t.id, title: t.title, artist: t.artist, duration: t.duration }))
 // ---------- riconoscimento dei brani nelle dirette esterne ----------
 
 const fpStore = new FpStore(join(DATA_DIR, 'impronte'))
@@ -428,9 +451,18 @@ function announceContext() {
     ...programContext(programs.list(), new Date())
   }
 }
+// annunci in preparazione adesso: una voce non si toglie mentre si sta usando (sintesi.ts non lo dice)
+let speaking = 0
+const speak = (...a: Parameters<Synth['speak']>): ReturnType<Synth['speak']> => {
+  speaking++
+  return synth.speak(...a).finally(() => speaking--)
+}
+/** Prove degli annunci: al massimo una ogni 5 secondi per utente (la voce usa molto processore). */
+const lastTry = new Map<string, number>()
+const MAX_TRY_TEXT = 3000
 const announcer = new AnnounceScheduler({
   store: announceStore,
-  speak: (text, voice) => synth.speak(text, voice),
+  speak: (text, voice) => speak(text, voice),
   onAir: serverOnAir,
   context: announceContext,
   stationName: env('NOME_RADIO', 'Radio'),
@@ -444,12 +476,16 @@ if (env('REGISTRAZIONE_PUNTATE', 'si') !== 'no') {
     programs,
     url: env('PUNTATE_AUDIO_URL', 'http://liquidsoap:8093/programma'),
     bitrate: env('PUNTATE_BITRATE', '128k'),
+    noSpace: () => disk.check(DATA_DIR),
     onDraft: (e) => {
       const p = programs.get(e.programId)
       void notifier.send(`🎙️ Nuova puntata registrata di "${p?.title ?? e.programId}": da rivedere e pubblicare dal pannello (Programmi e puntate).`)
     }
   })
   recorder.start()
+} else {
+  // registrazioni interrotte da uno spegnimento improvviso: la durata si legge dal file
+  void fixInterrupted(programs).catch(() => {})
 }
 
 // ---------- titolo in onda come AzuraCast ----------
@@ -923,6 +959,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       }
       if (req.method === 'POST' && url.pathname === '/api/annunci/voce') {
         const id = String(body.id ?? '')
+        if (body.remove && speaking > 0) return json(res, 409, { error: 'si sta preparando un annuncio: riprova tra poco a togliere la voce' })
         const action = body.remove ? synth.removeVoice(id) : synth.installVoice(id)
         // lo scaricamento può durare minuti: si risponde subito e il pannello ricontrolla
         if (!body.remove) {
@@ -932,9 +969,15 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         return json(res, 200, { voices: synth.voices() })
       }
       if (req.method === 'POST' && url.pathname === '/api/annunci/prova') {
-        const f = announcer.fill(String(body.text ?? ''), typeof body.radio === 'string' ? body.radio : undefined)
+        const text = String(body.text ?? '')
+        if (text.length > MAX_TRY_TEXT) return json(res, 400, { error: `testo troppo lungo (massimo ${MAX_TRY_TEXT} caratteri)` })
+        const key = me.name.toLowerCase()
+        const t = Date.now()
+        if (t - (lastTry.get(key) ?? 0) < 5000) return json(res, 429, { error: 'aspetta qualche secondo tra una prova e la successiva' })
+        lastTry.set(key, t)
+        const f = announcer.fill(text, typeof body.radio === 'string' ? body.radio : undefined)
         if (!f.text.replace(/[\s.,;:!?]/g, '')) return json(res, 400, { error: 'testo vuoto' })
-        const r = await synth.speak(f.text, (body.voice ?? announceStore.get().voice) as never)
+        const r = await speak(f.text, (body.voice ?? announceStore.get().voice) as never)
         return json(res, 200, { text: f.text, missing: f.missing, seconds: r.seconds, url: `/api/annunci/audio?f=${encodeURIComponent(r.file.split(/[\\/]/).at(-1)!)}` })
       }
       return json(res, 404, { error: 'non trovato' })
@@ -973,6 +1016,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
       const name = safeName(url.searchParams.get('nome') ?? '')
       if (!name) return json(res, 400, { error: 'formato non supportato (mp3, m4a, aac, flac, ogg, opus, wav)' })
+      needSpace(MUSIC_DIR)
       const file = await saveUpload(req, join(UPLOAD_DIR, name))
       const t = await addUploaded(file)
       library.save()
@@ -1120,6 +1164,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       return json(res, r?.ok ? 200 : 502, { ok: !!r?.ok })
     }
     if (req.method === 'PUT' && url.pathname === '/api/backup') {
+      needSpace(DATA_DIR)
       const name = await saveBackup(req)
       return json(res, 200, { ok: true, name })
     }
@@ -1159,6 +1204,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       const file = studioPath(id)
       if (!file) return json(res, 400, { error: 'percorso non valido' })
       if (req.method === 'PUT') {
+        needSpace(MUSIC_DIR)
         await saveUpload(req, file)
         const q = url.searchParams
         const t = await addUploaded(file, {
@@ -1269,8 +1315,8 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     // risposta già iniziata (per esempio un backup in download): non si può che chiuderla
     if (res.headersSent) return void res.destroy()
     const status = e instanceof HttpError ? e.status : 400
-    // corpo troppo grande: il resto non si legge, la connessione si chiude dopo la risposta
-    return json(res, status, { error: e instanceof Error ? e.message : String(e) }, status === 413 ? { Connection: 'close' } : {})
+    // corpo troppo grande o disco pieno: il resto non si legge, la connessione si chiude dopo la risposta
+    return json(res, status, { error: e instanceof Error ? e.message : String(e) }, status === 413 || status === 507 ? { Connection: 'close' } : {})
   }
 }
 
@@ -1403,6 +1449,9 @@ const internalServer = createServer(async (req, res) => {
         if (riconoscimentoAttivo && kind === 'esterna_collegata') esterne.setActive(true)
         if (kind === 'esterna_scollegata') esterne.setActive(false)
         if (kind === 'esterna_collegata') esternaSince = Date.now()
+        // la sorgente del server non è più in onda: il brano in corso finisce qui
+        if (kind === 'esterna_collegata') playLog.end()
+        if (kind === 'studio_connesso') playLog.end(['riserva'])
         if (kind === 'esterna_scollegata') esternaSince = null
         alarms.onEvent(kind, String(body.detail ?? ''))
       }
@@ -1422,6 +1471,7 @@ const shutdown = async (): Promise<void> => {
   labelBot?.stop()
   announcer.stop()
   await recorder?.stop().catch(() => {})
+  playLog.end()
   publicServer.close()
   internalServer.close()
   process.exit(0)
