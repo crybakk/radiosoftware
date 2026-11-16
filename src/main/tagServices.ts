@@ -6,7 +6,7 @@ import type { RadioDb } from '../core/db'
 import { Discogs } from '../core/discogs'
 import { LastFm } from '../core/lastfm'
 import type { Track } from '../core/types'
-import { ServiceError } from '../core/webLimit'
+import { pauseAfter, ServiceError, sleepOrAbort } from '../core/webLimit'
 
 export type TagService = 'dc' | 'lfm'
 
@@ -21,6 +21,8 @@ export interface TagStatus {
   found: number
   current: string
   lastError: string | null
+  /** In pausa dopo errori di fila: riprende da sola a quest'ora (ISO). */
+  pausedUntil: string | null
   doneNow: number
 }
 
@@ -33,6 +35,9 @@ export class TagWorker {
   private lastError: string | null = null
   private doneNow = 0
   private lastEmit = 0
+  private pausedUntil: string | null = null
+  /** Attesa delle pause (sostituibile nelle prove). */
+  sleepFn = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
   constructor(
     private readonly db: RadioDb,
@@ -52,6 +57,7 @@ export class TagWorker {
       ...this.db.tagStats(this.service),
       current: this.current,
       lastError: this.lastError,
+      pausedUntil: this.pausedUntil,
       doneNow: this.doneNow
     }
   }
@@ -96,12 +102,22 @@ export class TagWorker {
           try {
             this.db.saveTags(this.service, t.id, await this.lookup(t, ac.signal))
             this.doneNow++
+            if (failures) this.lastError = null
             failures = 0
           } catch (e) {
             if (ac.signal.aborted) break
             this.lastError = e instanceof Error ? e.message : String(e)
-            // chiave sbagliata: inutile continuare; rete o servizio in difficoltà: dopo 5 errori di fila
-            if (/chiave/.test(this.lastError) || ++failures >= 5) throw new ServiceError(this.lastError)
+            // chiave sbagliata: inutile continuare
+            if (/chiave/.test(this.lastError)) throw new ServiceError(this.lastError)
+            const wait = pauseAfter(++failures)
+            if (wait == null) throw new ServiceError(`${this.lastError} (ancora dopo mezz'ora di tentativi)`)
+            if (wait > 0) {
+              // servizio in difficoltà: pausa e poi riprende da solo dallo stesso brano
+              this.pausedUntil = new Date(Date.now() + wait).toISOString()
+              this.emit(true)
+              await sleepOrAbort(this.sleepFn, wait, ac.signal).catch(() => {})
+              this.pausedUntil = null
+            }
           }
           this.emit()
         }

@@ -9,7 +9,9 @@ export function TrackSearch({
   placeholder = 'Cerca titolo o artista…',
   limit = 100,
   autoFocus,
-  refreshKey
+  refreshKey,
+  category,
+  onResult
 }: {
   kind?: TrackKind
   actions: (t: Track) => ReactNode
@@ -18,6 +20,10 @@ export function TrackSearch({
   autoFocus?: boolean
   /** Cambia quando la libreria è stata aggiornata, per ricaricare i risultati. */
   refreshKey?: unknown
+  /** Solo i brani di questa categoria. */
+  category?: string
+  /** I brani mostrati (per agire su tutti insieme). */
+  onResult?: (r: { tracks: Track[]; total: number }) => void
 }) {
   const [text, setText] = useState('')
   const [kindFilter, setKindFilter] = useState<TrackKind | ''>(kind ?? '')
@@ -26,14 +32,18 @@ export function TrackSearch({
   useEffect(() => {
     let cancelled = false
     const t = setTimeout(async () => {
-      const r = await window.radio.search({ text, kind: kindFilter || undefined, limit })
-      if (!cancelled) setResult(r)
+      const r = await window.radio.search({ text, kind: kindFilter || undefined, limit, category: category || undefined })
+      if (!cancelled) {
+        setResult(r)
+        onResult?.(r)
+      }
     }, 150)
     return () => {
       cancelled = true
       clearTimeout(t)
     }
-  }, [text, kindFilter, limit, refreshKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, kindFilter, limit, refreshKey, category])
 
   return (
     <div className="search">

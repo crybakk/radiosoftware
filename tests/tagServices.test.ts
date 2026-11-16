@@ -129,3 +129,41 @@ describe('MusicBrainz con AcoustID', () => {
     db.close()
   })
 })
+
+describe('servizio occupato', () => {
+  it('ritenta più volte dopo il 503 rispettando Retry-After', async () => {
+    const waits: number[] = []
+    let n = 0
+    const mb = new MusicBrainz({
+      sleep: async (ms) => void waits.push(ms),
+      fetch: async () => (++n <= 4 ? new Response('', { status: 503, headers: n === 2 ? { 'retry-after': '30' } : {} }) : Response.json({ id: 'r' }))
+    })
+    expect(await mb.recording('r')).toMatchObject({ recordingId: 'r' })
+    expect(waits.filter((w) => w >= 5000)).toEqual([5000, 30000, 20000, 40000])
+  })
+
+  it('dopo errori di fila va in pausa e riprende da sola dallo stesso brano', async () => {
+    const db = new RadioDb(join(tmp(), 'p.db'))
+    const id = db.upsertScanned({ ...base, path: '/m/a.mp3', title: 'A', artist: 'X' })
+    let calls = 0
+    const mb = new MusicBrainz({
+      ...fast,
+      fetch: async (u) => {
+        calls++
+        if (calls <= 3) throw new Error('rete giù')
+        if (u.includes('/recording?')) return Response.json({ recordings: [{ id: 'r1', score: 100, title: 'A', length: 200_000, 'artist-credit': [{ name: 'X' }] }] })
+        return Response.json({ id: 'r1', isrcs: ['IT9'] })
+      }
+    })
+    const states: (string | null)[] = []
+    const svc = new MusicBrainzService(db, (s) => states.push(s.pausedUntil), mb)
+    const pauses: number[] = []
+    svc.sleepFn = async (ms) => void pauses.push(ms)
+    await svc.start()
+    expect(pauses).toEqual([60_000])
+    expect(states.some((s) => s != null)).toBe(true)
+    expect(db.getTrack(id)!.isrc).toBe('IT9')
+    expect(svc.status()).toMatchObject({ running: false, lastError: null, pausedUntil: null })
+    db.close()
+  })
+})

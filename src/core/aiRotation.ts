@@ -51,12 +51,12 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
 const DAY_NAMES = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato']
 
 /** Tutti i generi del brano in un testo: file, MusicBrainz, Discogs, Last.fm. */
-export function genreText(t: Pick<Track, 'genre' | 'mbGenres' | 'dcGenres' | 'lfmTags'>): string {
-  return `${t.genre},${t.mbGenres},${t.dcGenres},${t.lfmTags}`
+export function genreText(t: Pick<Track, 'genre' | 'mbGenres' | 'dcGenres' | 'lfmTags' | 'userTags'>): string {
+  return `${t.genre},${t.mbGenres},${t.dcGenres},${t.lfmTags},${t.userTags}`
 }
 
 /** Generi del brano: quello del file (anche più di uno, separati) e quelli di MusicBrainz. */
-export function trackGenres(t: Pick<Track, 'genre' | 'mbGenres' | 'dcGenres' | 'lfmTags'>): string[] {
+export function trackGenres(t: Pick<Track, 'genre' | 'mbGenres' | 'dcGenres' | 'lfmTags' | 'userTags'>): string[] {
   const out: string[] = []
   for (const g of genreText(t).split(/[,;/]/)) {
     const n = g.trim().toLowerCase()

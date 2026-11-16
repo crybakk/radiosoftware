@@ -4,6 +4,7 @@ import { TRACK_KINDS, type LibraryFolder, type Track, type TrackKind } from '../
 import type { LibraryStatus } from '../../shared/api'
 import { KIND_LABEL, mmss } from './format'
 import { MusicBrainzSection } from './MusicBrainzSection'
+import { CategoriesSection } from './CategoriesSection'
 import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
 
@@ -13,6 +14,16 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
   const [newKind, setNewKind] = useState<TrackKind>('music')
   const [editing, setEditing] = useState<Track | null>(null)
   const [refresh, setRefresh] = useState(0)
+  const [category, setCategory] = useState('')
+  const [label, setLabel] = useState('')
+  const [shown, setShown] = useState<Track[]>([])
+  const [labelMsg, setLabelMsg] = useState('')
+
+  const tag = async (ids: number[], on: boolean): Promise<void> => {
+    const n = await window.radio.setUserTag(ids, label, on)
+    setLabelMsg(ids.length > 1 ? `«${label}» ${on ? 'messa' : 'tolta'} a ${n} brani.` : '')
+    setRefresh((x) => x + 1)
+  }
 
   useEffect(() => {
     void window.radio.listFolders().then(setFolders)
@@ -102,16 +113,64 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
 
       <MusicBrainzSection onEdit={setEditing} refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} />
 
+      <CategoriesSection
+        selected={category}
+        onSelect={setCategory}
+        label={label}
+        onLabel={(l) => {
+          setLabel(l)
+          setLabelMsg('')
+        }}
+        refreshKey={`${refresh}-${status?.total}`}
+      />
+
       <section className="panel grow">
-        <div className="section-title">Brani</div>
+        <div className="section-title">
+          Brani
+          {category && (
+            <button className="small" onClick={() => setCategory('')} title="Mostra tutti i brani">
+              Categoria: {category} ✕
+            </button>
+          )}
+        </div>
+        {label && (
+          <div className="row label-bar">
+            <span>
+              🏷 Etichetta <b>«{label}»</b>:
+            </span>
+            <button className="small" disabled={!shown.length} onClick={() => void tag(shown.map((t) => t.id), true)}>
+              Mettila a tutti i {shown.length} brani mostrati
+            </button>
+            <button className="small ghost" disabled={!shown.length} onClick={() => void tag(shown.map((t) => t.id), false)}>
+              Toglila a tutti
+            </button>
+            {labelMsg && <span className="hint">{labelMsg}</span>}
+          </div>
+        )}
         <TrackSearch
           refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}-${status?.analyzing ? 1 : 0}`}
           limit={300}
-          actions={(t) => (
-            <button className="small" onClick={() => setEditing(t)}>
-              Scheda
-            </button>
-          )}
+          category={category}
+          onResult={(r) => setShown(r.tracks)}
+          actions={(t) => {
+            const has = !!label && t.userTags.split(',').map((x) => x.trim()).includes(label)
+            return (
+              <>
+                {label && (
+                  <button
+                    className={`small ${has ? 'on' : ''}`}
+                    title={has ? `Togli «${label}»` : `Metti «${label}»`}
+                    onClick={() => void tag([t.id], !has)}
+                  >
+                    🏷 {has ? '✓' : '+'}
+                  </button>
+                )}
+                <button className="small" onClick={() => setEditing(t)}>
+                  Scheda
+                </button>
+              </>
+            )
+          }}
         />
       </section>
 
@@ -138,7 +197,8 @@ const TEXT_FIELDS: { key: keyof TrackEdit; label: string; hint?: string }[] = [
   { key: 'publisher', label: 'Editore', hint: 'Per il report SIAE' },
   { key: 'siaeCode', label: 'Codice opera SIAE' },
   { key: 'isrc', label: 'ISRC' },
-  { key: 'iswc', label: 'ISWC' }
+  { key: 'iswc', label: 'ISWC' },
+  { key: 'userTags', label: 'Etichette tue', hint: 'separate da virgole, per le rotazioni' }
 ]
 
 export function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose: () => void; onSaved: () => void }) {
