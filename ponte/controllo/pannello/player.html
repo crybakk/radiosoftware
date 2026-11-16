@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f1216" />
+    <title>Radio in diretta</title>
+    <link rel="stylesheet" href="/pubblico.css" />
+  </head>
+  <body>
+    <header>
+      <h1 id="name">Radio</h1>
+      <nav><a href="/" class="on">In diretta</a><a href="/podcast.html">Puntate</a></nav>
+    </header>
+    <main class="player-page">
+      <section class="radio-card">
+        <div class="np">
+          <img class="np-art" id="art" alt="" hidden />
+          <div class="np-art np-noart" id="noart">♪</div>
+          <div class="np-text">
+            <div class="onair" id="onair">IN DIRETTA</div>
+            <div class="title" id="title"></div>
+            <div class="artist" id="artist"></div>
+            <div class="np-bar" id="bar" hidden><div id="bar-fill"></div></div>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="play" id="play" aria-label="Ascolta">▶</button>
+          <label class="vol" title="Volume">🔊 <input type="range" id="volume" min="0" max="1" step="0.05" value="1" aria-label="Volume" /></label>
+          <span class="muted listeners" id="listeners"></span>
+        </div>
+        <p class="muted msg" id="msg"></p>
+        <p class="desc muted" id="desc" hidden></p>
+        <audio id="audio" preload="none"></audio>
+      </section>
+
+      <section class="radio-card" id="history-box" hidden>
+        <h2>Trasmessi di recente</h2>
+        <ul class="history" id="history"></ul>
+      </section>
+
+      <section class="links">
+        <a href="/podcast.html">🎧 Programmi e puntate</a>
+        <a id="m3u" href="#" hidden>Ascolta con il tuo lettore (M3U)</a>
+        <a id="pls" href="#" hidden>PLS</a>
+      </section>
+    </main>
+    <script src="/player.js"></script>
+  </body>
+</html>

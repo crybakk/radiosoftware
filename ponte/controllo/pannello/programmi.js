@@ -81,7 +81,7 @@ function drawProgs(s) {
     f.station.value = s.settings.station
     f.marginMinutes.value = s.settings.marginMinutes
   }
-  $('prog-api').textContent = `L'app trova i programmi su ${location.origin}/api/station/${s.settings.station}/public/podcasts, come su AzuraCast. Pagine per gli ascoltatori: ${location.origin}/podcast.html e ${location.origin}/ascolta.html`
+  $('prog-api').textContent = `L'app trova i programmi su ${location.origin}/api/station/${s.settings.station}/public/podcasts, come su AzuraCast. Pagine per gli ascoltatori: ${location.origin}/ (la diretta) e ${location.origin}/podcast.html (le puntate)`
 }
 
 function draftItem(e, p) {

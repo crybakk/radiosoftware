@@ -154,6 +154,35 @@ describe('il ponte non cade per richieste anonime malformate', () => {
   })
 })
 
+describe('pagine: player pubblico su / e pannello su /dashboard', () => {
+  it('serve le pagine giuste e porta i vecchi indirizzi a quelle nuove', async () => {
+    const { port } = await startServer()
+    const base = `http://127.0.0.1:${port}`
+    const home = await fetch(`${base}/`)
+    expect(home.status).toBe(200)
+    const homeHtml = await home.text()
+    expect(homeHtml).toContain('/player.js')
+    expect(homeHtml).not.toContain('login-form')
+    for (const p of ['/dashboard', '/dashboard/']) {
+      const r = await fetch(base + p)
+      expect(r.status).toBe(200)
+      const html = await r.text()
+      expect(html).toContain('login-form')
+      expect(html).toContain('/navigazione.js')
+    }
+    for (const [from, to] of [['/index.html', '/dashboard'], ['/ascolta.html', '/'], ['/player.html', '/']]) {
+      const r = await fetch(base + from, { redirect: 'manual' })
+      expect(r.status).toBe(302)
+      expect(r.headers.get('location')).toBe(to)
+    }
+    // la guida senza accesso rimanda al pannello
+    const g = await fetch(`${base}/guida`, { redirect: 'manual' })
+    expect(g.headers.get('location')).toBe('/dashboard')
+    for (const f of ['/player.js', '/pubblico.css', '/podcast.html', '/pannello.css', '/ospite.html']) expect((await fetch(base + f)).status).toBe(200)
+    expect((await fetch(`${base}/dashboard/altro`)).status).toBe(404)
+  })
+})
+
 describe('ruoli e sessioni del pannello', () => {
   async function setup() {
     const { port } = await startServer()

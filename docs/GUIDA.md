@@ -171,8 +171,9 @@ Se l'app non si collega, guarda [Problemi comuni, dirette esterne](#dirette-este
 
 Il pannello comanda la regia dal browser, da qualsiasi posto: telefono, tablet o computer.
 
-**Aprirlo:** scrivi nel browser l'indirizzo della radio con `https://` davanti (durante le prove:
-`https://player.radioattivainformazione.it:9443`). Entra con il tuo nome e la tua password (la prima volta
+**Aprirlo:** scrivi nel browser l'indirizzo della radio con `https://` davanti e `/dashboard` in fondo (durante le
+prove: `https://player.radioattivainformazione.it:9443/dashboard`). L'indirizzo senza `/dashboard` apre invece il
+player per gli ascoltatori ([sezione 13](#13-programmi-puntate-e-repliche)). Entra con il tuo nome e la tua password (la prima volta
 `admin` e la password stampata dall'installazione).
 
 ![Pannello dal telefono](immagini/pannello-principale.png)
@@ -181,7 +182,8 @@ Il pannello comanda la regia dal browser, da qualsiasi posto: telefono, tablet o
 2. **REGIA OK** se la regia è collegata, **REGIA SCOLLEGATA** se è spenta o senza internet.
 3. **AUTOMATICO / MANUALE**, come in regia.
 4. Menu **☰**: **Programmi**, **Ascoltatori**, **Annunci vocali**, **Utenti**, **Impostazioni server**,
-   **📖 Guida** ed **Esci** (alcune voci solo per gli amministratori).
+   **📖 Guida**, **📻 Player pubblico** ed **Esci** (alcune voci solo per gli amministratori). Da ogni sezione
+   torni alla schermata principale con **← Panoramica** (in alto a sinistra) o con il tasto indietro del telefono.
 
    ![Menu del pannello](immagini/pannello-menu.png)
 
@@ -518,8 +520,10 @@ Sotto ogni programma ci sono le puntate: **▶** per ascoltarle, **Modifica**, *
 si cambia in **Impostazioni server** → **Qualità delle puntate registrate**). Le bozze restano finché non le
 elimini.
 
-**Per gli ascoltatori:** `https://<indirizzo della radio>/podcast.html` (programmi e puntate) e
-`https://<indirizzo della radio>/ascolta.html` (la diretta con il titolo in onda). Le puntate si possono **solo
+**Per gli ascoltatori:** `https://<indirizzo della radio>/` è il player della radio, come la pagina pubblica di
+AzuraCast: titolo e copertina in onda, **▶** per ascoltare, volume, brani trasmessi di recente e link per i lettori
+(M3U, PLS). `https://<indirizzo della radio>/podcast.html` mostra programmi e puntate. Il vecchio indirizzo
+`/ascolta.html` porta al player. Le puntate si possono **solo
 ascoltare**, non scaricare (la licenza SIAE permette lo streaming, non il download).
 
 **App della radio.** Il server risponde agli stessi indirizzi di AzuraCast per i podcast
@@ -715,7 +719,7 @@ Le porte 80, 443 e 8000 del router possono andare a una sola macchina. Per prova
 - **certificato**: Let's Encrypt controlla solo la porta 80. Sposta sul router la TCP 80 verso la VM per qualche
   minuto, finché `docker compose logs caddy` (in `/opt/radio-ponte`) scrive "certificate obtained successfully",
   poi rimettila su AzuraCast. Il certificato dura 90 giorni: se le prove durano di più, ripeti;
-- pannello: `https://<nome>:9443`; nella regia **Porta del servizio di controllo** 9443 con HTTPS spuntato.
+- player: `https://<nome>:9443`; pannello: `https://<nome>:9443/dashboard`; nella regia **Porta del servizio di controllo** 9443 con HTTPS spuntato.
 
 Quando passi al server nuovo per davvero: togli AzuraCast, inoltra 80, 443 e 8000 alla VM, rimetti il dominio
 definitivo come **Dominio** e svuota l'**Indirizzo di ascolto per gli ospiti**.
@@ -934,4 +938,5 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 16/11/2026 | Guida riscritta più semplice: prima le cose di tutti i giorni, poi l'installazione; screenshot con i numeri; dirette esterne passo passo (anche con BUTT); scheda **Guida** nella regia e **📖 Guida** nel menu del pannello |
 | 16/11/2026 | Controllo di sicurezza: ricerche lunghissime limitate, regia che non apre pagine esterne, eventi con comando esterno spenti dopo un ripristino, frase segreta per il video da OBS, etichette e registro protetti dalle formule di Excel |
 | 16/11/2026 | Secondo controllo di sicurezza: video da OBS solo con frase segreta, backup ripuliti prima del ripristino, notiziari con feed costruiti apposta, al massimo 20 accessi aperti per utente, una ricerca alla volta per pannello, microfono remoto tolto di sicuro dall'onda |
+| 16/11/2026 | Indirizzi del server: `/` è il player pubblico per gli ascoltatori, il pannello si apre da `/dashboard`; pulsante **← Panoramica** in ogni sezione del pannello |
 | 16/11/2026 | Categorie della musica nella Libreria e etichette tue sui brani (anche su molti insieme); ricerche su MusicBrainz e servizi che dopo un 503 riprovano e vanno in pausa invece di fermarsi |

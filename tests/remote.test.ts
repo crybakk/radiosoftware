@@ -119,7 +119,7 @@ describe('regia, ponte e pannello insieme', () => {
     const r = await fetch(`${base}/api/login`, { method: 'POST', body: JSON.stringify({ name: 'admin', password: ADMIN }) })
     expect(r.status).toBe(200)
     const cookie = r.headers.get('set-cookie')!.split(';')[0]
-    expect((await (await fetch(`${base}/`)).text())).toContain('Regia remota')
+    expect((await (await fetch(`${base}/dashboard`)).text())).toContain('Regia remota')
 
     // utente conduttore creato dall'amministratore
     const u = await fetch(`${base}/api/utenti`, { method: 'POST', headers: { cookie }, body: JSON.stringify({ name: 'anna', role: 'conduttore', password: 'password-anna' }) })

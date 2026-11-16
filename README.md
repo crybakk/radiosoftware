@@ -57,7 +57,7 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 
 - Programmi creati dal pannello (fasce orarie, conduttori, copertina); il server registra da solo ogni fascia.
 - Le registrazioni si rivedono dal pannello (inizio, fine, titolo, descrizione) e si pubblicano; solo streaming, niente download.
-- Pagine `podcast.html` e `ascolta.html`; API dei podcast uguali a quelle di AzuraCast per l'app della radio.
+- Player pubblico su `/` (pannello su `/dashboard`) e pagina `podcast.html`; API dei podcast uguali a quelle di AzuraCast per l'app della radio.
 - Repliche: pulsante nel pannello e azione degli eventi "Replica di un programma" (ultima puntata pubblicata).
 - Titolo in onda agli indirizzi `/api/nowplaying` di AzuraCast; statistiche degli ascoltatori (Icecast principale e secondario, un anno) nel pannello e nella regia.
 

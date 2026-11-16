@@ -30,7 +30,7 @@
  * Titolo in onda come AzuraCast (senza accesso): GET /api/nowplaying, /api/nowplaying/<stazione>,
  *   /api/nowplaying_static/<stazione>.json, /api/station/<stazione>/playlist.m3u|pls, GET /api/logo
  * Programmi e puntate on demand: vedi programmiApi.ts (API pubbliche come quelle dei podcast di AzuraCast,
- *   pagine ascolta.html e podcast.html, gestione dal pannello, ultime puntate per le repliche della regia).
+ *   player pubblico su / e podcast.html, gestione dal pannello, ultime puntate per le repliche della regia).
  *
  * Libreria del server copiata dalla regia (token): GET /api/libreria, PUT /api/libreria?id=regia/...,
  *   DELETE /api/libreria?id=regia/..., POST /api/libreria/dati (titoli e volumi corretti)
@@ -837,8 +837,21 @@ const MIME: Record<string, string> = {
   '.webmanifest': 'application/manifest+json'
 }
 
+/**
+ * Indirizzi delle pagine (scelta di cristian, 16/11/2026): "/" è il player pubblico per gli ascoltatori,
+ * "/dashboard" il pannello di gestione. I vecchi indirizzi portano alla pagina nuova.
+ */
+const PAGES: Record<string, string> = { '/': 'player.html', '/dashboard': 'index.html', '/dashboard/': 'index.html' }
+const MOVED: Record<string, string> = { '/index.html': '/dashboard', '/ascolta.html': '/', '/player.html': '/' }
+
 async function serveStatic(res: ServerResponse, path: string): Promise<boolean> {
-  const name = path === '/' ? 'index.html' : path.slice(1)
+  const moved = MOVED[path]
+  if (moved) {
+    res.writeHead(302, { Location: moved, 'Cache-Control': 'no-cache' })
+    res.end()
+    return true
+  }
+  const name = PAGES[path] ?? path.slice(1)
   if (!/^[\w.-]+$/.test(name)) return false
   const file = join(PANEL_DIR, name)
   const data = await readFile(file).catch(() => null)
@@ -857,7 +870,7 @@ async function serveStatic(res: ServerResponse, path: string): Promise<boolean> 
 /** Guida d'uso: solo per chi è entrato nel pannello (gli altri tornano alla pagina di accesso). */
 async function serveGuide(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
   if (!sessionUser(req)) {
-    res.writeHead(302, { Location: '/' })
+    res.writeHead(302, { Location: '/dashboard' })
     return void res.end()
   }
   if (path === '/guida' || path === '/guida/') {

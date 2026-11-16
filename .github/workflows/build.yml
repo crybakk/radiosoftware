@@ -29,7 +29,8 @@ jobs:
           for i in $(seq 1 20); do curl -fs http://127.0.0.1:9080/health && break; sleep 1; done
           head -c 4096 /dev/urandom > b.db
           curl -fs -X PUT -H "Authorization: Bearer token-di-prova-abbastanza-lungo" --data-binary @b.db http://127.0.0.1:9080/api/backup
-          curl -fs http://127.0.0.1:9080/ | grep -q "Regia remota"
+          curl -fs http://127.0.0.1:9080/dashboard | grep -q "Regia remota"
+          curl -fs http://127.0.0.1:9080/ | grep -q "player.js"
           curl -fs -X POST -H 'Content-Type: application/json' -d '{"name":"admin","password":"password-admin"}' http://127.0.0.1:9080/api/login
           docker logs ctl
 
