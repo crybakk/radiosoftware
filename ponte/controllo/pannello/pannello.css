@@ -34,15 +34,25 @@ input, select, textarea { background: var(--bg); border: 1px solid var(--line); 
 .mode { font-weight: 800; font-size: 13px; }
 .mode.auto { background: var(--green); border-color: var(--green); color: #04130a; }
 .mode.manual { background: var(--amber); border-color: var(--amber); color: #1a1000; }
-.menu { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel2); border-bottom: 1px solid var(--line); }
+/* telefoni stretti: la barra in alto deve restare dentro lo schermo */
+@media (max-width: 480px) {
+  .top { gap: 6px; padding: 8px; flex-wrap: wrap; }
+  .lamp { letter-spacing: 1px; padding: 8px; font-size: 13px; }
+  .pill { padding: 6px; }
+  .mode, #menu-btn { padding: 8px 10px; }
+  .transport .big { font-size: 17px; padding: 20px 4px; }
+  .menu span { flex-basis: 100%; }
+}
+.menu { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel2); border-bottom: 1px solid var(--line); }
 .menu span { flex: 1; color: var(--muted); font-size: 14px; }
+.btn-link { display: inline-block; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); text-decoration: none; }
 .banner { padding: 10px 14px; font-size: 14px; }
 .banner.error { background: #4c1d1d; color: #fecaca; }
 .banner.warn { background: #4a3510; color: #fde68a; }
 .banner.info { background: #1e2a44; color: #bfdbfe; }
 
-main { display: grid; gap: 12px; padding: 12px; max-width: 1100px; margin: 0 auto; }
-@media (min-width: 900px) { main { grid-template-columns: 1fr 1fr; } .now, .transport { grid-column: 1 / -1; } }
+main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px; max-width: 1100px; margin: 0 auto; }
+@media (min-width: 900px) { main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .now, .transport { grid-column: 1 / -1; } }
 .now-kind { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
 .now-title { font-size: 28px; font-weight: 700; line-height: 1.15; margin-top: 4px; }
 .now-artist { font-size: 19px; color: #b9c3d3; margin-bottom: 10px; }
@@ -53,7 +63,7 @@ main { display: grid; gap: 12px; padding: 12px; max-width: 1100px; margin: 0 aut
 .now-times { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; font-size: 18px; margin-top: 6px; }
 .remaining { font-size: 26px; font-weight: 700; }
 
-.transport { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.transport { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .big { font-size: 20px; font-weight: 800; padding: 22px 6px; border-radius: 14px; }
 .big.play { background: #14532d; border-color: var(--green); }
 .big.next { background: #1e3a8a; border-color: var(--accent); }

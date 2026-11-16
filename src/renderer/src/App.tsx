@@ -2,6 +2,7 @@ import { PreviewContext } from './VoiceSection'
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
 import { ConnectionView, uplinkClass } from './ConnectionView'
 import { EventsView } from './EventsView'
+import { GuideView } from './GuideView'
 import { hhmmss } from './format'
 import { LibraryView } from './LibraryView'
 import { LogView } from './LogView'
@@ -10,7 +11,7 @@ import { SettingsView } from './SettingsView'
 import { StatsView } from './StatsView'
 import { useRadio } from './useRadio'
 
-type Tab = 'onair' | 'library' | 'events' | 'log' | 'stats' | 'link' | 'settings'
+type Tab = 'onair' | 'library' | 'events' | 'log' | 'stats' | 'link' | 'settings' | 'guide'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'onair', label: 'In onda' },
@@ -19,7 +20,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'log', label: 'Registro' },
   { id: 'stats', label: 'Ascoltatori' },
   { id: 'link', label: 'Collegamento' },
-  { id: 'settings', label: 'Impostazioni' }
+  { id: 'settings', label: 'Impostazioni' },
+  { id: 'guide', label: 'Guida' }
 ]
 
 function Clock() {
@@ -81,6 +83,7 @@ export function App() {
           {tab === 'stats' && <StatsView />}
           {tab === 'link' && <ConnectionView radio={radio} />}
           {tab === 'settings' && <SettingsView radio={radio} />}
+          {tab === 'guide' && <GuideView />}
         </ViewErrorBoundary>
       </main>
     </div>

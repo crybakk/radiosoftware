@@ -86,6 +86,8 @@ services:
       # eseguite sul server dal servizio radio-ponte-impostazioni (vedi la cartella "sistema")
       - ./.env:/impostazioni/.env
       - ./richieste:/richieste
+      # guida d'uso con gli screenshot (copiata da installa-server.sh), aperta dal menu del pannello
+      - ./guida:/app/guida:ro
     ports:
       # audio del microfono remoto e degli ospiti (WebRTC): da inoltrare anche sul router
       - "${WEBRTC_PORTE:-40000-40049}:${WEBRTC_PORTE:-40000-40049}/udp"

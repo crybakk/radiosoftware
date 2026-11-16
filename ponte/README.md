@@ -183,6 +183,14 @@ Ruoli (menu ☰ → Utenti, solo per gli amministratori):
 | Conduttore | comandare la regia, usare il microfono, gestire ospiti, diretta autonoma e dirette video |
 | Ospite | vedere soltanto, senza microfono (per gli ospiti in diretta si usa il link, vedi sotto) |
 
+### Guida d'uso nel pannello
+
+Menu ☰ → **📖 Guida** apre `GET /guida`: `docs/GUIDA.md` trasformata in HTML dal servizio di controllo
+(`src/guidaMarkdown.ts`, lo stesso codice della scheda **Guida** della regia), con gli screenshot da
+`GET /guida/immagini/<nome>.png`. Solo dopo l'accesso al pannello. `installa-server.sh` copia `docs/GUIDA.md` e
+`docs/immagini/` in `/opt/radio-ponte/guida`, montata in sola lettura in `/app/guida` (`CARTELLA_GUIDA` per un
+altro percorso). Per aggiornarla basta rilanciare `installa-server.sh` con lo ZIP nuovo.
+
 ### Microfono dal pannello
 
 Conduttori e amministratori possono aprire il microfono dal pannello (WebRTC, Opus). La voce arriva al

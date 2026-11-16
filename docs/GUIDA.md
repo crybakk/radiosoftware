@@ -1,277 +1,407 @@
 # Guida di Radio Regia
 
-Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
+Come si usa la radio, passo per passo. Le cose di tutti i giorni sono all'inizio, l'installazione (che si fa una
+volta sola) è più in fondo.
 
-**Ultimo aggiornamento:** 16/11/2026, impostazioni del server dal pannello (niente più terminale per cambiarle).
+La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
+**📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
+
+**Ultimo aggiornamento:** 16/11/2026, guida riscritta più semplice, con gli screenshot; scheda **Guida** nella
+regia e nel pannello.
 
 ## Indice
 
-1. [Come funziona, in breve](#1-come-funziona-in-breve)
-2. [Installare la regia su Windows](#2-installare-la-regia-su-windows)
-3. [Primo avvio: schede audio e libreria](#3-primo-avvio-schede-audio-e-libreria)
-4. [In onda: uso quotidiano](#4-in-onda-uso-quotidiano)
-5. [Libreria e scheda brano](#5-libreria-e-scheda-brano)
-    - [Dati per il report SIAE (MusicBrainz)](#dati-per-il-report-siae-musicbrainz)
-    - [Discogs, Last.fm e AcoustID](#discogs-lastfm-e-acoustid)
-6. [Eventi a orario](#6-eventi-a-orario)
-    - [Rotazioni con l'AI](#rotazioni-con-lai)
-7. [Registro di trasmissione](#7-registro-di-trasmissione)
-    - [Report SIAE trimestrale](#report-siae-trimestrale)
-8. [Impostazioni](#8-impostazioni)
-    - [Notiziari](#notiziari)
-    - [Voce sintetica](#voce-sintetica)
-9. [Il server: VM su Proxmox](#9-il-server-vm-su-proxmox)
-    - [Ascolto e Icecast secondario](#ascolto-e-icecast-secondario)
-10. [Collegare la regia al ponte](#10-collegare-la-regia-al-ponte)
-11. [Dirette esterne](#11-dirette-esterne)
-    - [Riconoscimento dei brani nelle esterne](#riconoscimento-dei-brani-nelle-esterne)
-12. [Pannello remoto e utenti](#12-pannello-remoto-e-utenti)
-    - [Microfono dal pannello](#microfono-dal-pannello)
-    - [Ospiti in diretta](#ospiti-in-diretta)
-    - [Diretta autonoma dal server](#diretta-autonoma-dal-server)
-    - [Libreria sul server](#libreria-sul-server)
-    - [Dirette video su YouTube e Facebook](#dirette-video-su-youtube-e-facebook)
-    - [Programmi e puntate on demand](#programmi-e-puntate-on-demand)
-    - [Repliche](#repliche)
-    - [Statistiche degli ascoltatori](#statistiche-degli-ascoltatori)
-    - [Annunci vocali del server](#annunci-vocali-del-server)
-13. [Allarmi e notifiche](#13-allarmi-e-notifiche)
-    - [Bot Telegram della radio](#bot-telegram-della-radio)
-14. [Backup e ripristino](#14-backup-e-ripristino)
-15. [Problemi comuni](#15-problemi-comuni)
-16. [In arrivo](#16-in-arrivo)
-17. [Modifiche alla guida](#17-modifiche-alla-guida)
+**Tutti i giorni**
+
+1. [Come funziona, in un minuto](#1-come-funziona-in-un-minuto)
+2. [Andare in onda dalla regia](#2-andare-in-onda-dalla-regia)
+3. [Fare una diretta esterna](#3-fare-una-diretta-esterna)
+4. [Il pannello dal telefono](#4-il-pannello-dal-telefono)
+5. [Parlare in diretta dal pannello](#5-parlare-in-diretta-dal-pannello)
+6. [Ospiti in diretta](#6-ospiti-in-diretta)
+7. [Diretta autonoma, senza la regia](#7-diretta-autonoma-senza-la-regia)
+8. [Eventi a orario](#8-eventi-a-orario)
+
+**Funzioni in più**
+
+9. [Libreria e scheda brano](#9-libreria-e-scheda-brano)
+10. [Rotazioni con l'AI](#10-rotazioni-con-lai)
+11. [Registro e report SIAE](#11-registro-e-report-siae)
+12. [Notiziari e voce sintetica](#12-notiziari-e-voce-sintetica)
+13. [Programmi, puntate e repliche](#13-programmi-puntate-e-repliche)
+14. [Statistiche degli ascoltatori](#14-statistiche-degli-ascoltatori)
+15. [Dirette video su YouTube e Facebook](#15-dirette-video-su-youtube-e-facebook)
+16. [Allarmi, notifiche e bot Telegram](#16-allarmi-notifiche-e-bot-telegram)
+17. [Backup](#17-backup)
+
+**Una volta sola: installazione e impostazioni**
+
+18. [Installare la regia su Windows](#18-installare-la-regia-su-windows)
+19. [Il server su Proxmox](#19-il-server-su-proxmox)
+20. [Impostazioni del server dal pannello](#20-impostazioni-del-server-dal-pannello)
+21. [Collegare la regia al server](#21-collegare-la-regia-al-server)
+22. [La musica sul server](#22-la-musica-sul-server)
+23. [Utenti del pannello](#23-utenti-del-pannello)
+
+**Aiuto**
+
+24. [Problemi comuni](#24-problemi-comuni)
+25. [In arrivo](#25-in-arrivo)
+26. [Modifiche alla guida](#26-modifiche-alla-guida)
 
 ---
 
-## 1. Come funziona, in breve
+## 1. Come funziona, in un minuto
 
 ```
-PC di regia (Windows, 4G) ──▶ Ponte ──▶ Icecast principale (casa) ──▶ ascoltatori
-                                 ▲   ├─▶ Icecast secondario (esterno, facoltativo)
-App per le esterne ──────────────┘   └─▶ YouTube / Facebook (quando le avvii)
+PC di regia (Windows, 4G) ──▶ Server di casa ──▶ ascoltatori
+App per le esterne ────────▶   (il "ponte")  ├─▶ Icecast secondario (facoltativo)
+Telefono (pannello) ───────▶                 └─▶ YouTube / Facebook (quando le avvii)
 ```
 
-- La **regia** è il programma sul PC di regia: sceglie e manda in onda i brani, i jingle e gli eventi.
-- Il **ponte** sta sul server di casa, insieme all'**Icecast principale** a cui si collegano gli ascoltatori.
-  Riceve l'audio dalla regia, lo tratta con il processore audio e lo manda a tutte le uscite, sempre con lo
-  stesso identico segnale.
-- Le **dirette esterne** si collegano al ponte. Finché sono collegate vanno in onda loro al posto della regia.
-- Se non c'è nessuna diretta (regia spenta o 4G caduto), il ponte suona da solo la **musica di riserva**:
-  brani a caso della libreria del server, senza ripetere di seguito lo stesso artista. Quando la regia si
-  ricollega la diretta riprende da sola.
-- AzuraCast non serve più.
+- La **regia** è il programma sul PC dello studio: manda in onda brani, jingle ed eventi.
+- Il **server** (chiamato anche **ponte**) sta a casa. Riceve l'audio e lo manda a tutti gli ascoltatori, sempre
+  con lo stesso identico segnale su tutte le uscite.
+- In onda va **una sola cosa alla volta**, in quest'ordine di precedenza:
+    1. la **diretta esterna** (un'app collegata da fuori);
+    2. la **diretta autonoma** (la musica del server, avviata dal pannello);
+    3. la **regia**;
+    4. se non c'è nessuno, la **musica di riserva**: il server suona da solo brani a caso della sua libreria,
+       senza ripetere di seguito lo stesso artista. Quando la regia torna, riprende lei da sola.
+- Il **pannello** è una pagina web: dal telefono comandi la regia, parli in diretta, fai entrare gli ospiti e
+  cambi le impostazioni del server.
 
-## 2. Installare la regia su Windows
+## 2. Andare in onda dalla regia
 
-1. Apri il repository su GitHub → scheda **Actions** → l'ultima esecuzione verde di "Test e build Windows".
-2. In fondo alla pagina scarica **RadioRegia-Setup-Windows** ed estrai lo zip.
-3. Avvia l'installer. Windows potrebbe avvisare che il programma non è firmato: scegli "Ulteriori informazioni" → "Esegui comunque".
+![Regia, scheda In onda](immagini/regia-in-onda.png)
 
-Il programma si apre a schermo intero. Può esserne aperta una sola copia alla volta.
+1. **AUTOMATICO / MANUALE**. In **automatico** la regia sceglie i brani da sola e non lascia mai il silenzio. In
+   **manuale** va in onda solo quello che metti in coda tu, e alla fine di ogni brano la regia **si ferma**: il
+   successivo parte quando premi **▶ PLAY** (o **⏭ AVANTI**). Gli eventi a orario partono comunque da soli.
+2. **▶ PLAY** fa partire la coda.
+3. **⏭ AVANTI** sfuma il brano in onda e passa al successivo.
+4. **■ STOP** sfuma e ferma tutto (e passa in manuale).
+5. **In coda**: i prossimi brani con l'orario previsto. Con le frecce li sposti, con la ✕ li togli, con 🎧 li
+   ascolti in cuffia. **Svuota** toglie tutto.
+6. **Ricerca**: scrivi titolo o artista. **Prossimo** lo mette subito dopo, **+ Coda** in fondo, 🎧 lo ascolti in
+   cuffia (preascolto).
+7. **Jingle istantanei**: un clic e il jingle parte sopra la musica (un secondo clic mentre suona non fa niente,
+   così non si sovrappone). Con la matita ✎ scegli il jingle del tasto.
 
-## 3. Primo avvio: schede audio e libreria
+In alto a sinistra la spia **IN ONDA** (rossa) o **FERMO**. Il riquadro grande mostra il brano in onda, il tempo
+passato e quello che manca: negli ultimi secondi diventa rosso.
 
-**Schede audio** (scheda **Impostazioni**):
+**Dopo un riavvio o un blackout** la regia riparte nella modalità in cui era: se era in AUTOMATICO riprende a
+suonare da sola, se era in MANUALE resta ferma.
 
-- **Uscita in onda**: con il RodeCaster Duo collegato via USB, scegli il canale del RodeCaster dedicato al computer.
-- **Uscita preascolto**: un'uscita diversa, per esempio le cuffie del PC o il canale chat del RodeCaster.
-- Se un'uscita non compare, premi **Aggiorna elenco schede**.
+## 3. Fare una diretta esterna
 
-**Libreria** (scheda **Libreria**):
+Per andare in onda **da fuori** (un evento, un concerto, un'intervista in giro) con il computer o il telefono.
+Usi la **stessa app di prima** (BUTT, Larix, Luci Live…): cambiano solo i dati del server.
 
-1. Scegli il tipo (Musica, Jingle, Notiziario, Programma, Spot) e premi **+ Aggiungi cartella**.
-2. Premi **Aggiorna libreria**: il programma legge i tag dei file (titolo, interprete, autori, editore, ISRC).
-3. In sottofondo parte l'analisi dei brani: livella il volume di tutti i brani, trova dove inizia e
-   finisce l'audio utile e dove far partire il brano successivo. Con 20.000 brani ci vuole un po', ma
-   puoi andare in onda subito.
+**Cosa ti serve:** l'app, internet (anche quella del telefono) e questi dati:
 
-Quando aggiungi file nuove nelle cartelle, premi di nuovo **Aggiorna libreria**: legge solo le novità.
+| Nell'app | Cosa scrivere |
+|---|---|
+| Tipo di server | **Icecast** |
+| Server (indirizzo) | l'indirizzo della radio, oggi `player.radioattivainformazione.it` (senza `https://`) |
+| Porta | **9010** |
+| Mount (punto di montaggio) | **/** (una barra sola) |
+| Utente | **esterna** |
+| Password | quella delle dirette esterne (vedi sotto) |
 
-## 4. In onda: uso quotidiano
+Mount e utente si vedono anche nel pannello: menu **☰** → **Impostazioni server** → **Dirette esterne**.
 
-Scheda **In onda**:
+![Dirette esterne nelle impostazioni del server](immagini/pannello-esterne.png)
 
-- In alto a sinistra la spia **IN ONDA / FERMO**. In alto a destra il tasto **AUTOMATICO / MANUALE** e l'orologio.
-- **AUTOMATICO**: la regia riempie la coda da sola rispettando le regole di rotazione e non lascia mai il silenzio.
-- **MANUALE**: va in onda solo quello che metti in coda tu. Alla fine di un brano la regia si ferma: il successivo
-  in coda parte quando premi **▶ PLAY** (o **⏭ AVANTI**). Fanno eccezione gli eventi a orario, che partono da soli.
-- **Dopo un riavvio o un blackout** la regia riparte nella modalità in cui era: se era in AUTOMATICO riprende a
-  suonare da sola (la radio non resta muta), se era in MANUALE resta ferma in manuale.
-- **▶ PLAY** fa partire la coda, **⏭ AVANTI** sfuma il brano in onda e passa al successivo, **■ STOP** sfuma e
-  ferma tutto (e passa in manuale).
-- Il riquadro grande mostra il brano in onda, il tempo trascorso e quello mancante: negli ultimi secondi diventa rosso.
-- **Coda**: con le frecce sposti i brani, con la ✕ li togli. Accanto a ogni brano c'è l'orario previsto.
-- **Ricerca** (a destra): cerca per titolo o artista. Con i tasti del brano lo metti come prossimo, lo aggiungi
-  in fondo alla coda, oppure lo ascolti in cuffia (preascolto).
-- **Jingle istantanei** (12 tasti): un clic lo fa partire sopra la musica (un altro clic mentre quel jingle suona
-  non fa niente, per non sovrapporre due copie). Con la matita assegni il jingle a un tasto.
+**Dove trovo la password?** L'ha stampata l'installazione del server, al punto 5 ("Dirette esterne"). Nel pannello
+le password non si vedono: se non la ricordi, scrivine una nuova nel campo **Password** (con 👁 vedi cosa
+scrivi), premi **Salva e applica** e mettila nell'app. Attenzione: salvando, la radio resta muta per qualche
+secondo, quindi fallo quando non sei in diretta. Si scrive una volta sola nell'app, poi resta salvata.
 
-## 5. Libreria e scheda brano
+### Con BUTT (computer)
 
-In **Libreria** trovi l'elenco dei brani. Con **Scheda** apri la scheda brano, dove puoi:
+1. Apri BUTT → **Settings** → scheda **Main** → sotto **Server** premi **ADD**.
+2. Compila: **Name** "Radio" (un nome a piacere), **Address** l'indirizzo della radio, **Port** 9010,
+   **Password** la password, **Type** IceCast, **IceCast mountpoint** `/`, **IceCast user** `esterna`. Premi
+   **ADD**.
+3. Nella scheda **Audio** scegli il microfono o il mixer da cui arriva il suono.
+4. Quando vuoi andare in onda premi **▶** (play) nella finestra di BUTT. Per uscire premi **■**.
 
-- correggere titolo, interprete, album, anno, genere e tipo;
-- inserire **autori/compositori**, **editore** e **codice opera SIAE** (servono per il report SIAE);
-- spostare inizio audio, fine audio e punto di mix se l'analisi automatica non ti convince;
-- togliere il segno da **Attivo** per escludere un brano da rotazione e ricerca senza cancellarlo.
+Nelle altre app (Larix, Luci Live…) i campi hanno nomi simili: scegli il tipo Icecast e metti gli stessi dati.
 
-### Dati per il report SIAE (MusicBrainz)
+### Cosa succede quando ti colleghi
 
-Nel riquadro **Dati per il report SIAE** della Libreria, **Cerca su MusicBrainz** completa i dati che mancano
-ai brani di musica:
+- **Appena l'app si collega sei in onda**, con una breve dissolvenza, al posto della regia (e anche della diretta
+  autonoma). Non c'è una "prova" prima: collegati quando vuoi davvero andare in onda.
+- Ricevi una **notifica** all'inizio e alla fine (Telegram o email, se attive).
+- Quando **scolleghi** l'app torna da sola la regia. Se la regia è spenta, torna la musica di riserva.
+- Se internet cade per un momento, l'app di solito si ricollega da sola; nel frattempo va in onda la regia o la
+  musica di riserva.
+- Dallo studio o dal telefono puoi **parlare sopra** la diretta esterna con il microfono del pannello
+  ([sezione 5](#5-parlare-in-diretta-dal-pannello)).
+- In cuffia ascolta l'app o il mixer, **non la radio**: la radio arriva con qualche secondo di ritardo e ti
+  confonde.
 
-- **autori** (compositori e parolieri dell'opera), separati da virgola;
-- **editore**, **ISWC** (codice dell'opera) e **ISRC** (codice della registrazione).
+### I brani vengono riconosciuti da soli
 
-Come funziona:
+Durante l'esterna il server ascolta il programma e **riconosce i brani**, così finiscono nel registro (fonte
+**Esterna**) e nel report SIAE senza scrivere nulla.
 
-- riempie solo i campi vuoti: quello che hai scritto a mano non viene mai toccato;
-- accetta un risultato solo se titolo e interprete corrispondono e la durata è simile (massimo 10 secondi di
-  differenza), così una versione live o una cover non finiscono sul brano sbagliato;
-- MusicBrainz concede una richiesta al secondo e ne servono circa due per brano: per 20.000 brani sono circa
-  **12 ore**. Si può fermare e riprendere quando vuoi, riparte da dove era rimasta;
-- usa internet, quindi conviene farla partire con la regia collegata a una rete senza limiti, o di notte.
+- Li confronta con le **impronte audio** della libreria della regia, senza servizi esterni. Le impronte le calcola
+  la regia (scheda **Libreria**, riga "Impronte audio", circa mezzo secondo a brano) e le manda al server di notte
+  insieme alla libreria (circa 5 KB a brano, la prima volta circa 100 MB per 20.000 brani, dentro il limite di MB
+  del giorno). Funziona anche con la regia spenta.
+- Un brano è riconosciuto dopo circa 20 secondi, anche se qualcuno ci parla sopra un po'. Riconosce anche i brani
+  che non sono nella libreria del server (live, sotto i 192 kbps), perché le impronte sono di tutta la musica.
+- **Brani sconosciuti:** se per almeno un minuto non riconosce nulla, il server salva **20 secondi di audio**. Con
+  il [bot Telegram della radio](#bot-telegram-della-radio) arriva subito l'audio nella chat; senza il bot arriva
+  una notifica (al massimo una ogni mezz'ora). Nel pannello, riquadro **Brani sconosciuti delle esterne**, lo
+  ascolti e scrivi titolo, interprete, autori ed editore: da quel momento viene riconosciuto da solo e i passaggi
+  già sentiti vanno nel registro. Se era parlato o rumore, premi **Non è musica**. Per etichettare serve almeno il
+  ruolo conduttore.
+- Un brano sconosciuto entra nel registro solo dopo che lo hai etichettato.
+- Per spegnere il riconoscimento: pannello, menu **☰** → **Impostazioni server** → **Riconoscimento brani e
+  puntate**.
 
-Insieme a questi dati legge anche i **generi** ufficiali di MusicBrainz (per le regole di rotazione e per le
-rotazioni generate dall'AI) e l'**anno** della prima uscita, se nel file manca. Se il brano non ha generi su
-MusicBrainz prende quelli dell'artista. I generi compaiono nella scheda brano sotto il percorso del file e si
-aggiungono al genere scritto nel file: nelle regole di rotazione e nel **Brano casuale** valgono tutti e due.
-Dopo l'aggiornamento la ricerca va rifatta una volta su tutta la musica, anche sui brani già completi: per quelli
-già trovati basta una richiesta (circa 6 ore per 20.000 brani).
+Se l'app non si collega, guarda [Problemi comuni, dirette esterne](#dirette-esterne).
 
-Il **codice opera SIAE** non è su MusicBrainz: va scritto nella scheda brano.
-**Riprova i brani non trovati** rimette in coda quelli già cercati che sono ancora incompleti, utile dopo qualche
-mese perché MusicBrainz si arricchisce.
-**Mostra la musica con dati mancanti** elenca i brani a cui mancano autori, editore o un codice (codice opera,
-ISWC o ISRC): con **Scheda** li completi a mano.
+## 4. Il pannello dal telefono
 
-### Discogs, Last.fm e AcoustID
+Il pannello comanda la regia dal browser, da qualsiasi posto: telefono, tablet o computer.
 
-Altri tre servizi gratuiti completano i dati dei brani. Ognuno vuole una chiave personale, che si crea una volta
-sola dal sito del servizio e si incolla in **Impostazioni** → **Servizi per i dati dei brani** (sotto ogni campo
-c'è il link giusto), poi **Salva**.
+**Aprirlo:** scrivi nel browser l'indirizzo della radio con `https://` davanti (durante le prove:
+`https://player.radioattivainformazione.it:9443`). Entra con il tuo nome e la tua password (la prima volta
+`admin` e la password stampata dall'installazione).
 
-| Servizio | Cosa aggiunge | Dove si crea la chiave |
-|---|---|---|
-| **Discogs** | generi e stili dettagliati (es. "rock", "pop rock", "ballad") | discogs.com → Impostazioni → Developers → **Generate new token** |
-| **Last.fm** | etichette scelte dagli ascoltatori: carattere e decennio (es. "chill", "80s", "italian") | last.fm/api/account/create → copia la **API key** |
-| **AcoustID** | riconosce il brano **dall'audio** quando la ricerca per titolo su MusicBrainz non lo trova | acoustid.org/new-application → copia la **API key** |
+![Pannello dal telefono](immagini/pannello-principale.png)
 
-Poi, nella **Libreria**, riquadro **Dati dei brani: report SIAE e generi**:
+1. Spia **IN ONDA / FERMO** della regia.
+2. **REGIA OK** se la regia è collegata, **REGIA SCOLLEGATA** se è spenta o senza internet.
+3. **AUTOMATICO / MANUALE**, come in regia.
+4. Menu **☰**: **Programmi**, **Ascoltatori**, **Annunci vocali**, **Utenti**, **Impostazioni server**,
+   **📖 Guida** ed **Esci** (alcune voci solo per gli amministratori).
 
-- **Cerca su Discogs** (circa 6 ore per 20.000 brani) e **Cerca su Last.fm** (circa 2 ore) partono quando
-  vuoi, si possono fermare e riprendono da dove erano rimasti;
-- **AcoustID** non ha un pulsante suo: con la chiave salvata, **Cerca su MusicBrainz** prova dall'audio i brani
-  che non trova per titolo (anche quelli già cercati in passato), una volta sola per brano;
-- **Riprova i brani non trovati** rimette in coda quelli senza risultato, utile dopo qualche mese.
+   ![Menu del pannello](immagini/pannello-menu.png)
 
-Generi ed etichette di tutti i servizi compaiono nella scheda brano e valgono, insieme al genere del file, nelle
-regole di rotazione, nel **Brano casuale** e nelle [Rotazioni con l'AI](#rotazioni-con-lai).
+5. **🎙 Apri microfono**: parli in diretta ([sezione 5](#5-parlare-in-diretta-dal-pannello)).
 
-## 6. Eventi a orario
+Sotto trovi il brano in onda con il tempo che manca (rosso negli ultimi 10 secondi), **PLAY**, **AVANTI** e
+**STOP** (fanno esattamente quello che fanno in regia), la coda (frecce per spostare, ✕ per togliere), la
+ricerca (⤒ mette il brano come prossimo, + lo aggiunge in fondo) e i jingle con **Ferma jingle**.
 
-Scheda **Eventi** → **+ Nuovo evento**. Un evento esegue in ordine una serie di azioni a un orario.
+Se il server segnala un problema, lo vedi in una striscia rossa in alto. Chi ha il ruolo **Ospite** vede tutto
+ma non può comandare.
 
-**Quando:**
+## 5. Parlare in diretta dal pannello
 
-- **Una volta al giorno**, **Ogni ora** (al minuto scelto) oppure **Ogni N minuti** (da un orario a un altro).
-- Giorni della settimana (con le scorciatoie Lun-Ven, Weekend, Tutti) e, se serve, date di inizio e fine validità.
+Conduttori e amministratori possono parlare in diretta dal pannello, da casa o da fuori, senza passare dal PC
+della regia. La voce si somma al programma che va in onda (regia, diretta esterna o diretta autonoma).
 
-**Come parte:**
+![Microfono nel pannello](immagini/pannello-microfono.png)
 
-- **Dopo il brano**: aspetta che finisca il brano in onda.
-- **Dopo il brano, al massimo…**: aspetta, ma se il brano dura troppo lo sfuma dopo i secondi indicati.
-- **Subito (sfuma il brano)**: parte all'orario esatto.
+1. Collega le **cuffie** e premi **🎙 Apri microfono**. Il browser chiede il permesso del microfono: rispondi sì.
+   In cuffia senti il programma quasi senza ritardo, ma **non sei ancora in onda**. La barra mostra il livello:
+   verde va bene, gialla è forte, rossa è troppo forte.
+2. Premi **VAI IN ONDA**: la musica si abbassa (di 12 dB) e sei in onda. Il tasto diventa rosso con scritto
+   **IN ONDA**. In cuffia senti il programma senza la tua voce, così non c'è eco.
+3. Premi di nuovo il tasto rosso per uscire dall'onda: la musica torna su. **Chiudi microfono** spegne tutto.
 
-**Azioni disponibili:**
+Da sapere:
+
+- funziona solo con il pannello aperto in **https**;
+- un microfono alla volta: se è già aperto da un altro, vedi chi lo sta usando;
+- se la connessione cade o chiudi la pagina, esci dall'onda da solo;
+- la voce va in onda solo se c'è un programma (regia, esterna o diretta autonoma), non sopra la musica di
+  riserva. Con la regia spenta avvia la [diretta autonoma](#7-diretta-autonoma-senza-la-regia) e parla sopra;
+- **Uso le cuffie**: lascialo spuntato. Senza cuffie toglilo prima di aprire il microfono (la voce suona un po'
+  meno naturale, ma niente eco);
+- **Ritorno**: il volume del programma in cuffia.
+
+## 6. Ospiti in diretta
+
+Fino a **3 ospiti** possono parlare in diretta da casa, con il telefono o il computer, senza installare nulla.
+
+![Ospiti nel pannello](immagini/pannello-ospiti.png)
+
+1. Nel pannello, riquadro **Ospiti**, scrivi per chi è il link (es. "Mario, intervista delle 18") e premi
+   **Crea link**. Premi **Copia** (o **Invia…** dal telefono) e mandalo all'ospite, per esempio su WhatsApp. Il
+   link vale 24 ore; da **Link attivi** puoi copiarlo di nuovo o **revocarlo**.
+2. L'ospite apre il link, scrive il nome, prova il microfono (la barra deve muoversi) e preme **Entra in sala
+   d'attesa**. Intanto sente la radio.
+
+   ![Pagina dell'ospite](immagini/ospite-link.png)
+
+3. Nel pannello compare l'ospite "in sala d'attesa": premi **Fai entrare** (o **Rifiuta**).
+4. Quando l'audio è collegato premi **Metti in onda**: la musica si abbassa e l'ospite è in onda (sulla sua
+   pagina compare **IN ONDA** in rosso). Premi di nuovo per toglierlo dall'onda, **Chiudi** per salutarlo.
+
+Ognuno sente in cuffia la radio e le altre voci in onda, ma non la propria. Consiglia all'ospite le **cuffie**:
+senza, deve togliere la spunta "Uso le cuffie" prima di entrare. Se l'ospite chiude la pagina o perde la
+connessione esce dall'onda da solo; riaprendo lo stesso link torna in sala d'attesa.
+
+## 7. Diretta autonoma, senza la regia
+
+Per andare in onda **senza la regia**, per esempio da fuori con il solo telefono: il server suona la musica che ha
+nella sua libreria e tu ci parli sopra con il microfono del pannello.
+
+![Diretta autonoma nel pannello](immagini/pannello-autonoma.png)
+
+- **▶ Avvia diretta autonoma**: la musica del server va in onda **al posto della regia** (la regia può restare
+  accesa, ma non si sente). Se si collega una diretta esterna, ha la precedenza lei.
+- **Cerca nella libreria del server**: ⤒ mette il brano come prossimo, + lo aggiunge in fondo. Con la coda vuota
+  il server sceglie da solo, senza ripetere troppo presto lo stesso brano o artista.
+- **⬆ Carica brani dal dispositivo**: scegli uno o più file dal telefono o dal computer; vanno sul server e in
+  coda. Di notte scendono anche nella regia ([sezione 22](#22-la-musica-sul-server)).
+- **⏭ Salta** passa al brano successivo; **■ Ferma e torna alla regia** chiude la diretta autonoma.
+
+Il brano successivo si decide circa 20 secondi prima della fine di quello in onda: fino ad allora puoi cambiare la
+coda. Tra un brano e l'altro non c'è dissolvenza. Inizio e fine arrivano come notifica, con il nome di chi l'ha
+avviata. Gli ospiti del pannello vedono cosa suona ma non la comandano.
+
+## 8. Eventi a orario
+
+Un evento fa una serie di cose, in ordine, a un orario. Scheda **Eventi** → **+ Nuovo evento**.
+
+![Nuovo evento](immagini/regia-nuovo-evento.png)
+
+1. **Quando**: **Una volta al giorno**, **Ogni ora** (al minuto scelto) oppure **Ogni N minuti** (da un orario a
+   un altro). Sotto scegli i giorni (scorciatoie Lun-Ven, Weekend, Tutti) e, se serve, le date di validità.
+2. **Partenza**: **Dopo il brano** aspetta che finisca il brano in onda; **Dopo il brano, al massimo…** aspetta ma
+   sfuma il brano dopo i secondi indicati; **Subito (sfuma il brano)** parte all'orario esatto.
+3. **Azioni**: scegli l'azione dall'elenco e premi **+ Aggiungi azione** (anche più di una).
+4. **Salva**.
 
 | Azione | Cosa fa |
 |---|---|
 | Brano | un brano preciso |
 | Brano casuale | un brano a caso per tipo, genere o cartella (es. un jingle) |
 | Playlist | una playlist M3U/PLS o una cartella: subito prima della coda, in fondo, oppure al posto della coda |
-| Flusso esterno | un flusso internet (es. un notiziario) per N minuti |
+| Flusso esterno | un flusso internet per N minuti |
 | Automatico / manuale | cambia modalità |
 | Svuota coda | toglie i brani in coda |
 | Ferma tutto | ferma la messa in onda |
 | Regole di rotazione | da quel momento la rotazione usa solo certi generi o anni (es. "dalle 22 musica tranquilla"); "Torna alla rotazione normale" la riporta come prima |
 | Comando esterno | avvia un programma o uno script sul PC |
-| Replica di un programma | l'ultima puntata pubblicata del programma scelto, in streaming dal server (sezione 12, Repliche) |
-| Notiziario | l'ultima edizione di una fonte dei notiziari, scaricata in quel momento (sezione 8, [Notiziari](#notiziari)) |
-| Annuncio vocale | un testo letto dalla voce sintetica (sezione 8, [Voce sintetica](#voce-sintetica)) |
+| Replica di un programma | l'ultima puntata pubblicata del programma ([sezione 13](#13-programmi-puntate-e-repliche)) |
+| Notiziario | l'ultima edizione di un notiziario scaricato da internet ([Notiziari](#notiziari)) |
+| Annuncio vocale | un testo letto dalla voce sintetica ([Voce sintetica](#voce-sintetica)) |
 
-Con **▶ Prova** esegui subito un evento per vedere come va. **Duplica** crea una copia da modificare.
-In alto vedi i prossimi eventi in programma e, se attivo, il profilo di rotazione in uso.
+Con **▶ Prova** esegui subito un evento per vedere come va. **Duplica** crea una copia da modificare. In alto vedi
+i prossimi eventi e, se attivo, il profilo di rotazione in uso.
 
-### Rotazioni con l'AI
+## 9. Libreria e scheda brano
 
-Invece di creare a mano gli eventi **Regole di rotazione** fascia per fascia, puoi scrivere il palinsesto a parole
-e farli preparare all'AI. L'AI gira sul PC di regia, senza internet e gratis: serve solo scaricare il modello la
-prima volta.
+![Libreria](immagini/regia-libreria.png)
+
+1. **+ Aggiungi cartella**: prima scegli il tipo (Musica, Jingle, Notiziario, Programma, Spot), poi la cartella.
+2. **Aggiorna libreria**: legge i file nuovi o cambiati (titolo, interprete, autori, editore, ISRC). Premilo ogni
+   volta che aggiungi file nelle cartelle.
+
+In sottofondo parte l'**analisi**: livella il volume di tutti i brani, trova dove inizia e finisce l'audio utile e
+dove far partire il brano successivo. Con 20.000 brani ci vuole un po', ma puoi andare in onda subito.
+
+Sotto c'è l'elenco dei brani. **Scheda** apre la scheda del brano, dove puoi:
+
+- correggere titolo, interprete, album, anno, genere e tipo;
+- scrivere **autori/compositori**, **editore** e **codice opera SIAE** (servono per il report SIAE);
+- spostare inizio, fine e punto di mix se l'analisi automatica non ti convince;
+- togliere **Attivo** per escludere un brano da rotazione e ricerca senza cancellarlo.
+
+### Dati per il report SIAE (MusicBrainz)
+
+Nel riquadro **Dati dei brani: report SIAE e generi**, **Cerca su MusicBrainz** completa da solo i dati che
+mancano ai brani di musica: **autori** (separati da virgola), **editore**, **ISWC** (codice dell'opera) e **ISRC**
+(codice della registrazione).
+
+- Riempie solo i campi vuoti: quello che hai scritto a mano non viene mai toccato.
+- Accetta un risultato solo se titolo e interprete corrispondono e la durata è simile (massimo 10 secondi di
+  differenza), così una versione live o una cover non finiscono sul brano sbagliato.
+- Ci vogliono circa **12 ore** per 20.000 brani (MusicBrainz risponde a una domanda al secondo). Si può fermare e
+  riprendere quando vuoi. Usa internet: meglio di notte o con una rete senza limiti.
+- Legge anche i **generi** ufficiali (per le regole di rotazione e per le [rotazioni con l'AI](#10-rotazioni-con-lai))
+  e l'**anno** della prima uscita, se nel file manca. Se il brano non ha generi prende quelli dell'artista. I
+  generi compaiono nella scheda brano e valgono insieme al genere scritto nel file. Dopo l'aggiornamento la ricerca
+  va rifatta una volta su tutta la musica (per i brani già trovati basta una richiesta: circa 6 ore per 20.000).
+- Il **codice opera SIAE** non è su MusicBrainz: va scritto nella scheda brano.
+- **Riprova i brani non trovati** rimette in coda quelli ancora incompleti (utile dopo qualche mese).
+- **Mostra la musica con dati mancanti** elenca i brani senza autori, editore o codici: con **Scheda** li completi.
+
+### Discogs, Last.fm e AcoustID
+
+Tre servizi gratuiti che aggiungono altri dati. Ognuno vuole una chiave personale, che si crea una volta sola dal
+sito e si incolla in **Impostazioni** → **Servizi per i dati dei brani** (sotto ogni campo c'è il link giusto),
+poi **Salva**.
+
+| Servizio | Cosa aggiunge | Dove si crea la chiave |
+|---|---|---|
+| **Discogs** | generi e stili dettagliati (es. "rock", "pop rock", "ballad") | discogs.com → Impostazioni → Developers → **Generate new token** |
+| **Last.fm** | etichette scelte dagli ascoltatori: carattere e decennio (es. "chill", "80s", "italian") | last.fm/api/account/create → copia la **API key** |
+| **AcoustID** | riconosce il brano **dall'audio** quando MusicBrainz non lo trova per titolo | acoustid.org/new-application → copia la **API key** |
+
+Poi, in **Libreria**:
+
+- **Cerca su Discogs** (circa 6 ore per 20.000 brani) e **Cerca su Last.fm** (circa 2 ore) partono quando vuoi, si
+  fermano e riprendono da dove erano rimasti;
+- **AcoustID** non ha un pulsante suo: con la chiave salvata, **Cerca su MusicBrainz** prova dall'audio i brani che
+  non trova per titolo, una volta sola per brano;
+- **Riprova i brani non trovati** rimette in coda quelli senza risultato.
+
+Generi ed etichette di tutti i servizi compaiono nella scheda brano e valgono nelle regole di rotazione, nel
+**Brano casuale** e nelle rotazioni con l'AI.
+
+## 10. Rotazioni con l'AI
+
+Invece di creare a mano gli eventi **Regole di rotazione** fascia per fascia, scrivi il palinsesto a parole e li
+prepara l'AI. L'AI gira sul PC di regia, senza internet e gratis: serve solo scaricare il modello la prima volta.
 
 1. Scheda **Eventi** → riquadro **Rotazioni con l'AI** → **Apri**.
-2. La prima volta premi **Scarica il modello** (Qwen3 4B Instruct, circa 2,5 GB, licenza libera). Se lo
-   scaricamento si interrompe, **Riprendi lo scaricamento** riparte da dove era arrivato.
-3. Scrivi il **Palinsesto**, per esempio:
-   *"Dal lunedì al venerdì dalle 7 alle 10 pop italiano allegro, dalle 10 alle 13 successi degli anni 80 e 90.
-   Tutti i giorni dalle 22 alle 2 musica tranquilla, jazz e lounge. Sabato e domenica dalle 9 alle 12 rock, con
-   un jingle ogni 3 brani."* (**Usa l'esempio** lo scrive per te).
-4. **Prepara le fasce**: ci vuole da meno di un minuto a qualche minuto, a seconda del PC. La messa in onda
-   continua (l'AI lascia liberi due core del processore).
-5. Nell'**Anteprima** controlli ogni fascia: giorni, orari, generi, anni, separazione artista, jingle e quanti
-   **Brani** della libreria ci rientrano. Puoi correggere tutto a mano o togliere una fascia con ✕. Una fascia
-   con meno di 10 brani (⚠) userebbe tutta la musica.
-6. **Crea gli eventi**: per ogni fascia nasce un evento **Regole di rotazione** all'inizio e uno che torna alla
-   rotazione normale alla fine (se subito dopo non parte un'altra fascia). Si chiamano tutti **AI · …** e si
-   modificano come gli altri eventi. Con **Sostituisci gli eventi creati prima dall'AI** quelli vecchi vengono
-   tolti, così puoi rifare il palinsesto quante volte vuoi.
+2. La prima volta premi **Scarica il modello** (Qwen3 4B Instruct, circa 2,5 GB). Se si interrompe, **Riprendi lo
+   scaricamento** riparte da dove era arrivato.
+3. Scrivi il **Palinsesto**, per esempio: *"Dal lunedì al venerdì dalle 7 alle 10 pop italiano allegro, dalle 10
+   alle 13 successi degli anni 80 e 90. Tutti i giorni dalle 22 alle 2 musica tranquilla, jazz e lounge. Sabato e
+   domenica dalle 9 alle 12 rock, con un jingle ogni 3 brani."* (**Usa l'esempio** lo scrive per te).
+4. **Prepara le fasce**: da meno di un minuto a qualche minuto. La messa in onda continua normalmente.
+5. Nell'**Anteprima** controlla ogni fascia: giorni, orari, generi, anni, separazione artista, jingle e quanti
+   **Brani** ci rientrano. Puoi correggere tutto o togliere una fascia con ✕. Una fascia con meno di 10 brani (⚠)
+   userebbe tutta la musica.
+6. **Crea gli eventi**: per ogni fascia nasce un evento all'inizio e uno che torna alla rotazione normale alla
+   fine. Si chiamano **AI · …** e si modificano come gli altri. Con **Sostituisci gli eventi creati prima dall'AI**
+   quelli vecchi vengono tolti, così puoi rifare il palinsesto quante volte vuoi.
 
-L'AI sceglie **solo tra i generi della tua libreria**: quello scritto nei file e quelli di MusicBrainz (sezione 5,
-[Dati per il report SIAE](#dati-per-il-report-siae-musicbrainz)). Per avere più generi fai prima la ricerca su
-MusicBrainz. Se l'AI propone qualcosa che non c'è, l'anteprima lo toglie e lo scrive in giallo.
-Le rotazioni con l'AI sono solo in regia: il server, che fa da riserva, continua con la musica a caso.
+L'AI sceglie **solo tra i generi della tua libreria** (del file e dei servizi della [sezione 9](#9-libreria-e-scheda-brano)):
+per avere più generi fai prima la ricerca su MusicBrainz. Se propone qualcosa che non c'è, l'anteprima lo toglie e
+lo scrive in giallo. Le rotazioni con l'AI valgono solo in regia: la musica di riserva del server resta a caso.
 
-## 7. Registro di trasmissione
+## 11. Registro e report SIAE
 
 La scheda **Registro** elenca tutto quello che è andato in onda, con orario, durata, tipo, titolo, interprete,
-autori e codice SIAE. Scegli le date e premi **Esporta CSV** (si apre con Excel).
-Il registro indica quanti brani non hanno autori o codice SIAE: completali dalla scheda brano.
+autori e codice SIAE. Scegli le date e premi **Esporta CSV** (si apre con Excel). Il registro dice anche quanti
+brani non hanno autori o codice SIAE: completali dalla scheda brano.
 
-La colonna **Fonte** dice da dove arriva ogni passaggio: **Regia**, **Diretta autonoma** o **Riserva del server**.
-I brani suonati dal server quando la regia non è in onda vengono scaricati dal ponte ogni 10 minuti (e prima di
-ogni report) e aggiunti al registro, una volta sola.
+![Registro](immagini/regia-registro.png)
+
+La colonna **Fonte** dice da dove arriva ogni passaggio: **Regia**, **Diretta autonoma**, **Riserva del server** o
+**Esterna** (brani riconosciuti). I brani suonati dal server vengono scaricati ogni 10 minuti (e prima di ogni
+report) e aggiunti una volta sola.
 
 ### Report SIAE trimestrale
 
 In cima alla scheda **Registro** scegli anno e trimestre (di solito è già scelto quello appena finito):
 
-- vedi una riga per opera e interprete con il numero di **passaggi** nel trimestre;
-- contano solo i brani di **musica** (niente jingle, spot, notiziari) di tutte le fonti: regia, diretta autonoma
-  e musica di riserva del server. I passaggi della regia sotto i 30 secondi (brano saltato) non contano;
-- per i brani della libreria si usano i dati attuali della scheda brano, così le correzioni fatte dopo valgono
-  anche per i passaggi già andati in onda;
-- **Solo le opere con dati mancanti** mostra quelle senza autori, senza editore o senza nessun codice:
-  completale con **Scheda**. "solo server" indica un brano caricato dal pannello che non è nella libreria della
-  regia;
-- **Salva CSV per il portale SIAE** crea il file da caricare: separato da punto e virgola, con le colonne del fac
-  simile senza il prezzo di vendita: TITOLO OPERA, AUTORE, EDITORE, INTERPRETE, UTILIZZAZIONI, CODICE OPERA,
-  CODICE ISWC, CODICE ISRC.
+- vedi una riga per opera e interprete con il numero di **passaggi**;
+- contano solo i brani di **musica** (niente jingle, spot, notiziari, annunci) di tutte le fonti. I passaggi della
+  regia sotto i 30 secondi (brano saltato) non contano;
+- valgono i dati attuali della scheda brano, così le correzioni fatte dopo valgono anche per il passato;
+- **Solo le opere con dati mancanti** mostra quelle senza autori, editore o codici: completale con **Scheda**.
+  "solo server" indica un brano caricato dal pannello che non è nella libreria della regia;
+- **Salva CSV per il portale SIAE** crea il file da caricare: separato da punto e virgola, con le colonne TITOLO
+  OPERA, AUTORE, EDITORE, INTERPRETE, UTILIZZAZIONI, CODICE OPERA, CODICE ISWC, CODICE ISRC.
 
-Se compare l'avviso "Brani suonati dal server non aggiornati", il ponte non era raggiungibile: il report contiene
-solo i brani del server scaricati finora. Riprova quando il ponte è collegato.
+Se compare "Brani suonati dal server non aggiornati", il server non era raggiungibile: il report contiene solo i
+brani scaricati finora. Riprova con il server collegato.
 
-## 8. Impostazioni
-
-| Impostazione | Cosa fa |
-|---|---|
-| Dissolvenza (secondi) | durata della sfumatura quando premi AVANTI |
-| Volume obiettivo (LUFS) | volume a cui vengono livellati tutti i brani (-16 è lo standard per lo streaming) |
-| Separazione artista / brano (minuti) | tempo minimo prima di ripetere lo stesso artista o lo stesso brano |
-| Un jingle ogni … brani | in automatico; 0 = nessun jingle |
-| Brani in coda in automatico | quanti brani preparare in anticipo |
-
-Ricordati di premere **Salva**.
+## 12. Notiziari e voce sintetica
 
 ### Notiziari
 
@@ -280,40 +410,30 @@ Solo in regia: il server non manda notiziari.
 
 1. **Impostazioni** → **Notiziari** → **Aggiungi fonte**:
     - **Nome**: come compare nel registro e negli eventi (es. "GR nazionale");
-    - **Link**: il feed del podcast (RSS, si prende sempre l'ultima puntata) oppure il link diretto a un file
-      audio che viene aggiornato a ogni edizione;
-    - **Età massima (minuti)**: se l'ultima edizione è più vecchia è considerata "vecchia" (0 = nessun limite).
-      Per il feed conta la data della puntata, per il link diretto la data del file sul sito;
-    - **Se è vecchio o non si scarica**: **Saltalo**, **Manda l'ultimo scaricato** (anche se vecchio) oppure
-      **Manda un file a scelta** (es. un jingle o un messaggio registrato) oppure **Leggi un testo con la voce
-      sintetica** (scrivi il testo, vedi [Voce sintetica](#voce-sintetica)).
-2. **Prova** scarica come farebbe all'ora dell'evento e dice cosa andrebbe in onda; **🎧 Ascolta in preascolto**
-   lo fa sentire sull'uscita del preascolto. Poi **Salva**.
-3. Scheda **Eventi**: crea un evento (es. **Ogni ora**, minuto 00, **Dopo il brano**) con l'azione **Notiziario**
-   e scegli la fonte.
+    - **Link**: il feed del podcast (si prende sempre l'ultima puntata) oppure il link diretto a un file audio che
+      viene aggiornato a ogni edizione;
+    - **Età massima (minuti)**: se l'ultima edizione è più vecchia è "vecchia" (0 = nessun limite);
+    - **Se è vecchio o non si scarica**: **Saltalo**, **Manda l'ultimo scaricato**, **Manda un file a scelta**
+      oppure **Leggi un testo con la voce sintetica**.
+2. **Prova** dice cosa andrebbe in onda; **🎧 Ascolta in preascolto** te lo fa sentire. Poi **Salva**.
+3. Scheda **Eventi**: crea un evento (es. **Ogni ora**, minuto 00, **Dopo il brano**) con l'azione **Notiziario**.
 
-All'ora dell'evento la regia scarica l'ultima edizione e la mette subito dopo il brano in onda (o come hai scelto
-nell'evento). Scarica solo se l'edizione è cambiata dall'ultima volta, per consumare pochi dati con il 4G.
-Nel registro il notiziario compare con fonte **notiziario** e tipo Notiziario, quindi non va nel report SIAE.
-Se viene saltato, il motivo compare nella striscia gialla degli avvisi in alto.
-
-Prima di ritrasmettere notiziari di altri, assicurati di avere il loro permesso.
+All'ora dell'evento la regia scarica l'ultima edizione (solo se è cambiata, per consumare pochi dati con il 4G) e
+la mette subito dopo il brano in onda. Nel registro compare come Notiziario, quindi non va nel report SIAE. Se
+viene saltato, il motivo compare nella striscia gialla in alto. Prima di ritrasmettere notiziari di altri,
+assicurati di avere il loro permesso.
 
 ### Voce sintetica
 
-Una voce sintetica gratuita legge annunci scritti da te, con l'ora, il brano e il programma inseriti da soli.
-Funziona senza internet; serve internet solo la prima volta, per scaricare la voce (circa 65 MB per Paola,
-30 MB per Riccardo).
+Una voce gratuita legge i tuoi annunci, con l'ora, il brano e il programma inseriti da soli. Funziona senza
+internet; serve internet solo la prima volta, per scaricare la voce (circa 65 MB Paola, 30 MB Riccardo).
 
-1. **Impostazioni** → **Voce sintetica**:
-    - **Voce**: **Paola** (donna) o **Riccardo** (uomo, qualità più bassa). Se non è ancora
-      scaricata premi **Scarica … adesso** (oppure si scarica da sola alla prima prova);
-    - **Nome della radio**: quello che dice al posto di `{radio}`;
-    - le regolazioni: **Velocità**, **Espressività (intonazione)**, **Variazione del ritmo**, **Pausa tra le
-      frasi**, **Tono** e **Volume**. **Valori normali** le rimette come all'inizio;
-    - scrivi un testo di prova e premi **🎧 Ascolta in preascolto**. Poi **Salva**.
-2. Scheda **Eventi**: crea un evento (es. **Ogni ora**, minuto 00, **Dopo il brano**) con l'azione
-   **Annuncio vocale** e scrivi il testo. I pulsanti sopra il testo inseriscono le parti che si riempiono da sole:
+1. **Impostazioni** → **Voce sintetica**: scegli **Paola** (donna) o **Riccardo** (uomo, qualità più bassa) e, se
+   serve, premi **Scarica … adesso**. Scrivi il **Nome della radio**. Regola **Velocità**, **Espressività**,
+   **Variazione del ritmo**, **Pausa tra le frasi**, **Tono** e **Volume** (**Valori normali** le rimette come
+   all'inizio). Scrivi un testo di prova, premi **🎧 Ascolta in preascolto**, poi **Salva**.
+2. Scheda **Eventi**: crea un evento con l'azione **Annuncio vocale** e scrivi il testo. I pulsanti sopra il testo
+   inseriscono le parti che si riempiono da sole:
 
 | Nel testo | Diventa |
 |---|---|
@@ -322,537 +442,434 @@ Funziona senza internet; serve internet solo la prima volta, per scaricare la vo
 | `{radio}` | il nome della radio |
 | `{brano}`, `{artista}` | il brano appena andato in onda (o in onda adesso) |
 | `{prossimo_brano}`, `{prossimo_artista}` | il brano che viene dopo |
-| `{programma}`, `{prossimo_programma}`, `{ora_prossimo_programma}` | dalle fasce dei programmi del ponte |
+| `{programma}`, `{prossimo_programma}`, `{ora_prossimo_programma}` | dalle fasce dei programmi del server |
 
-Se una parte non si sa (es. nessun brano dopo), la frase viene detta senza; la prova ti dice quali mancavano.
-Nel registro l'annuncio compare con fonte **annuncio** e tipo Jingle, quindi non va nel report SIAE.
+Se una parte non si sa (es. nessun brano dopo), la frase viene detta senza. Nel registro l'annuncio compare come
+Jingle, quindi non va nel report SIAE.
 
-## 9. Il server: VM su Proxmox
+### Annunci vocali del server
 
-Serve una volta sola. La guida tecnica completa è in [ponte/README.md](../ponte/README.md).
-Sul server girano il ponte, l'Icecast principale e Caddy, che si occupa da solo dell'HTTPS (certificato
-Let's Encrypt gratuito, rinnovato in automatico).
+Quando trasmette il server da solo (diretta autonoma o musica di riserva), può fare annunci a orario con la stessa
+voce. Quando c'è la regia, gli annunci li fanno gli eventi della regia.
 
-1. **Nome di dominio**: serve un nome (per esempio `radio.esempio.it`) che punti all'IP pubblico di casa. Se l'IP
-   cambia, usa un DNS dinamico (DuckDNS o quello del router).
-2. **Chiave SSH del PC**: la VM accetta l'accesso SSH solo con una chiave, non con la password. Sul PC Windows
-   apri PowerShell e scrivi `ssh-keygen -t ed25519` (premi Invio a tutte le domande), poi
-   `type $env:USERPROFILE\.ssh\id_ed25519.pub` e copia la riga che stampa (inizia con `ssh-ed25519`).
-   Nella Shell del nodo Proxmox scrivi `nano /root/chiave-pc.pub`, incolla la riga, salva (Ctrl+O, Invio, Ctrl+X).
-3. **Crea la VM**: apri `ponte/proxmox/crea-vm.sh` su GitHub, premi **Copy raw file**, e nella Shell di Proxmox
-   crea il file con `nano crea-vm.sh` (incolla, salva). Poi eseguilo come root:
-   `CHIAVE_SSH=/root/chiave-pc.pub bash crea-vm.sh`
-   Crea una VM Ubuntu 24.04 con 4 core, 4 GB di RAM e 300 GB di disco (servono per la musica), che si avvia
-   insieme a Proxmox. Con meno spazio libero aggiungi per esempio `DISCO=200G`; con indirizzo fisso
-   `IP=192.168.1.50/24 GATEWAY=192.168.1.1`. Senza `IP=` la VM prende l'indirizzo dal router (DHCP): in quel caso,
-   sul router, fai assegnare alla VM sempre lo stesso indirizzo (sul Fritz!Box: Rete domestica → Rete → "radio" →
-   "Assegna sempre lo stesso indirizzo IPv4"), altrimenti l'inoltro delle porte smette di funzionare.
-   L'indirizzo della VM si vede sul router, oppure dalla console della VM su Proxmox (menu **Console → xterm.js**,
-   premi Invio, entra come `radio`, scrivi `ip -br a`). La console di Proxmox non incolla bene: usala solo per
-   questo e lavora via SSH dal PC.
-4. **Copia il programma nella VM**: su GitHub, pulsante **Code → Download ZIP**. Poi in PowerShell sul PC:
-   `scp $HOME\Downloads\radiosoftware-main.zip radio@<indirizzo>:` ed entra nella VM con `ssh radio@<indirizzo>`.
-   Nella VM: `sudo apt-get install -y unzip && unzip -q radiosoftware-main.zip && cd radiosoftware-main/ponte`
-5. **Installa**: `sudo DOMINIO=radio.esempio.it bash installa-server.sh` (con il tuo dominio). Alla fine stampa i
-   valori per la regia, la password del pannello e le porte da aprire. Tienili da parte (restano anche in
-   `/opt/radio-ponte/.env`).
-6. **Router di casa**: inoltra verso la VM
-   - TCP 80 e 443 (HTTPS: pannello, regia, ascolto)
-   - TCP 8000 (ascolto senza https, facoltativo)
-   - UDP 9000 (audio dalla regia)
-   - TCP 9010 (dirette esterne)
-   - UDP 40000-40049 (microfono dal pannello e ospiti)
-   - UDP 9020 (video da OBS, solo se lo usi da fuori casa)
+Pannello, menu **☰ → Annunci vocali** (solo amministratori):
 
-   Appena le porte 80 e 443 arrivano alla VM, il certificato si attiva da solo.
-7. **Musica**: copia la selezione della libreria sul server (sezione 12, "Libreria sul server"). Serve alla
-   diretta autonoma e alla musica di riserva.
+1. scegli la **Voce** e, se serve, premi **Scarica … adesso**;
+2. **Nome della radio** (vuoto = il nome del server) e le regolazioni, come in regia;
+3. **Aggiungi annuncio**: testo (stesse parti della tabella qui sopra), **Alle** un'ora precisa oppure **Ogni ora
+   al minuto**, i giorni e **attivo**;
+4. **🎧 Ascolta** per provare, poi **Salva**.
 
-Se nella VM avevi già installato AzuraCast con la versione precedente, toglilo
-(`cd /var/azuracast && sudo ./docker.sh uninstall`) oppure crea una VM nuova: Caddy ha bisogno delle porte 80 e 443.
+L'annuncio va in onda dopo il brano in corso; con la musica di riserva può slittare di un brano. Se non va in onda
+entro 10 minuti viene lasciato perdere. Non entra nel registro né nel report SIAE.
 
-**Banda di casa:** ogni ascoltatore collegato all'Icecast principale usa 0,128 Mbit/s di upload. Con 20 Mbit/s in
-upload ci stanno circa 150 ascoltatori (il massimo si imposta con `ICECAST_MAX_ASCOLTATORI`, di base 1000: con 500 Mbit/s in upload ce ne starebbero quasi 4000).
+## 13. Programmi, puntate e repliche
 
-### Provare il server mentre AzuraCast è ancora acceso
-
-Le porte 80, 443 e 8000 del router possono andare a una sola macchina. Per provare il nuovo server senza
-spegnere AzuraCast:
-
-- usa un altro nome che punti all'IP di casa (per esempio `player.radio.it`) e una porta esterna libera,
-  per esempio **9443**: sul router inoltra TCP 9443 esterna → porta 443 della VM, più UDP 9000, TCP 9010 e
-  UDP 40000-40049 (AzuraCast non le usa). La 443 e la 8000 restano ad AzuraCast;
-- nel pannello, menu ☰ → **Impostazioni server**: in **Avanzate** metti quel nome come **Dominio** e, in
-  **Microfono remoto e ospiti**, `https://<nome>:9443/radio.mp3` come **Indirizzo di ascolto per gli ospiti**;
-- **certificato**: Let's Encrypt controlla solo la porta 80 (mai la 9443). Sposta sul router la TCP 80 verso
-  la VM per qualche minuto, finché `docker compose logs caddy` (in `/opt/radio-ponte`) scrive
-  "certificate obtained successfully", poi rimettila su AzuraCast. Il certificato dura 90 giorni: se le prove
-  durano di più, ripeti lo spostamento;
-- pannello: `https://<nome>:9443`; nella regia **Porta del servizio di controllo** 9443 con HTTPS spuntato.
-
-Quando passi al server nuovo per davvero, togli AzuraCast, inoltra 80, 443 e 8000 alla VM, rimetti il dominio
-definitivo come **Dominio** e svuota l'**Indirizzo di ascolto per gli ospiti** (sempre da **Impostazioni server**).
-
-### Ascolto e Icecast secondario
-
-- Indirizzo per gli ascoltatori (sito, app, lettori): `https://<dominio>/radio.mp3` (MP3 a 128 kbit/s).
-  Per i lettori che non usano https: `http://<dominio>:8000/radio.mp3`.
-- Titolo in onda e numero di ascoltatori: `https://<dominio>/status-json.xsl`.
-- **Icecast secondario**: se hai un Icecast su un altro server, scrivi i suoi dati nel pannello, menu ☰ →
-  **Impostazioni server** → **Icecast secondario** (indirizzo, porta, mount, utente, password) e premi **Salva e applica**.
-  Riceve sempre lo stesso segnale del principale, anche la musica di riserva: se il server di casa non è
-  raggiungibile, gli ascoltatori passano al secondario e sentono la stessa cosa. Nei lettori che lo permettono,
-  mettilo come indirizzo di riserva.
-
-## 10. Collegare la regia al ponte
-
-Scheda **Collegamento** → **Impostazioni del collegamento**:
-
-- **Indirizzo del server**: il nome di dominio della radio (senza `https://`).
-- **Porta SRT**, **Frase segreta** e **Token del servizio di controllo**: i valori stampati dall'installazione.
-- **Porta del servizio di controllo**: 443, con **"Il servizio di controllo usa HTTPS"** spuntato.
-- **Margine contro i buchi di rete**: 2000 ms vanno bene per il 4G. Se l'audio salta, alzalo.
-- **Qualità**: 128 kbit/s.
-- **Cosa inviare**:
-  - *Solo il programma del computer*: musica, jingle ed eventi della regia.
-  - *Un ingresso della scheda audio*: per esempio il mix del RodeCaster, così va in onda anche il microfono.
-- **Backup automatico**: l'ora del backup giornaliero.
-- **Invia artista e titolo agli ascoltatori (Icecast)**: lascialo attivo.
-
-Premi **Salva**, poi **Accendi invio**. In alto compare la spia **PONTE**:
-
-| Spia | Significato |
-|---|---|
-| verde "OK" | la regia è in onda attraverso il ponte |
-| gialla "NON COLLEGATO" | collegamento in corso o caduto: la regia riprova da sola |
-| rossa "ALLARMI" | il ponte segnala un problema (vedi scheda Collegamento) |
-
-Quando la regia si scollega, la spia diventa gialla e in onda va la musica di riserva del ponte.
-
-## 11. Dirette esterne
-
-Usa la stessa app di prima (BUTT, Larix, Luci Live…), in modalità Icecast. Cambia solo:
-
-- **server**: il nome di dominio della radio;
-- **porta**: 9010;
-- **mount**, **utente** e **password**: quelli stampati dall'installazione (si vedono e si cambiano nel pannello: menu ☰ → **Impostazioni server** → **Dirette esterne**).
-
-Quando l'app si collega va in onda lei, con una breve dissolvenza. Quando si scollega torna da sola la regia
-(o la musica di riserva, se la regia è spenta).
-Ricevi una notifica all'inizio e alla fine.
-
-### Riconoscimento dei brani nelle esterne
-
-Durante una diretta esterna il server ascolta il programma e riconosce i brani, così finiscono nel registro
-(fonte **Esterna**) e nel report SIAE senza scrivere nulla a mano. Solo nelle esterne: gli altri brani la regia li
-conosce già.
-
-- **Come riconosce:** confronta l'audio con le **impronte audio** della libreria della regia. Nessun servizio
-  esterno: le impronte le calcola la regia (scheda **Libreria**, riga "Impronte audio", circa mezzo secondo a brano)
-  e le manda al server di notte insieme alla libreria (circa 5 KB a brano, la prima volta circa 100 MB per
-  20.000 brani, dentro il limite di MB del giorno). Funziona anche con la regia spenta.
-- Un brano è riconosciuto dopo circa 20 secondi, anche se qualcuno ci parla sopra un po'. Riconosce anche i brani
-  esclusi dalla selezione del server (live, sotto 192 kbps), perché le impronte sono di tutta la musica.
-- **Brani sconosciuti:** se per almeno un minuto non riconosce nulla, il server salva **20 secondi di audio** e
-  te lo segnala: con il [bot Telegram della radio](#bot-telegram-della-radio) arriva subito l'audio da
-  etichettare nella chat; senza il bot arriva una notifica Telegram/email (al massimo una ogni mezz'ora). Nel **pannello**, sezione
-  **Brani sconosciuti delle esterne**, lo ascolti e scrivi titolo, interprete, autori ed editore: da quel momento
-  viene riconosciuto da solo e i passaggi già sentiti vanno nel registro. Se era parlato o rumore, premi
-  **Non è musica**. Etichettare serve almeno il ruolo conduttore.
-- Il brano sconosciuto entra nel registro solo dopo che lo hai etichettato.
-- Per spegnere il riconoscimento: pannello, menu ☰ → **Impostazioni server** → **Riconoscimento brani e puntate**.
-
-## 12. Pannello remoto e utenti
-
-Il pannello remoto comanda la regia dal browser, da qualsiasi posto: telefono, tablet o computer.
-
-**Aprirlo:** `https://<nome di dominio>` (vedi la sezione 9). La prima volta entra con `admin` e la password
-stampata dall'installazione.
-
-**Cosa trovi:**
-
-- in alto la spia **IN ONDA / FERMO**, lo stato della regia (**REGIA OK** o **REGIA SCOLLEGATA**) e il tasto
-  **AUTOMATICO / MANUALE**;
-- il brano in onda con il tempo mancante (rosso negli ultimi 10 secondi);
-- **PLAY**, **AVANTI** e **STOP**, che fanno esattamente quello che fanno in regia;
-- la coda, con le frecce per spostare i brani e la ✕ per toglierli;
-- la ricerca: ⤒ mette il brano come prossimo, + lo aggiunge in fondo;
-- i jingle della cartwall e **Ferma jingle**.
-
-Se compare un allarme del ponte, lo vedi in una striscia rossa in alto.
-
-**Utenti** (menu ☰ → **Utenti**, solo per gli amministratori): scrivi nome, ruolo e password e premi **Salva**.
-Per cambiare il ruolo di un utente esistente scrivi il suo nome, scegli il ruolo e lascia vuota la password.
-Cambiando la password, l'utente viene scollegato da tutti i dispositivi.
-
-| Ruolo | Cosa può fare |
-|---|---|
-| Amministratore | tutto, compresa la gestione degli utenti e delle chiavi di YouTube e Facebook |
-| Conduttore | comandare la regia, microfono, ospiti, diretta autonoma, dirette video |
-| Ospite | vedere cosa va in onda e cercare nella libreria, senza comandare |
-
-**Nella regia** (scheda **Collegamento**) l'opzione "Permetti di comandare la regia dal pannello remoto" è
-attiva di base. La riga "Pannello remoto" dice se il collegamento è attivo e mostra l'indirizzo del pannello.
-
-Dopo 5 password sbagliate di fila dallo stesso indirizzo, il pannello blocca i tentativi per un minuto.
-
-### Impostazioni del server
-
-Menu ☰ → **Impostazioni server** (solo per gli amministratori). Qui trovi tutto quello che prima stava nel file
-`.env` del server, diviso in gruppi: Radio, Dirette esterne, Icecast secondario, Microfono remoto e ospiti,
-Dirette video, Riconoscimento brani e puntate, Allarmi (Telegram ed email).
-
-- Cambia i valori e premi **Salva e applica**. Prima di salvare il pannello ti dice cosa riparte: se tocca
-  l'audio (per esempio la password delle esterne) la radio resta muta per qualche secondo; se tocca solo il
-  pannello (per esempio Telegram o le email) l'audio non si ferma. Il server riparte da solo, solo nelle parti
-  che servono, e in alto compare **✓ Impostazioni applicate**.
-- **Password**: non si vedono. Lasciale vuote per tenere quelle di adesso; l'occhio 👁 mostra quello che stai
-  scrivendo; **Cancella** la toglie.
-- **Avanzate** (dominio, porte, frase segreta SRT, token della regia, password di Icecast, mount dell'ascolto):
-  sono bloccate. Se sbagliate, la regia o il pannello non si collegano più. Per cambiarle spunta
-  **Modifica avanzata** e conferma due volte; ricordati di cambiarle anche nella regia, sul router o nelle app.
-
-**Aggiornando da una versione precedente**: rilancia una volta `sudo bash installa-server.sh` dalla cartella
-`ponte` nuova. Installa il piccolo servizio che riavvia il server quando salvi dal pannello. Se manca, il
-pannello lo dice con una striscia rossa.
-
-### Microfono dal pannello
-
-Conduttori e amministratori possono parlare in diretta dal pannello, da casa o da fuori, senza passare dal
-PC della regia. La voce va nel mixer del ponte insieme al programma della regia (o della diretta esterna).
-
-1. Collega le **cuffie** e premi **🎙 Apri microfono**. Il browser chiede il permesso di usare il microfono:
-   rispondi sì. Da questo momento in cuffia senti il programma, quasi senza ritardo, ma la tua voce
-   **non è ancora in onda**. La barra mostra il livello del microfono: verde va bene, gialla è forte, rossa
-   è troppo forte.
-2. Premi **VAI IN ONDA**: la musica si abbassa (di 12 dB, regolabile) e la tua voce va in onda. Il tasto
-   diventa rosso con la scritta **IN ONDA**. In cuffia continui a sentire il programma, senza la tua voce
-   (così non senti l'eco).
-3. Premi di nuovo il tasto rosso per uscire dall'onda: la musica torna su. **Chiudi microfono** spegne tutto.
-
-Cose utili da sapere:
-
-- funziona **solo con il pannello in HTTPS** (`https://<nome di dominio>`, vedi la sezione 9): i browser
-  non danno il microfono alle pagine non protette;
-- un solo microfono remoto alla volta: chi lo apre per secondo vede chi lo sta usando;
-- se la connessione cade o chiudi la pagina, il microfono esce dall'onda da solo;
-- la voce va in onda solo se c'è un programma: regia, diretta esterna o diretta autonoma (non sopra la musica di
-  riserva). Con la regia spenta avvia la **diretta autonoma** (qui sotto) e parla sopra la musica del server;
-- **Uso le cuffie**: lascialo spuntato. Senza cuffie toglilo prima di aprire il microfono: il browser
-  attiva la riduzione dell'eco e del rumore, ma la voce suona meno naturale;
-- **Ritorno**: volume del programma in cuffia.
-
-### Ospiti in diretta
-
-Puoi far parlare in diretta fino a **3 ospiti** collegati da casa, con il telefono o il computer, senza
-installare nulla. Serve il pannello in HTTPS, come per il microfono.
-
-1. Nel pannello, sezione **Ospiti**, scrivi per chi è il link (per esempio "Mario, intervista delle 18") e premi
-   **Crea link**. Premi **Copia** (o **Invia…** dal telefono) e mandalo all'ospite, per esempio su WhatsApp.
-   Il link vale 24 ore; da **Link attivi** puoi copiarlo di nuovo o **Revocarlo**.
-2. L'ospite apre il link, scrive il nome, prova il microfono (la barra deve muoversi) e preme
-   **Entra in sala d'attesa**. Intanto sente la radio.
-3. Nel pannello compare l'ospite "in sala d'attesa": premi **Fai entrare** (o **Rifiuta**).
-4. Quando l'audio è collegato, premi **Metti in onda**: la musica si abbassa e l'ospite va in onda. Sulla sua pagina
-   compare **IN ONDA** in rosso. Premi di nuovo per toglierlo dall'onda, **Chiudi** per salutarlo.
-
-In cuffia ognuno sente la radio e le altre voci in onda (tu, gli altri ospiti), ma non la propria. Consiglia
-all'ospite di usare le **cuffie**: senza, deve togliere la spunta "Uso le cuffie" prima di entrare.
-Se l'ospite chiude la pagina o perde la connessione esce dall'onda da solo; riaprendo lo stesso link torna in
-sala d'attesa.
-
-### Diretta autonoma dal server
-
-Serve quando vuoi andare in onda senza la regia, per esempio da fuori con il telefono: il ponte suona la musica
-che ha sul server, e tu puoi parlarci sopra con il microfono del pannello.
-
-- **▶ Avvia diretta autonoma**: la musica del server va in onda **al posto della regia** (la regia può restare
-  accesa, ma non si sente). Se si collega una diretta esterna, ha la precedenza.
-- **Cerca nella libreria del server**: ⤒ mette il brano come prossimo, + lo aggiunge in fondo. Con la coda vuota il
-  ponte sceglie da solo, senza ripetere troppo presto lo stesso brano o lo stesso artista.
-- **⬆ Carica brani dal dispositivo**: scegli uno o più file dal telefono o dal computer; vengono caricati sul
-  server e messi in coda.
-- **⏭ Salta** passa al brano successivo; **■ Ferma e torna alla regia** chiude la diretta autonoma.
-
-Il brano successivo si decide circa 20 secondi prima della fine di quello in onda: fino ad allora puoi cambiare la
-coda. Tra un brano e l'altro non c'è dissolvenza. Inizio e fine della diretta autonoma arrivano come notifica.
-Gli ospiti del pannello vedono cosa suona ma non la comandano.
-
-### Libreria sul server
-
-Nella regia, scheda **Collegamento**, sezione **Libreria sul server**. Sul server va solo una selezione:
-
-- niente **live** (parola "live" o "dal vivo" nel genere, nella cartella, oppure nel titolo come "(Live)",
-  "- Live at…"; titoli come "Live Forever" restano dentro);
-- niente **interviste** ("intervista" nel titolo, nel genere o nella cartella);
-- niente file sotto i **192 kbps** (modificabile).
-
-Con **Scegli a mano** vedi gli esclusi con il motivo e puoi premere **Includi comunque**; con "Tutta la musica"
-cerchi un brano e lo puoi **Escludere**. **Lascia decidere alla regola** annulla la scelta a mano.
-
-**Prima copia (a mano, circa 100 GB):**
-
-1. Collega un disco USB alla regia e premi **Copia la selezione su disco…**, scegliendo il disco. Copia solo i brani
-   della selezione, già nelle cartelle giuste. Se la interrompi, alla ripartenza salta quelli già copiati.
-2. Porta il disco a casa, collegalo al server (in Proxmox: passa il disco USB alla VM) ed esegui nella VM:
-   `sudo rsync -a --info=progress2 /media/<disco>/regia/ /opt/radio-ponte/musica/regia/` e poi
-   `sudo chown -R 1000:1000 /opt/radio-ponte/musica`.
-
-La stessa libreria serve anche alla **musica di riserva**, che il ponte suona da solo quando non c'è nessuna
-diretta. I brani sotto i 60 secondi (jingle, spot) non vengono scelti.
-
-**Dopo:** la regia invia da sola via internet solo i brani **nuovi o cambiati**, e toglie dal server quelli usciti
-dalla selezione. Lo fa **di notte** (di base dalle 1 alle 6) e al massimo **1 GB al giorno**, perché il 4G non è
-illimitato: puoi cambiare ore e limite nella stessa sezione (poi **Salva**). **Invia ora i brani nuovi** parte
-subito, ma rispetta il limite del giorno. Ogni giorno manda anche al server i titoli corretti e il volume misurato.
-Se un giorno la regia vedesse sparire troppi brani (per esempio il disco della musica scollegato), si ferma e non
-toglie nulla dal server.
-
-Nelle stesse ore la regia:
-
-- manda le **impronte audio** di tutta la musica, per il riconoscimento nelle esterne (sezione 11);
-- **scarica i brani caricati dal pannello** e li cataloga nella prima cartella della musica come
-  `Artista\Titolo.mp3` (se il nome è già usato da un altro file: `Titolo (2).mp3`). Poi da sola li legge, li
-  analizza, calcola l'impronta e cerca autori e codici su MusicBrainz. Sul server il brano passa nella libreria
-  della regia, così non viene rimandato indietro.
-
-Tutto avviene solo con **Invia da solo** acceso (o con **Invia ora i brani nuovi**) e rientra nel limite di MB del
-giorno.
-
-### Dirette video su YouTube e Facebook
-
-YouTube e Facebook vogliono un video: dal pannello, sezione **Dirette video**, mandi la radio con un'immagine.
-
-**Una volta sola (amministratore):** apri **Impostazioni (chiavi delle dirette, ritardo)** e incolla la chiave
-di YouTube (YouTube Studio → Trasmetti dal vivo → chiave dello stream) e/o di Facebook (Live Producer → chiave
-di streaming), poi **Salva**. Le chiavi restano sul server: nel pannello non si vedono più. Per cambiarne una,
-incolla quella nuova; un campo lasciato vuoto non cambia la chiave salvata.
-
-**Immagine:**
-
-- **Logo fisso**: carica un'immagine PNG o JPEG (ideale 1280×720) con **⬆ Carica il logo**. Il server la
-  trasmette a 720p, quasi senza fatica.
-- **Video da OBS**: la webcam (o altro) la gestisci in OBS, fuori dal programma. In OBS, Impostazioni →
-  Stream: Servizio **Personalizzato**, Server `srt://<dominio>:9020` (in casa basta l'IP della VM), chiave
-  vuota. Uscita: codificatore **x264**, risoluzione **1280×720** al massimo, fotogrammi chiave ogni **2 s**,
-  2500-4000 kbit/s. Il pannello mostra l'indirizzo esatto quando scegli "Video da OBS". Il ponte inoltra il
-  video così com'è, senza ricodificarlo; se OBS manda più di 720p si ferma e te lo dice.
-
-**Andare in onda:** scegli l'immagine, spunta **YouTube** e/o **Facebook** e premi **▶ Avvia diretta video**.
-Con OBS, dopo, premi "Avvia trasmissione" in OBS. Quando parte, il riquadro dice **IN ONDA**. **■ Ferma diretta
-video** la chiude. L'audio è sempre quello della radio. Se il video di OBS e l'audio non sono allineati, regola
-il **ritardo** nelle impostazioni (in millisecondi: positivo ritarda l'audio, negativo il video).
-
-Se la diretta cade, il ponte riprova da solo e ti manda una notifica; se non riesce a ripartire si ferma.
-Su YouTube e Facebook la diretta va comunque creata o programmata come sempre: il ponte manda solo il segnale.
-
-### Programmi e puntate on demand
-
-Dal pannello: menu **☰ → Programmi**.
+Pannello, menu **☰ → Programmi**.
 
 **Programmi (solo amministratori).** **Nuovo programma**: nome, conduttori, descrizione e una o più **fasce
-orarie** (giorni e orari; una fascia può passare la mezzanotte, es. 23:00 → 01:00). Con **Copertina** carichi
-un'immagine quadrata PNG o JPG. Due interruttori:
+orarie** (una fascia può passare la mezzanotte, es. 23:00 → 01:00). Con **Copertina** carichi un'immagine
+quadrata. Due interruttori:
 
-- **Registra da solo le puntate nelle fasce**: il server registra quello che va in onda (regia, esterne, diretta
-  autonoma, riserva) durante la fascia, con qualche minuto in più prima e dopo (di base 2, in **Impostazioni**);
-- **Visibile nella pagina dei podcast e nell'app**: se spento, il programma e le sue puntate non si vedono.
+- **Registra da solo le puntate nelle fasce**: il server registra quello che va in onda durante la fascia, con
+  qualche minuto in più prima e dopo (di base 2, in **Impostazioni**);
+- **Visibile nella pagina dei podcast e nell'app**: se spento, il programma e le puntate non si vedono.
 
-**Revisione (conduttori e amministratori).** A fine fascia la registrazione compare in **Puntate da rivedere** (e
-arriva una notifica). Ascoltala, porta il lettore dove inizia davvero la puntata e premi **Inizio qui**, poi dove
-finisce e premi **Fine qui** (o scrivi gli orari come `0:02:30`). **Ascolta l'inizio** e **Ascolta la fine** fanno
-sentire i punti di taglio. Scrivi titolo e descrizione e premi **Pubblica**: la puntata viene tagliata e diventa
-ascoltabile. Se non serve, **Elimina**.
+**Pubblicare una puntata (conduttori e amministratori).** A fine fascia la registrazione compare in **Puntate da
+rivedere** (e arriva una notifica):
 
-Sotto ogni programma ci sono le puntate pubblicate: **▶** per ascoltarle, **Modifica** (titolo e descrizione),
-**Ritira** (sparisce dalla pagina e dall'app, ma il file resta; **Ripubblica** la rimette), **Elimina**. Le puntate
-non scadono.
+1. ascoltala, porta il lettore dove inizia davvero la puntata e premi **Inizio qui**; poi dove finisce e premi
+   **Fine qui** (oppure scrivi gli orari, es. `0:02:30`). **Ascolta l'inizio** e **Ascolta la fine** fanno sentire
+   i tagli;
+2. scrivi titolo e descrizione e premi **Pubblica**. Se non serve, **Elimina**.
 
-**Per gli ascoltatori:**
+Sotto ogni programma ci sono le puntate: **▶** per ascoltarle, **Modifica**, **Ritira** (sparisce ma il file resta;
+**Ripubblica** la rimette), **Elimina**. Le puntate non scadono. A 128 kbps un'ora occupa circa 58 MB (la qualità
+si cambia in **Impostazioni server** → **Qualità delle puntate registrate**). Le bozze restano finché non le
+elimini.
 
-- `https://DOMINIO/podcast.html`: programmi e puntate da ascoltare;
-- `https://DOMINIO/ascolta.html`: la diretta, con il titolo in onda.
+**Per gli ascoltatori:** `https://<indirizzo della radio>/podcast.html` (programmi e puntate) e
+`https://<indirizzo della radio>/ascolta.html` (la diretta con il titolo in onda). Le puntate si possono **solo
+ascoltare**, non scaricare (la licenza SIAE permette lo streaming, non il download).
 
-Le puntate si possono **solo ascoltare in streaming**: nelle pagine non c'è il pulsante per scaricarle (la licenza
-SIAE permette lo streaming, non il download). Non c'è un feed per Spotify o Apple Podcasts.
-
-**App della radio.** Il server risponde agli stessi indirizzi delle API pubbliche dei podcast di AzuraCast
-(`/api/station/<nome breve>/public/podcasts`, `.../podcast/<programma>/episodes`, ecc.), così l'app che oggi legge i
-contenuti on demand da AzuraCast funziona cambiando solo l'indirizzo del server. Il **nome breve della stazione**
-negli indirizzi si imposta in **Impostazioni** (in fondo alla pagina Programmi): metti lo stesso che usavi su
-AzuraCast.
-
-Anche il **titolo in onda** risponde come AzuraCast (`/api/nowplaying`): brano in onda con la durata, ultimi 5
-brani, numero di ascoltatori dell'Icecast principale e diretta esterna segnata come "live". L'immagine è la
-copertina del programma in onda oppure il logo caricato nelle dirette video. Il titolo arriva comunque anche
-nel flusso Icecast, come prima.
-
-**Spazio su disco:** a 128 kbps un'ora di registrazione occupa circa 58 MB (si cambia in **Impostazioni server** → **Qualità delle puntate registrate**). Le bozze
-non pubblicate restano finché non le elimini.
+**App della radio.** Il server risponde agli stessi indirizzi di AzuraCast per i podcast
+(`/api/station/<nome breve>/public/podcasts`…) e per il titolo in onda (`/api/nowplaying`), così l'app funziona
+cambiando solo l'indirizzo del server. Il **nome breve della stazione** si imposta in **Impostazioni** (in fondo
+alla pagina Programmi): metti lo stesso che usavi su AzuraCast.
 
 ### Repliche
 
 Una puntata pubblicata si può rimandare in onda dalla regia:
 
-- **dal pannello**: nella pagina Programmi, pulsante **Replica** accanto alla puntata: va in coda nella regia dopo
-  il brano in onda (serve la regia collegata);
-- **con un evento**: azione **Replica di un programma**, scegli il programma; all'ora dell'evento va in onda la sua
-  **ultima** puntata pubblicata.
+- **dal pannello**: pulsante **Replica** accanto alla puntata: va in coda nella regia dopo il brano in onda;
+- **con un evento**: azione **Replica di un programma**: all'ora dell'evento va in onda l'**ultima** puntata.
 
-L'audio arriva in streaming dal server, quindi la regia deve essere collegata a internet (circa 58 MB all'ora sul
-4G). Nel registro la replica compare come flusso esterno: la musica dentro le repliche non entra nel report SIAE.
+L'audio arriva in streaming dal server (circa 58 MB all'ora sul 4G). La musica dentro le repliche non entra nel
+report SIAE.
 
-### Statistiche degli ascoltatori
+## 14. Statistiche degli ascoltatori
 
-Ogni minuto il server legge quanti ascoltatori ci sono sull'**Icecast principale** e su quello **secondario**, e
-tiene lo storico per **un anno**. Si vedono in due posti, con gli stessi dati:
+Ogni minuto il server conta gli ascoltatori dell'Icecast **principale** e di quello **secondario** e tiene lo
+storico di **un anno**. Le vedi:
 
-- **pannello**: il numero in alto (🎧) sono gli ascoltatori adesso; toccandolo (o menu **☰ → Ascoltatori**) si
+- nel **pannello**: il numero 🎧 in alto sono gli ascoltatori adesso; toccandolo (o menu **☰ → Ascoltatori**) si
   aprono le statistiche;
-- **regia**: scheda **Ascoltatori** (serve il collegamento al ponte con il token).
+- nella **regia**: scheda **Ascoltatori** (serve il collegamento al server).
 
-Scegli **Giorno** o **Settimana** (da lunedì) e la data, con ◀ ▶ per spostarti. Trovi:
+Scegli **Giorno** o **Settimana** e la data (◀ ▶ per spostarti). Trovi **adesso**, **picco** (con l'ora),
+**media**, **ore di ascolto** (10 persone per un'ora = 10), il grafico dell'andamento, la media per ora del giorno
+e la tabella **per programma**.
 
-- **adesso**, **picco** (con l'ora), **media** e **ore di ascolto** (ascoltatori × ore: 10 persone per un'ora = 10);
-- il grafico dell'andamento (media ogni 10 minuti nel giorno, ogni ora nella settimana): passandoci sopra vedi
-  media, picco e la divisione tra principale e secondario;
-- la **media per ora del giorno**, per capire le fasce più ascoltate;
-- la tabella **per programma** (dalle fasce dei programmi): media, picco e ore di ascolto.
+Per il secondario il server prova la sua pagina pubblica `status-json.xsl`; se è chiusa, metti utente e password
+di amministrazione di quell'Icecast in **Impostazioni server** → **Icecast secondario**. Se non si riesce a
+leggere, le statistiche contano solo il principale e la pagina lo dice.
 
-**Icecast secondario:** il server prova prima la pagina pubblica `status-json.xsl` di quel server. Se è chiusa,
-metti in **Impostazioni server** → **Icecast secondario** utente e password amministratore (le credenziali di
-amministrazione di quell'Icecast) e riavvia. Se non si riesce a leggere, le statistiche contano solo il principale
-e la pagina lo dice.
+## 15. Dirette video su YouTube e Facebook
 
-### Annunci vocali del server
+YouTube e Facebook vogliono un video: dal pannello, riquadro **Dirette video**, mandi la radio con un'immagine.
 
-Quando trasmette il server (diretta autonoma o musica di riserva, cioè senza la regia) il server può fare da solo
-annunci a orario con la stessa voce sintetica. Quando c'è la regia, gli annunci li fanno gli eventi della regia.
+**Una volta sola (amministratore):** apri **Impostazioni (chiavi delle dirette, ritardo)**, incolla la chiave di
+YouTube (YouTube Studio → Trasmetti dal vivo → chiave dello stream) e/o di Facebook (Live Producer → chiave di
+streaming) e **Salva**. Le chiavi restano sul server e non si vedono più; un campo lasciato vuoto non cambia la
+chiave salvata.
 
-Menu **☰ → Annunci vocali** (solo amministratori):
+**Immagine:**
 
-1. scegli la **Voce** e, se serve, premi **Scarica … adesso** (il server la scarica una volta sola);
-2. **Nome della radio** per `{radio}` (vuoto = il nome del server) e le regolazioni, come in regia;
-3. **Aggiungi annuncio**: testo (stesse parti della regia, tabella in [Voce sintetica](#voce-sintetica)),
-   **Alle** un'ora precisa oppure **Ogni ora al minuto**, i giorni e **attivo**;
-4. **🎧 Ascolta** prova il testo con le impostazioni della pagina; poi **Salva**.
+- **Logo fisso**: carica un PNG o JPEG (ideale 1280×720) con **⬆ Carica il logo**;
+- **Video da OBS**: in OBS, Impostazioni → Stream: Servizio **Personalizzato**, Server
+  `srt://<indirizzo della radio>:9020` (in casa basta l'IP del server), chiave vuota. Uscita: **x264**, al massimo
+  **1280×720**, fotogrammi chiave ogni **2 s**, 2500-4000 kbit/s. Il pannello mostra l'indirizzo esatto.
 
-All'ora scelta l'annuncio va in onda dopo il brano in corso. Con la musica di riserva può slittare di un brano,
-perché il server prepara in anticipo il brano successivo. Se non va in onda entro 10 minuti viene lasciato perdere.
-Gli annunci non entrano nel registro dei brani né nel report SIAE.
+**Andare in onda:** scegli l'immagine, spunta **YouTube** e/o **Facebook** e premi **▶ Avvia diretta video** (con
+OBS, dopo, premi "Avvia trasmissione" in OBS). **■ Ferma diretta video** la chiude. L'audio è sempre quello della
+radio. Se video e audio non sono allineati, regola il **ritardo** nelle impostazioni (millisecondi: positivo
+ritarda l'audio, negativo il video). Se la diretta cade, il server riprova da solo e ti avvisa. Su YouTube e
+Facebook la diretta va comunque creata o programmata come sempre.
 
-## 13. Allarmi e notifiche
+## 16. Allarmi, notifiche e bot Telegram
 
-Il ponte avvisa via Telegram e/o email (da configurare nel pannello, menu ☰ → **Impostazioni server** → **Allarmi**; la scheda **Collegamento** ha
-**Invia notifica di prova**):
+Il server avvisa via Telegram e/o email (da impostare nel pannello: **Impostazioni server** → **Allarmi**; in
+regia, scheda **Collegamento**, c'è **Invia notifica di prova**) quando:
 
-- regia scollegata dal ponte;
-- programma della regia che non risponde (PC spento, app chiusa);
-- silenzio in onda;
-- collegamento instabile (troppe riconnessioni);
-- errori verso l'Icecast principale o il secondario;
-- diretta video interrotta o che non riesce a ripartire;
-- inizio e fine di una diretta esterna;
-- avvio e fine della diretta autonoma, con il nome di chi l'ha comandata.
+- la regia si scollega o il programma della regia non risponde;
+- c'è silenzio in onda o il collegamento è instabile;
+- ci sono errori verso l'Icecast principale o il secondario;
+- una diretta video si interrompe;
+- inizia o finisce una diretta esterna o una diretta autonoma (con il nome di chi l'ha avviata).
 
-Quando il problema si risolve arriva un secondo messaggio. Gli allarmi attivi si vedono anche nella scheda Collegamento.
+Quando il problema si risolve arriva un secondo messaggio. Gli allarmi attivi si vedono anche nella scheda
+**Collegamento** della regia e in rosso nel pannello.
 
 ### Bot Telegram della radio
 
-Un secondo bot, diverso da quello degli allarmi, per etichettare i brani sconosciuti delle esterne dal telefono
-e vedere a colpo d'occhio come va la radio. È **solo lettura**: non comanda la regia, le dirette o le puntate.
-Chiunque sia nella chat può usarlo, anche per etichettare.
+Un secondo bot, diverso da quello degli allarmi, per etichettare dal telefono i brani sconosciuti delle esterne e
+vedere come va la radio. È **solo lettura**: non comanda nulla. Chiunque sia nella chat può usarlo.
 
-**Come attivarlo (una volta):**
+**Attivarlo (una volta):**
 
 1. Su Telegram scrivi a **@BotFather** → `/newbot`, scegli nome e username: ti dà il **token**.
-2. Crea un gruppo (o usa quello degli allarmi), aggiungi il bot e scrivi un messaggio qualsiasi nel gruppo.
+2. Crea un gruppo (o usa quello degli allarmi), aggiungi il bot e scrivi un messaggio qualsiasi.
 3. Apri `https://api.telegram.org/bot<TOKEN>/getUpdates` nel browser: l'id della chat è il numero dopo
    `"chat":{"id":` (per i gruppi comincia con `-`).
-4. Nel pannello, menu ☰ → **Impostazioni server** → **Allarmi**, metti token e id della chat del **Bot Telegram della radio** e premi **Salva e applica**.
+4. Nel pannello, **Impostazioni server** → **Allarmi**, metti token e id della chat del **Bot Telegram della
+   radio** e premi **Salva e applica**.
 
-Il bot legge solo i comandi e le risposte ai suoi messaggi, non il resto della chat.
+**Brani sconosciuti:** il bot manda i 20 secondi di audio. **Rispondi al messaggio** (tieni premuto → Rispondi) con
+`Artista - Titolo`; se li sai, sulla riga sotto gli autori separati da virgola. Il bot conferma con ✅. Se era
+parlato premi **🚫 Non è musica**. Il bot legge solo i comandi e le risposte ai suoi messaggi.
 
-**Brani sconosciuti:** per ogni brano sconosciuto il bot manda i 20 secondi di audio. **Rispondi al messaggio**
-(tieni premuto → Rispondi) con `Artista - Titolo`; se li sai, sulla riga sotto gli autori separati da virgola.
-Il bot conferma con ✅ e da quel momento il brano viene riconosciuto. Se era parlato premi **🚫 Non è musica**.
-Editore e altri dati si possono aggiungere dopo dal pannello.
-
-**Menu:** scrivi `/menu` (o `/start`) e scegli una sezione. Se nel gruppo c'è anche il bot degli allarmi, scrivi
-`/menu@nomedelbot` (Telegram lo propone da solo quando scrivi `/`). Sotto ogni sezione ci sono **🔄 Aggiorna** e **⬅ Menu**.
+**Menu:** scrivi `/menu` (o `/start`). Con due bot nel gruppo scrivi `/menu@nomedelbot`.
 
 | Sezione | Cosa mostra |
 |---|---|
-| 🎵 Da etichettare | ti rimanda l'audio dei brani ancora da etichettare (al massimo 20 per volta; anche con `/sconosciuti`) |
-| ✅ Già etichettati | gli ultimi 15 brani etichettati, con gli autori |
-| 📻 In onda | chi trasmette (regia, diretta autonoma, esterna o musica di riserva), voci dal pannello, brano in onda, regia collegata, allarmi attivi |
-| 🎧 Ascoltatori | adesso (principale e secondario), picco, media e ore di ascolto di oggi e della settimana |
-| 🎙 Puntate | programmi in registrazione e puntate in bozza da pubblicare dal pannello |
+| 🎵 Da etichettare | l'audio dei brani ancora da etichettare (massimo 20 per volta; anche con `/sconosciuti`) |
+| ✅ Già etichettati | gli ultimi 15 brani etichettati |
+| 📻 In onda | chi trasmette, voci dal pannello, brano in onda, regia collegata, allarmi |
+| 🎧 Ascoltatori | adesso, picco, media e ore di ascolto di oggi e della settimana |
+| 🎙 Puntate | programmi in registrazione e puntate da pubblicare |
 
-## 14. Backup e ripristino
+## 17. Backup
 
-Ogni giorno, all'ora scelta, la regia salva sul ponte una copia di libreria, eventi, registro e impostazioni.
-Il ponte tiene gli ultimi 14.
+Ogni giorno, all'ora scelta (scheda **Collegamento** → **Backup automatico**), la regia salva sul server libreria,
+eventi, registro e impostazioni. Il server tiene gli ultimi 14.
 
 - **Fai un backup adesso**: copia immediata, utile prima di grandi modifiche.
-- **Mostra i backup sul ponte** → **Ripristina** → **Sì, ripristina**: la regia si riavvia con il backup scelto.
-  La messa in onda si ferma per qualche secondo. Il database di prima resta in una copia a parte.
+- **Mostra i backup sul ponte** → **Ripristina** → **Sì, ripristina**: la regia si riavvia con il backup scelto. La
+  messa in onda si ferma per qualche secondo. Il database di prima resta in una copia a parte.
 
-## 15. Problemi comuni
+## 18. Installare la regia su Windows
 
-| Problema | Cosa controllare |
+1. Apri il repository su GitHub → scheda **Actions** → l'ultima esecuzione verde di "Test e build Windows".
+2. In fondo alla pagina scarica **RadioRegia-Setup-Windows** ed estrai lo zip.
+3. Avvia l'installer. Se Windows avvisa che il programma non è firmato: "Ulteriori informazioni" → "Esegui
+   comunque".
+
+Il programma si apre a schermo intero; può esserne aperta una sola copia alla volta. Poi:
+
+1. **Schede audio** (scheda **Impostazioni**): **Uscita in onda** il canale del RodeCaster Duo dedicato al
+   computer; **Uscita preascolto** un'uscita diversa (cuffie del PC o canale chat del RodeCaster). Se un'uscita non
+   compare premi **Aggiorna elenco schede**.
+2. **Libreria**: aggiungi le cartelle e premi **Aggiorna libreria** ([sezione 9](#9-libreria-e-scheda-brano)).
+3. **Impostazioni** di messa in onda (poi **Salva**):
+
+| Impostazione | Cosa fa |
 |---|---|
-| "Il ponte non risponde" | porta UDP 9000 non inoltrata sul router, indirizzo sbagliato, VM spenta |
-| "Frase segreta errata" | la frase segreta della regia è diversa da quella del server (pannello: Impostazioni server → Avanzate) |
-| "token del ponte errato" | il token della regia è diverso da quello del server (pannello: Impostazioni server → Avanzate) |
-| Allarme Icecast secondario | host, porta, mount o password `ICECAST_ESTERNO_*` sbagliati, oppure server esterno spento |
-| Il pannello non si apre in https | il dominio non punta all'IP di casa, o le porte 80/443 non arrivano alla VM (`docker compose logs caddy`) |
+| Dissolvenza (secondi) | durata della sfumatura quando premi AVANTI |
+| Volume obiettivo (LUFS) | volume a cui vengono livellati tutti i brani (-16 è lo standard per lo streaming) |
+| Separazione artista (minuti) | tempo minimo prima di ripetere lo stesso artista |
+| Separazione brano (minuti) | tempo minimo prima di ripetere lo stesso brano |
+| Un jingle ogni … brani | in automatico; 0 = nessun jingle |
+| Brani in coda in automatico | quanti brani preparare in anticipo |
+
+## 19. Il server su Proxmox
+
+Si fa una volta sola. La guida tecnica completa è in [ponte/README.md](../ponte/README.md). Sul server girano il
+ponte, l'Icecast principale e Caddy, che fa da solo l'HTTPS (certificato Let's Encrypt gratuito, rinnovato in
+automatico).
+
+1. **Nome di dominio**: serve un nome (es. `radio.esempio.it`) che punti all'IP pubblico di casa. Se l'IP cambia,
+   usa un DNS dinamico (DuckDNS o quello del router).
+2. **Chiave SSH del PC**: la VM accetta l'accesso solo con una chiave. Sul PC apri PowerShell, scrivi
+   `ssh-keygen -t ed25519` (Invio a tutte le domande), poi `type $env:USERPROFILE\.ssh\id_ed25519.pub` e copia la
+   riga che stampa (inizia con `ssh-ed25519`). Nella Shell del nodo Proxmox scrivi `nano /root/chiave-pc.pub`,
+   incolla, salva (Ctrl+O, Invio, Ctrl+X).
+3. **Crea la VM**: apri `ponte/proxmox/crea-vm.sh` su GitHub, premi **Copy raw file**, nella Shell di Proxmox crea
+   il file con `nano crea-vm.sh` (incolla, salva) ed eseguilo: `CHIAVE_SSH=/root/chiave-pc.pub bash crea-vm.sh`.
+   Crea una VM Ubuntu 24.04 con 4 core, 4 GB di RAM e 300 GB di disco, che parte insieme a Proxmox. Con meno spazio
+   aggiungi per esempio `DISCO=200G`; con indirizzo fisso `IP=192.168.1.50/24 GATEWAY=192.168.1.1`. Senza `IP=` la
+   VM prende l'indirizzo dal router: in quel caso fai assegnare alla VM sempre lo stesso indirizzo (Fritz!Box: Rete
+   domestica → Rete → "radio" → "Assegna sempre lo stesso indirizzo IPv4"). L'indirizzo della VM si vede sul router
+   o dalla console della VM (**Console → xterm.js**, entra come `radio`, scrivi `ip -br a`). La console di Proxmox
+   non incolla bene: usala solo per questo e lavora via SSH dal PC.
+4. **Copia il programma**: su GitHub **Code → Download ZIP**. In PowerShell:
+   `scp $HOME\Downloads\radiosoftware-main.zip radio@<indirizzo>:` ed entra con `ssh radio@<indirizzo>`. Nella VM:
+   `sudo apt-get install -y unzip && unzip -q radiosoftware-main.zip && cd radiosoftware-main/ponte`
+5. **Installa**: `sudo DOMINIO=radio.esempio.it bash installa-server.sh` (con il tuo dominio). Alla fine stampa i
+   valori per la regia, la password del pannello, i dati delle dirette esterne e le porte da aprire. **Tienili da
+   parte**: le password poi non si vedono più nel pannello.
+6. **Router di casa**: inoltra verso la VM
+    - TCP 80 e 443 (pannello, regia, ascolto in https)
+    - TCP 8000 (ascolto senza https, facoltativo)
+    - UDP 9000 (audio dalla regia)
+    - TCP 9010 (dirette esterne)
+    - UDP 40000-40049 (microfono dal pannello e ospiti)
+    - UDP 9020 (video da OBS, solo se lo usi da fuori casa)
+
+   Appena le porte 80 e 443 arrivano alla VM, il certificato si attiva da solo.
+7. **Musica**: copia la selezione della libreria sul server ([sezione 22](#22-la-musica-sul-server)).
+
+Se nella VM c'era AzuraCast, toglilo (`cd /var/azuracast && sudo ./docker.sh uninstall`) o crea una VM nuova:
+Caddy ha bisogno delle porte 80 e 443.
+
+**Banda di casa:** ogni ascoltatore usa 0,128 Mbit/s in upload: con 20 Mbit/s ci stanno circa 150 ascoltatori, con
+500 Mbit/s quasi 4000. Il massimo si imposta in **Impostazioni server** → **Ascoltatori al massimo** (di base 1000).
+
+**Aggiornare il server:** scarica di nuovo lo ZIP, copialo nella VM come al punto 4 e rilancia
+`sudo bash installa-server.sh` dalla cartella `ponte`: le impostazioni restano come sono. Così si aggiorna anche
+la guida che si apre dal pannello.
+
+### Provare il server mentre AzuraCast è ancora acceso
+
+Le porte 80, 443 e 8000 del router possono andare a una sola macchina. Per provare senza spegnere AzuraCast:
+
+- usa un altro nome che punti all'IP di casa (es. `player.radio.it`) e una porta esterna libera, per esempio
+  **9443**: sul router inoltra TCP 9443 esterna → porta 443 della VM, più UDP 9000, TCP 9010 e UDP 40000-40049;
+- nel pannello, **Impostazioni server**: in **Avanzate** metti quel nome come **Dominio** e, in **Microfono remoto e
+  ospiti**, `https://<nome>:9443/radio.mp3` come **Indirizzo di ascolto per gli ospiti**;
+- **certificato**: Let's Encrypt controlla solo la porta 80. Sposta sul router la TCP 80 verso la VM per qualche
+  minuto, finché `docker compose logs caddy` (in `/opt/radio-ponte`) scrive "certificate obtained successfully",
+  poi rimettila su AzuraCast. Il certificato dura 90 giorni: se le prove durano di più, ripeti;
+- pannello: `https://<nome>:9443`; nella regia **Porta del servizio di controllo** 9443 con HTTPS spuntato.
+
+Quando passi al server nuovo per davvero: togli AzuraCast, inoltra 80, 443 e 8000 alla VM, rimetti il dominio
+definitivo come **Dominio** e svuota l'**Indirizzo di ascolto per gli ospiti**.
+
+### Ascolto e Icecast secondario
+
+- Indirizzo per gli ascoltatori (sito, app, lettori): `https://<dominio>/radio.mp3` (MP3 a 128 kbit/s). Per i
+  lettori senza https: `http://<dominio>:8000/radio.mp3`.
+- Titolo in onda e numero di ascoltatori: `https://<dominio>/status-json.xsl`.
+- **Icecast secondario**: se hai un Icecast su un altro server, scrivi i suoi dati in **Impostazioni server** →
+  **Icecast secondario** (indirizzo, porta, mount, utente, password) e premi **Salva e applica**. Riceve sempre lo
+  stesso segnale del principale: se il server di casa non è raggiungibile, gli ascoltatori passano al secondario e
+  sentono la stessa cosa. Nei lettori che lo permettono mettilo come indirizzo di riserva.
+
+## 20. Impostazioni del server dal pannello
+
+Menu **☰** → **Impostazioni server** (solo amministratori). Qui c'è tutto quello che prima stava nel file `.env`
+del server, diviso in gruppi: Radio, Dirette esterne, Icecast secondario, Microfono remoto e ospiti, Dirette video,
+Riconoscimento brani e puntate, Allarmi (Telegram ed email).
+
+- Cambia i valori e premi **Salva e applica**. Prima di salvare il pannello ti dice cosa riparte: se tocca l'audio
+  (per esempio la password delle esterne) la radio resta muta per qualche secondo; se tocca solo il pannello (per
+  esempio Telegram o le email) l'audio non si ferma. In alto compare **✓ Impostazioni applicate**.
+- **Password**: non si vedono. Lasciale vuote per tenere quelle di adesso; l'occhio 👁 mostra quello che stai
+  scrivendo; **Cancella** la toglie.
+- **Avanzate** (dominio, porte, frase segreta SRT, token della regia, password di Icecast, mount dell'ascolto):
+  sono bloccate, perché se sbagliate la regia o il pannello non si collegano più. Per cambiarle spunta **Modifica
+  avanzata** e conferma due volte; poi cambiale anche nella regia, sul router o nelle app.
+
+**Aggiornando da una versione precedente** rilancia una volta `sudo bash installa-server.sh` dalla cartella `ponte`
+nuova: installa il piccolo servizio che riavvia il server quando salvi dal pannello. Se manca, il pannello lo dice
+con una striscia rossa.
+
+## 21. Collegare la regia al server
+
+![Regia, scheda Collegamento](immagini/regia-collegamento.png)
+
+Scheda **Collegamento** → **Impostazioni del collegamento**:
+
+1. **Indirizzo del server**: l'indirizzo della radio, senza `https://`.
+2. **Frase segreta**: quella stampata dall'installazione.
+3. **Token del servizio di controllo**: quello stampato dall'installazione.
+4. **Salva**.
+5. **Accendi invio**.
+
+Lascia gli altri campi come sono: **Porta SRT** 9000, **Porta del servizio di controllo** 443 (9443 durante le
+prove) con **"Il servizio di controllo usa HTTPS"** spuntato, **Margine contro i buchi di rete** 2000 ms (se l'audio
+salta, alzalo), **Qualità** 128 kbit/s, **Invia artista e titolo agli ascoltatori** attivo, **Permetti di
+comandare la regia dal pannello remoto** attivo.
+
+**Cosa inviare:** *Solo il programma del computer* (musica, jingle ed eventi) oppure *Un ingresso della scheda
+audio* (per esempio il mix del RodeCaster, così va in onda anche il microfono dello studio).
+
+In alto compare la spia **PONTE**:
+
+| Spia | Significato |
+|---|---|
+| verde "OK" | la regia è in onda attraverso il server |
+| gialla "NON COLLEGATO" | collegamento in corso o caduto: la regia riprova da sola (intanto va la musica di riserva) |
+| rossa "ALLARMI" | il server segnala un problema (vedi scheda Collegamento) |
+
+## 22. La musica sul server
+
+Il server ha una sua copia della musica, per la [diretta autonoma](#7-diretta-autonoma-senza-la-regia) e la musica
+di riserva. Nella regia: scheda **Collegamento** → **Libreria sul server**.
+
+**Cosa va sul server:** solo una selezione. Restano fuori:
+
+- i **live** ("live" o "dal vivo" nel genere, nella cartella o nel titolo come "(Live)", "- Live at…"; titoli come
+  "Live Forever" restano dentro);
+- le **interviste** ("intervista" nel titolo, nel genere o nella cartella);
+- i file sotto i **192 kbps** (modificabile).
+
+Con **Scegli a mano** vedi gli esclusi con il motivo e puoi premere **Includi comunque**; con "Tutta la musica"
+cerchi un brano e lo puoi **Escludere**. **Lascia decidere alla regola** annulla la scelta a mano. I brani sotto i
+60 secondi (jingle, spot) non vengono mai scelti dalla musica di riserva.
+
+**Prima copia (a mano, circa 100 GB):**
+
+1. Collega un disco USB alla regia e premi **Copia la selezione su disco…**. Copia solo la selezione, già nelle
+   cartelle giuste; se la interrompi, alla ripartenza salta quelli già copiati.
+2. Porta il disco a casa, collegalo al server (in Proxmox: passa il disco USB alla VM) ed esegui nella VM:
+   `sudo rsync -a --info=progress2 /media/<disco>/regia/ /opt/radio-ponte/musica/regia/` e poi
+   `sudo chown -R 1000:1000 /opt/radio-ponte/musica`.
+
+**Dopo, da sola:** con **Invia da solo** acceso, la regia manda via internet solo i brani **nuovi o cambiati** e
+toglie dal server quelli usciti dalla selezione. Lo fa **di notte** (di base dalle 1 alle 6) e al massimo **1 GB al
+giorno**, perché il 4G non è illimitato: ore e limite si cambiano nella stessa sezione (poi **Salva**). **Invia ora
+i brani nuovi** parte subito, rispettando il limite. Nelle stesse ore la regia:
+
+- manda i titoli corretti, il volume misurato e le **impronte audio** di tutta la musica (per il riconoscimento
+  nelle esterne);
+- **scarica i brani caricati dal pannello** e li mette nella prima cartella della musica come
+  `Artista\Titolo.mp3` (se il nome è già usato: `Titolo (2).mp3`), poi li legge, li analizza, calcola l'impronta e
+  cerca autori e codici su MusicBrainz.
+
+Se un giorno la regia vedesse sparire troppi brani (per esempio il disco della musica scollegato), si ferma e non
+toglie nulla dal server.
+
+## 23. Utenti del pannello
+
+Menu **☰ → Utenti** (solo amministratori): scrivi nome, ruolo e password e premi **Salva**. Per cambiare il ruolo
+di un utente scrivi il suo nome, scegli il ruolo e lascia vuota la password. Cambiando la password, l'utente viene
+scollegato da tutti i dispositivi.
+
+| Ruolo | Cosa può fare |
+|---|---|
+| Amministratore | tutto, compresi utenti, programmi, annunci e impostazioni del server, chiavi di YouTube e Facebook |
+| Conduttore | comandare la regia, microfono, ospiti, diretta autonoma, dirette video, puntate, etichette |
+| Ospite | vedere cosa va in onda e cercare nella libreria, senza comandare |
+
+Nella regia (scheda **Collegamento**) l'opzione "Permetti di comandare la regia dal pannello remoto" è attiva di
+base; la riga "Pannello remoto" dice se il collegamento è attivo. Dopo 5 password sbagliate di fila dallo stesso
+indirizzo, il pannello blocca i tentativi per un minuto.
+
+## 24. Problemi comuni
+
+### Dirette esterne
+
+| Problema | Cosa fare |
+|---|---|
+| L'app non si collega | controlla che sul router sia inoltrata la porta **TCP 9010** verso il server; ricontrolla indirizzo, porta, utente e password |
+| L'app dice "mount" o "mountpoint" sbagliato | alcune app vogliono il mount con la barra (`/`), altre senza: prova tutti e due |
+| Si collega ma non si sente nulla | nell'app controlla che sia scelto il microfono o il mixer giusto e che la barra del volume si muova |
+| Mi sento con l'eco o in ritardo | in cuffia ascolta l'app o il mixer, non la radio |
+| Nelle esterne non riconosce nessun brano | la regia non ha ancora mandato le impronte: guarda "Impronte audio" in Libreria e "impronte sul server" in Libreria sul server |
+| Troppi brani sconosciuti che erano parlato | premi **Non è musica**: vengono tolti |
+| Il bot Telegram non prende le etichette | bisogna **rispondere** al messaggio con l'audio (non scrivere un messaggio nuovo); controlla l'id della chat; con due bot nel gruppo usa `/menu@nomedelbot` |
+| Nel log del server "lettura messaggi: Conflict" | lo stesso token è usato da un altro programma o è quello degli allarmi: usa un bot diverso |
+
+### Regia
+
+| Problema | Cosa fare |
+|---|---|
 | La scheda audio scelta non è disponibile | il RodeCaster è scollegato o spento |
-| L'app delle esterne non si collega | porta 9010 non inoltrata, oppure mount/utente/password diversi |
-| Il pannello dice REGIA SCOLLEGATA | regia spenta o senza internet, oppure "Permetti di comandare la regia dal pannello remoto" disattivato |
-| Il pannello non si apre | porte 80 e 443 non inoltrate verso la VM |
-| "No supported authentication methods" o password rifiutata via SSH | la VM accetta solo la chiave SSH: ricrea la VM con `CHIAVE_SSH=`, oppure dalla console della VM `sudo sed -i 's/no/yes/' /etc/ssh/sshd_config.d/60-cloudimg-settings.conf` e `sudo systemctl restart ssh` |
-| `installa-server.sh` si ferma subito con errori strani (`$'\r'`) | i file sono passati da Windows con le righe in formato Windows: riscarica lo ZIP da GitHub, oppure nella cartella `ponte` esegui `find . -type f -exec sed -i 's/\r$//' {} +` |
-| "Il microfono funziona solo con il pannello aperto in HTTPS" | apri il pannello con `https://` e il nome di dominio (sezione 9) |
-| Il microfono si apre ma non si sente nulla, oppure si chiude dopo 20 secondi | porte UDP 40000-40049 non inoltrate sul router verso la VM |
-| "la libreria del server è vuota" | fai la prima copia della selezione (sezione 12, Libreria sul server) o carica brani dal pannello |
-| "la selezione toglierebbe … brani dal server" | il disco o la cartella della musica della regia non è collegato: ricollegalo e riprova |
+| In manuale la regia si ferma dopo ogni brano | è normale: premi **▶ PLAY**, oppure passa in AUTOMATICO |
+| "Ricerca fermata: MusicBrainz non raggiungibile" | niente internet o MusicBrainz in manutenzione: riprova più tardi, riparte da dove era |
+| "chiave non valida" (Discogs, Last.fm o AcoustID) | ricopia la chiave in **Impostazioni** → **Servizi per i dati dei brani** e **Salva** |
+| Il riquadro non dice "AcoustID attivo" | manca la chiave di AcoustID, oppure la regia è vecchia: aggiornala |
+| "modello non scaricato" (AI) | serve internet la prima volta: premi **Riprendi lo scaricamento** |
+| L'AI sbaglia giorni od orari | scrivili in modo esplicito ("dal lunedì al venerdì dalle 7 alle 10") e correggi nell'anteprima |
+| Una fascia ha pochi brani (⚠) | aggiungi generi alla fascia, oppure fai la ricerca su MusicBrainz |
+| Il notiziario viene sempre saltato "perché vecchio" | aumenta l'**Età massima** o scegli **Manda l'ultimo scaricato** |
+| "nel feed non c'è nessun file audio" | il link è la pagina web, non il feed: cerca il link RSS del podcast |
+| "voce non scaricata" o la prova resta su "Preparo la voce…" | serve internet la prima volta: premi **Scarica … adesso** e aspetta qualche minuto |
+| La voce dice male un nome | scrivilo come si pronuncia (es. "Elvis Prèsli"); per le sigle usa punti o spazi |
+| "replica … non disponibile" | il programma non ha puntate pubblicate, è nascosto, oppure la regia non raggiunge il server |
+| Nel report mancano i brani della notte | il server non era raggiungibile: premi **Aggiorna** con il server collegato |
+
+### Server e collegamento
+
+| Problema | Cosa fare |
+|---|---|
+| "Il ponte non risponde" | porta UDP 9000 non inoltrata sul router, indirizzo sbagliato o VM spenta |
+| "Frase segreta errata" | la frase segreta della regia è diversa da quella del server (pannello: **Impostazioni server** → **Avanzate**) |
+| "token del ponte errato" | il token della regia è diverso da quello del server (pannello: **Impostazioni server** → **Avanzate**) |
+| Il pannello non si apre, o non in https | il dominio non punta all'IP di casa, o le porte 80/443 non arrivano alla VM (`docker compose logs caddy`) |
+| Il pannello dice REGIA SCOLLEGATA | regia spenta o senza internet, oppure "Permetti di comandare la regia dal pannello remoto" spento |
+| Allarme Icecast secondario | dati sbagliati in **Impostazioni server** → **Icecast secondario**, oppure server esterno spento |
+| Le statistiche non contano il secondario | la pagina `status-json.xsl` del secondario è chiusa: metti utente e password di amministrazione in **Icecast secondario** |
+| Striscia rossa nelle Impostazioni server | manca il servizio che applica le impostazioni: rilancia `sudo bash installa-server.sh` |
+| "la libreria del server è vuota" | fai la prima copia ([sezione 22](#22-la-musica-sul-server)) o carica brani dal pannello |
+| "la selezione toglierebbe … brani dal server" | il disco della musica della regia non è collegato: ricollegalo e riprova |
 | La regia non invia brani al server | fuori dalle ore di invio, limite del giorno raggiunto, oppure "Invia da solo" spento |
-| L'ospite dice "Link non valido o scaduto" | il link ha più di 24 ore o è stato revocato: creane uno nuovo |
-| L'ospite entra ma non si sente / "si sta collegando…" resta fermo | porte UDP 40000-40049 non inoltrate, oppure la rete dell'ospite blocca l'audio: prova con un'altra rete (per esempio dati del telefono) |
+| La guida nel pannello dice "non è installata" | rilancia `sudo bash installa-server.sh` dalla cartella `ponte` dello ZIP |
+| "No supported authentication methods" o password rifiutata via SSH | la VM accetta solo la chiave: ricreala con `CHIAVE_SSH=`, oppure dalla console `sudo sed -i 's/no/yes/' /etc/ssh/sshd_config.d/60-cloudimg-settings.conf` e `sudo systemctl restart ssh` |
+| `installa-server.sh` si ferma subito con errori strani (`$'\r'`) | i file sono passati da Windows: riscarica lo ZIP, oppure nella cartella `ponte` esegui `find . -type f -exec sed -i 's/\r$//' {} +` |
+
+### Pannello, microfono e ospiti
+
+| Problema | Cosa fare |
+|---|---|
+| "Il microfono funziona solo con il pannello aperto in HTTPS" | apri il pannello con `https://` e l'indirizzo della radio |
+| Il microfono si apre ma non si sente, o si chiude dopo 20 secondi | porte UDP 40000-40049 non inoltrate sul router verso la VM |
 | "Permesso del microfono negato dal browser" | nelle impostazioni del sito nel browser consenti il microfono, poi ricarica la pagina |
-| Diretta video "in attesa del video da OBS" | OBS non è in trasmissione, oppure non raggiunge la porta UDP 9020 (indirizzo o frase segreta) |
+| L'ospite dice "Link non valido o scaduto" | il link ha più di 24 ore o è stato revocato: creane uno nuovo |
+| L'ospite entra ma non si sente | porte UDP 40000-40049 non inoltrate, oppure la rete dell'ospite blocca l'audio: prova con i dati del telefono |
+| Diretta video "in attesa del video da OBS" | OBS non trasmette, oppure non raggiunge la porta UDP 9020 |
 | "OBS manda 1920x1080" | in OBS, Impostazioni → Video: risoluzione di uscita 1280×720 |
 | "manca la chiave di YouTube/Facebook" | un amministratore deve inserirla nelle impostazioni delle dirette video |
-| "Ricerca fermata: MusicBrainz non raggiungibile" | la regia non ha internet o MusicBrainz è in manutenzione: riprova più tardi, riparte da dove era rimasta |
-| Nelle esterne non riconosce nessun brano | la regia non ha ancora mandato le impronte: controlla "Impronte audio" in Libreria e "impronte sul server" nella sezione Libreria sul server |
-| Il bot Telegram della radio non risponde alle etichette | bisogna **rispondere** al messaggio con l'audio (non scrivere un messaggio nuovo); id della chat sbagliato in `TELEGRAM_ETICHETTE_CHAT_ID`; con due bot nel gruppo usa `/menu@nomedelbot` |
-| Nel log "lettura messaggi: Conflict" | lo stesso token è usato da un altro programma o è il bot degli allarmi: usa un bot diverso |
-| Troppi brani sconosciuti che erano parlato | premi **Non è musica**: vengono tolti dall'archivio |
-| Le statistiche non contano il secondario | pagina `status-json.xsl` del secondario chiusa: imposta `ICECAST_ESTERNO_ADMIN_UTENTE` e `ICECAST_ESTERNO_ADMIN_PASSWORD` |
-| Un programma non si registra | controlla che "Registra da solo" sia acceso e le fasce (giorni e orari); l'ora è quella italiana del server |
-| L'app non trova le puntate | il nome breve della stazione in Programmi → Impostazioni è diverso da quello che usa l'app; oppure il programma è nascosto |
-| "replica … non disponibile" nella regia | il programma non ha puntate pubblicate, è nascosto, oppure la regia non raggiunge il ponte |
-| Il notiziario viene sempre saltato "perché vecchio" | il feed aggiorna la puntata in ritardo: aumenta l'**Età massima** o scegli **Manda l'ultimo scaricato** |
-| "nel feed non c'è nessun file audio" | il link non è il feed del podcast (è la pagina web): cerca il link RSS del podcast |
-| "voce non scaricata" o la prova resta su "Preparo la voce…" | serve internet la prima volta per scaricare la voce: premi **Scarica … adesso** e aspetta qualche minuto |
-| La voce dice male un nome | scrivilo come si pronuncia (es. "Elvis Prèsli"); per le sigle usa i punti o gli spazi |
+| Un programma non si registra | controlla "Registra da solo" e le fasce; l'ora è quella italiana del server |
+| L'app non trova le puntate | il nome breve della stazione è diverso da quello dell'app, oppure il programma è nascosto |
 | L'annuncio del server va in onda un brano dopo | normale con la musica di riserva: il server prepara il brano successivo in anticipo |
-| Gli annunci del server non partono mai | partono solo quando trasmette il server (senza regia, studio ed esterne); controlla giorni, orario e **attivo** |
-| "modello non scaricato" | serve internet per scaricarlo la prima volta: premi **Riprendi lo scaricamento**, riparte da dove si era fermato |
-| L'AI sbaglia giorni od orari | scrivi giorni e orari in modo esplicito ("dal lunedì al venerdì dalle 7 alle 10") e correggi nell'anteprima prima di creare gli eventi |
-| Una fascia ha pochi brani (⚠) | aggiungi generi alla fascia, oppure fai la ricerca su MusicBrainz per avere più generi |
-| "chiave non valida" (Discogs, Last.fm o AcoustID) | ricopia la chiave dal sito del servizio in **Impostazioni** → **Servizi per i dati dei brani** e premi **Salva** |
-| Il riquadro non dice "AcoustID attivo" | manca la chiave di AcoustID, oppure la regia è una versione vecchia senza fpcalc: aggiornala |
-| Nel report mancano i brani della notte | il ponte non era raggiungibile quando hai aperto il report: premi **Aggiorna** con il ponte collegato |
+| Gli annunci del server non partono mai | partono solo quando trasmette il server (senza regia ed esterne); controlla giorni, orario e **attivo** |
 
-## 16. In arrivo
-
-Prossime fasi:
+## 25. In arrivo
 
 - FluidStream, se un giorno servirà.
 
-## 17. Modifiche alla guida
+## 26. Modifiche alla guida
 
 | Data | Novità |
 |---|---|
@@ -874,3 +891,4 @@ Prossime fasi:
 | 16/11/2026 | Rotazioni con l'AI: palinsesto scritto a parole, fasce in anteprima da correggere, eventi **AI · …** creati da soli; modello locale scaricato una volta; generi e anno da MusicBrainz |
 | 16/11/2026 | Discogs (generi e stili), Last.fm (etichette) e AcoustID (brani riconosciuti dall'audio): chiavi in Impostazioni, ricerca dalla Libreria |
 | 16/11/2026 | Impostazioni del server dal pannello (menu ☰ → Impostazioni server): tutti i valori del `.env`, riavvio automatico solo delle parti cambiate, valori avanzati protetti |
+| 16/11/2026 | Guida riscritta più semplice: prima le cose di tutti i giorni, poi l'installazione; screenshot con i numeri; dirette esterne passo passo (anche con BUTT); scheda **Guida** nella regia e **📖 Guida** nel menu del pannello |

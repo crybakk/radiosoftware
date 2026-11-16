@@ -13,4 +13,6 @@ fi
 # il pannello modifica le impostazioni: il file .env deve essere scrivibile dal servizio di controllo (resta privato)
 chown 1000:1000 .env 2>/dev/null || true
 chmod 600 .env 2>/dev/null || true
+# guida d'uso per il pannello (la riempie installa-server.sh)
+mkdir -p guida
 docker compose up -d --build --remove-orphans "$@"
