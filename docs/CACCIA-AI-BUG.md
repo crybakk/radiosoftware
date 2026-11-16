@@ -116,3 +116,61 @@ Più una ventina di problemi minori (errori non gestiti, file temporanei rimasti
 11. **Icecast:** la pagina di amministrazione è raggiungibile in chiaro sulla porta 8000 e la password del relay è uguale a quella di amministrazione. Consiglio: servirla solo tramite Caddy (HTTPS) e usare password diverse.
 12. **Dirette video da OBS:** ora dopo 5 cadute ravvicinate la diretta si ferma con un errore invece di riprovare per sempre.
 13. **Crash durante una registrazione:** la bozza risulta di durata 0 e, se il servizio riparte dentro la fascia, nasce una seconda puntata.
+
+---
+
+# Terzo giro – 16/11/2026: punti aperti sistemati
+
+cristian ha chiesto di sistemare tutto: i punti "da decidere" sono stati risolti con le soluzioni consigliate, e il codice arrivato nella notte (notiziari, voce sintetica, rotazioni con l'AI) è stato controllato.
+
+## Scelte applicate
+
+| Punto | Come è stato sistemato |
+|---|---|
+| Modalità MANUALE | Il programma resta com'era (a fine brano si ferma): corretta la guida. In manuale la coda non mostra più orari previsti. |
+| Riavvio o blackout | Se la regia era in AUTOMATICO, riparte da sola in AUTOMATICO e riprende a suonare. Se era in MANUALE resta in manuale. |
+| Doppio clic su un jingle | Il secondo clic viene ignorato finché il jingle suona. |
+| Ricerca | Ignora anche gli accenti: "citta" trova "città" e "CITTÀ". |
+| Correzioni a mano | Titolo, artista, album, anno, genere e punti di mix modificati a mano non vengono più sovrascritti se il file cambia. |
+| Bozze delle puntate | Il ruolo ospite del pannello non vede e non ascolta più bozze e registrazioni in corso. |
+| Link d'invito | "Chiudi" su un ospite annulla anche il suo link. Attenzione: vale anche per un normale saluto a fine intervento, quindi per un nuovo collegamento serve un link nuovo. |
+| Pagina dell'ospite | Se l'audio non si collega riprova da sola; con la sala piena la connessione si chiude. |
+| Spazio su disco del server | Sotto 2 GB liberi (impostabile con SPAZIO_MINIMO_MB) non partono registrazioni, i caricamenti vengono rifiutati e arriva un allarme. |
+| Crash durante una registrazione | Al riavvio la bozza prende la durata vera; se si è ancora dentro la fascia, la registrazione continua nella stessa puntata. |
+| File di stato rovinati | Prima di riscriverli vengono messi da parte (`.rovinato-…`). |
+| Bot Telegram | "Non è musica" non è più possibile su un brano già etichettato. |
+| SIAE, riserva e diretta autonoma | Il registro del server segna i secondi davvero trasmessi; sotto i 30 secondi non conta, come in regia. |
+| SIAE, doppio conteggio | I passaggi della regia sovrapposti alla riserva o alla diretta autonoma del server non vengono contati. |
+| Cancellazioni sul server | I brani mancanti solo per poco (disco o NAS scollegato) non vengono mai cancellati dal server. Oltre 20 cancellazioni in una volta serve il tasto "Conferma cancellazioni". |
+| Icecast | L'amministrazione è raggiungibile solo in HTTPS (https://DOMINIO/admin/); gli indirizzi di ascolto restano gli stessi. La password dei relay ora è separata e viene creata da riavvia.sh. **Da verificare sul server dopo l'aggiornamento.** |
+| Rotazioni con l'AI | Nuovo tasto "Interrompi" durante la generazione. |
+
+## Controllo del codice nuovo (16 correzioni)
+
+- **Notiziari:**
+  - download senza limiti che riempivano memoria e disco;
+  - un feed malformato poteva bloccare il programma;
+  - una pagina web (per esempio il login del Wi-Fi) poteva andare in onda come notiziario;
+  - la pulizia di una fonte cancellava i notiziari di un'altra con nome simile;
+  - un notiziario vecchio poteva andare in onda come nuovo.
+- **Eventi:** un notiziario o un annuncio lento non blocca più l'evento oltre 3 minuti.
+- **Voce sintetica:**
+  - due annunci uguali insieme si rovinavano a vicenda;
+  - una sintesi bloccata restava ferma per sempre;
+  - una voce installata a metà risultava installata;
+  - un titolo lunghissimo faceva saltare l'annuncio;
+  - un annuncio a orario fisso partiva due volte il giorno del ritorno all'ora solare.
+- **Rotazioni con l'AI:**
+  - i tag dei brani potevano manipolare le istruzioni date all'AI;
+  - una generazione poteva restare "in corso" per sempre;
+  - una pagina d'errore scaricata poteva essere presa per il modello.
+
+## Ancora aperto
+
+- **Contatto per MusicBrainz:** chiede un sito o un'email nell'identificativo dell'app. Quale mettiamo?
+- **Esportazione CSV per la SIAE:** un titolo che inizia con `=` verrebbe letto da Excel come formula. Non è stato toccato per non alterare i dati inviati alla SIAE.
+- **Ritorno all'ora solare:** un evento orario parte 24 volte invece di 25.
+- **Autori nei tag:** un tag "Rossi, Vasco" diventa due autori, perché la virgola separa gli autori come hai scelto per la SIAE.
+- **Ruolo ospite del pannello:** vede ancora l'elenco degli ospiti e le clip dei brani sconosciuti.
+- **Guasto della voce sintetica o del modello AI:** può ancora far cadere il server o la regia. Per evitarlo bisognerebbe farli girare in un processo separato, che è un lavoro più grande.
+- **Annunci delle 2 di notte:** il giorno del passaggio all'ora legale non partono.

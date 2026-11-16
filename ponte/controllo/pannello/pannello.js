@@ -99,9 +99,11 @@ function showRole() {
   $('who').textContent = `${me.name} · ${me.role}`
   $('users-btn').hidden = me.role !== 'amministratore'
   $('ann-btn').hidden = me.role !== 'amministratore'
-  if (me.role !== 'amministratore' && (!$('users').hidden || !$('ann').hidden)) {
+  $('imp-btn').hidden = me.role !== 'amministratore'
+  if (me.role !== 'amministratore' && (!$('users').hidden || !$('ann').hidden || !$('imp').hidden)) {
     $('users').hidden = true
     $('ann').hidden = true
+    $('imp').hidden = true
     $('main').hidden = false
   }
   $('readonly').hidden = canCommand()
@@ -765,6 +767,7 @@ $('users-btn').addEventListener('click', () => {
   $('progs').hidden = true
   $('stats').hidden = true
   $('ann').hidden = true
+  $('imp').hidden = true
   $('users').hidden = false
   loadUsers()
 })

@@ -1,0 +1,8 @@
+[Unit]
+Description=Radio: applica le impostazioni salvate dal pannello
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/radio-ponte/sistema/applica-impostazioni.sh

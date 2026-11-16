@@ -234,6 +234,42 @@ export function SettingsView({ radio }: { radio: Radio }) {
 
       <VoiceSection draft={draft} setDraft={setDraft} />
 
+      <section className="panel">
+        <div className="section-title">Servizi per i dati dei brani</div>
+        <p className="hint">
+          Oltre a MusicBrainz, la regia può chiedere generi e caratteristiche dei brani ad altri servizi gratuiti. Ognuno
+          vuole una chiave personale: creala dal link, incollala qui e premi Salva. Poi avvia la ricerca dalla Libreria.
+        </p>
+        <div className="form-grid">
+          {(
+            [
+              ['discogsToken', 'Token di Discogs', 'Generi e stili', 'https://www.discogs.com/settings/developers', 'Discogs → Impostazioni → Developers → Generate new token'],
+              ['lastfmKey', 'Chiave API di Last.fm', 'Etichette: carattere, decennio', 'https://www.last.fm/api/account/create', 'Last.fm → crea un account API, copia la "API key"'],
+              ['acoustidKey', 'Chiave applicazione di AcoustID', 'Trova i brani dall\'audio', 'https://acoustid.org/new-application', 'AcoustID → accedi → New application, copia la "API key"']
+            ] as const
+          ).map(([key, label, what, url, how]) => (
+            <label key={key}>
+              <span>
+                {label} <em>· {what}</em>
+              </span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={draft[key]}
+                placeholder="incolla qui la chiave"
+                onChange={(e) => setDraft({ ...draft, [key]: e.target.value.trim() })}
+              />
+              <small className="hint">
+                {how}:{' '}
+                <a href={url} target="_blank" rel="noreferrer">
+                  {url.replace('https://', '')}
+                </a>
+              </small>
+            </label>
+          ))}
+        </div>
+      </section>
+
       <div className="row end sticky">
         {newsError && dirty && <span className="hint error-text">Notiziari: {newsError}</span>}
         {saved && !dirty && <span className="hint">Impostazioni salvate</span>}

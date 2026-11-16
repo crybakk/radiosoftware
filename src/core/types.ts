@@ -23,6 +23,10 @@ export interface Track {
   genre: string
   /** Generi di MusicBrainz, separati da virgole (vuoto se non ancora letti o non trovati). */
   mbGenres: string
+  /** Generi e stili di Discogs, separati da virgole. */
+  dcGenres: string
+  /** Etichette di Last.fm (carattere, decennio…), separate da virgole. */
+  lfmTags: string
   composer: string
   publisher: string
   isrc: string
@@ -83,6 +87,12 @@ export interface Settings {
   radioName: string
   /** Ultimo palinsesto scritto per le rotazioni generate dall'AI. */
   aiDescription: string
+  /** Token personale di Discogs (vuoto = Discogs non si usa). */
+  discogsToken: string
+  /** Chiave API di Last.fm. */
+  lastfmKey: string
+  /** Chiave dell'applicazione AcoustID. */
+  acoustidKey: string
   /**
    * Modalità della regia (AUTOMATICO / MANUALE), salvata a ogni cambio: dopo un riavvio
    * o un blackout la regia riparte com'era (in automatico riprende a suonare da sola).
@@ -166,6 +176,9 @@ export const DEFAULT_SETTINGS: Settings = {
   voice: DEFAULT_VOICE,
   radioName: '',
   aiDescription: '',
+  discogsToken: '',
+  lastfmKey: '',
+  acoustidKey: '',
   playoutMode: 'manual'
 }
 

@@ -17,7 +17,7 @@ let annPoll = null
 
 $('ann-btn').addEventListener('click', () => {
   $('menu').hidden = true
-  for (const id of ['main', 'users', 'progs', 'stats']) $(id).hidden = true
+  for (const id of ['main', 'users', 'progs', 'stats', 'imp']) $(id).hidden = true
   $('ann').hidden = false
   loadAnn()
 })

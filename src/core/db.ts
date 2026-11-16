@@ -109,6 +109,8 @@ type Row = Record<string, unknown>
 const MB_TODO = "kind = 'music' AND enabled = 1 AND (composer = '' OR publisher = '' OR isrc = '' OR iswc = '')"
 /** Musica attiva da cercare su MusicBrainz: dati SIAE mancanti mai cercati, oppure generi non ancora letti. */
 const MB_PENDING = `kind = 'music' AND enabled = 1 AND ((${MB_TODO} AND mb_checked_at IS NULL) OR mb_genres_at IS NULL)`
+/** Musica cercata per titolo senza trovarla e mai provata con AcoustID (dall'audio). */
+const MB_ACOUSTID = "kind = 'music' AND enabled = 1 AND mb_checked_at IS NOT NULL AND mb_recording_id = '' AND acoustid_at IS NULL"
 
 function rowToTrack(r: Row): Track {
   return {
@@ -121,6 +123,8 @@ function rowToTrack(r: Row): Track {
     year: r.year == null ? null : Number(r.year),
     genre: String(r.genre),
     mbGenres: r.mb_genres == null ? '' : String(r.mb_genres),
+    dcGenres: r.dc_genres == null ? '' : String(r.dc_genres),
+    lfmTags: r.lfm_tags == null ? '' : String(r.lfm_tags),
     composer: String(r.composer),
     publisher: String(r.publisher),
     isrc: String(r.isrc),
@@ -282,6 +286,13 @@ export class RadioDb {
     // v0.9: generi di MusicBrainz (per le rotazioni), separati da quello scritto nel file
     if (!cols.includes('mb_genres')) this.db.exec("ALTER TABLE tracks ADD COLUMN mb_genres TEXT NOT NULL DEFAULT ''")
     if (!cols.includes('mb_genres_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN mb_genres_at TEXT')
+    // v0.10: generi e stili da Discogs, etichette da Last.fm, ricerca dall'audio con AcoustID
+    if (!cols.includes('dc_genres')) this.db.exec("ALTER TABLE tracks ADD COLUMN dc_genres TEXT NOT NULL DEFAULT ''")
+    if (!cols.includes('dc_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN dc_at TEXT')
+    if (!cols.includes('lfm_tags')) this.db.exec("ALTER TABLE tracks ADD COLUMN lfm_tags TEXT NOT NULL DEFAULT ''")
+    if (!cols.includes('lfm_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN lfm_at TEXT')
+    if (!cols.includes('acoustid_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN acoustid_at TEXT')
+    this.db.exec('CREATE TABLE IF NOT EXISTS lfm_artists (name TEXT PRIMARY KEY, tags TEXT NOT NULL, checked_at TEXT NOT NULL)')
     this.db.exec('CREATE TABLE IF NOT EXISTS mb_artists (id TEXT PRIMARY KEY, genres TEXT NOT NULL, checked_at TEXT NOT NULL)')
     // v0.10: campi corretti a mano (titolo, artista, ..., punti di mix); nei database esistenti nessuno è segnato
     if (!cols.includes('manual_fields')) this.db.exec('ALTER TABLE tracks ADD COLUMN manual_fields INTEGER NOT NULL DEFAULT 0')
@@ -711,9 +722,8 @@ export class RadioDb {
     }
     if (f.genre) {
       // genere del file o generi di MusicBrainz
-      where.push("(genre LIKE ? ESCAPE '\\' OR mb_genres LIKE ? ESCAPE '\\')")
-      const g = `%${f.genre.replace(/[\\%_]/g, (c) => '\\' + c)}%`
-      params.push(g, g)
+      where.push("(genre || ',' || mb_genres || ',' || dc_genres || ',' || lfm_tags) LIKE ? ESCAPE '\\'")
+      params.push(`%${f.genre.replace(/[\\%_]/g, (c) => '\\' + c)}%`)
     }
     const clause = where.join(' AND ')
     if (avoidSince) {
@@ -743,7 +753,8 @@ export class RadioDb {
   listGenres(): string[] {
     const rows = this.db
       .prepare(
-        "SELECT genre AS g FROM tracks WHERE enabled = 1 AND genre != '' UNION SELECT mb_genres FROM tracks WHERE enabled = 1 AND mb_genres != ''"
+        "SELECT genre AS g FROM tracks WHERE enabled = 1 AND genre != '' UNION SELECT mb_genres FROM tracks WHERE enabled = 1 AND mb_genres != '' " +
+          "UNION SELECT dc_genres FROM tracks WHERE enabled = 1 AND dc_genres != '' UNION SELECT lfm_tags FROM tracks WHERE enabled = 1 AND lfm_tags != ''"
       )
       .all() as Row[]
     // senza distinguere maiuscole: "Pop" del file e "pop" di MusicBrainz sono lo stesso genere
@@ -905,17 +916,23 @@ export class RadioDb {
   // ---------- MusicBrainz ----------
 
   /** Musica a cui manca qualche dato per il report SIAE e non ancora cercata su MusicBrainz. */
-  mbPending(limit = 20): (Track & { recordingId: string; checked: boolean })[] {
-    return (
-      this.db.prepare(`SELECT * FROM tracks WHERE ${MB_PENDING} ORDER BY id LIMIT ?`).all(limit) as Row[]
-    ).map((r) => ({ ...rowToTrack(r), recordingId: String(r.mb_recording_id), checked: r.mb_checked_at != null }))
+  mbPending(limit = 20, acoustId = false): (Track & { recordingId: string; checked: boolean; acoustIdTried: boolean })[] {
+    // con AcoustID tornano in coda anche i brani cercati per titolo senza trovarli e mai provati dall'audio
+    const where = acoustId ? `(${MB_PENDING}) OR (${MB_ACOUSTID})` : MB_PENDING
+    return (this.db.prepare(`SELECT * FROM tracks WHERE ${where} ORDER BY id LIMIT ?`).all(limit) as Row[]).map((r) => ({
+      ...rowToTrack(r),
+      recordingId: String(r.mb_recording_id),
+      checked: r.mb_checked_at != null,
+      acoustIdTried: r.acoustid_at != null
+    }))
   }
 
-  mbStats(): { todo: number; checked: number; found: number } {
+  mbStats(acoustId = false): { todo: number; checked: number; found: number } {
+    const pending = acoustId ? `(${MB_PENDING}) OR (${MB_ACOUSTID})` : MB_PENDING
     const r = this.db
       .prepare(
         `SELECT
-           SUM(CASE WHEN ${MB_PENDING} THEN 1 ELSE 0 END) AS todo,
+           SUM(CASE WHEN ${pending} THEN 1 ELSE 0 END) AS todo,
            SUM(CASE WHEN mb_checked_at IS NOT NULL THEN 1 ELSE 0 END) AS checked,
            SUM(CASE WHEN mb_recording_id != '' THEN 1 ELSE 0 END) AS found
          FROM tracks WHERE kind = 'music' AND enabled = 1`
@@ -944,9 +961,63 @@ export class RadioDb {
       .run(recordingId, (fill.genres ?? []).join(', '), fill.year ?? null, fill.composer ?? '', fill.publisher ?? '', fill.isrc ?? '', fill.iswc ?? '', id)
   }
 
+  // ---------- Discogs, Last.fm, AcoustID ----------
+
+  /** Musica attiva non ancora cercata su Discogs (dc) o Last.fm (lfm). */
+  tagPending(service: 'dc' | 'lfm', limit = 20): Track[] {
+    const col = service === 'dc' ? 'dc_at' : 'lfm_at'
+    return (
+      this.db
+        .prepare(`SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${col} IS NULL ORDER BY id LIMIT ?`)
+        .all(limit) as Row[]
+    ).map(rowToTrack)
+  }
+
+  tagStats(service: 'dc' | 'lfm'): { todo: number; checked: number; found: number } {
+    const [at, val] = service === 'dc' ? ['dc_at', 'dc_genres'] : ['lfm_at', 'lfm_tags']
+    const r = this.db
+      .prepare(
+        `SELECT SUM(CASE WHEN ${at} IS NULL THEN 1 ELSE 0 END) AS todo,
+                SUM(CASE WHEN ${at} IS NOT NULL THEN 1 ELSE 0 END) AS checked,
+                SUM(CASE WHEN ${val} != '' THEN 1 ELSE 0 END) AS found
+         FROM tracks WHERE kind = 'music' AND enabled = 1`
+      )
+      .get() as Row
+    return { todo: Number(r.todo ?? 0), checked: Number(r.checked ?? 0), found: Number(r.found ?? 0) }
+  }
+
+  saveTags(service: 'dc' | 'lfm', id: number, tags: string[]): void {
+    const [at, val] = service === 'dc' ? ['dc_at', 'dc_genres'] : ['lfm_at', 'lfm_tags']
+    this.db.prepare(`UPDATE tracks SET ${val} = ?, ${at} = datetime('now') WHERE id = ?`).run(tags.join(', '), id)
+  }
+
+  /** Rimette in coda i brani cercati senza risultato (dopo qualche mese i servizi si arricchiscono). */
+  tagRetry(service: 'dc' | 'lfm'): number {
+    const [at, val] = service === 'dc' ? ['dc_at', 'dc_genres'] : ['lfm_at', 'lfm_tags']
+    return Number(this.db.prepare(`UPDATE tracks SET ${at} = NULL WHERE ${val} = ''`).run().changes)
+  }
+
+  lfmArtistTags(name: string): string[] | null {
+    const r = this.db.prepare('SELECT tags FROM lfm_artists WHERE name = ?').get(name.trim().toLowerCase()) as Row | undefined
+    return r ? String(r.tags).split(', ').filter(Boolean) : null
+  }
+
+  saveLfmArtistTags(name: string, tags: string[]): void {
+    this.db
+      .prepare("INSERT OR REPLACE INTO lfm_artists(name, tags, checked_at) VALUES (?, ?, datetime('now'))")
+      .run(name.trim().toLowerCase(), tags.join(', '))
+  }
+
+  /** AcoustID già provato per il brano (trovato o no). */
+  markAcoustId(id: number): void {
+    this.db.prepare("UPDATE tracks SET acoustid_at = datetime('now') WHERE id = ?").run(id)
+  }
+
   /** Rimette in coda per MusicBrainz un brano preciso (per esempio appena scaricato dal server). */
   mbRequeue(id: number): void {
-    this.db.prepare('UPDATE tracks SET mb_checked_at = NULL, mb_genres_at = NULL WHERE id = ?').run(id)
+    this.db
+      .prepare('UPDATE tracks SET mb_checked_at = NULL, mb_genres_at = NULL, acoustid_at = NULL, dc_at = NULL, lfm_at = NULL WHERE id = ?')
+      .run(id)
   }
 
   /** Generi di un artista già letti da MusicBrainz (null = mai letti). */

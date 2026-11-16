@@ -7,6 +7,8 @@
 import type { RadioDb } from '../core/db'
 import { MbError, MusicBrainz, type MbResult } from '../core/musicbrainz'
 import type { Track } from '../core/types'
+import type { AcoustId } from '../core/acoustid'
+import { fingerprint } from './fpcalc'
 
 export interface MbStatus {
   running: boolean
@@ -15,6 +17,8 @@ export interface MbStatus {
   /** Brani già cercati e quanti trovati. */
   checked: number
   found: number
+  /** Ricerca dall'audio con AcoustID attiva. */
+  acoustId: boolean
   current: string
   lastError: string | null
   /** Brani completati in questa sessione di ricerca. */
@@ -33,15 +37,22 @@ export class MusicBrainzService {
   constructor(
     private readonly db: RadioDb,
     private readonly onStatus: (s: MbStatus) => void,
-    mb?: MusicBrainz
+    mb?: MusicBrainz,
+    /** Ricerca dall'audio per i brani non trovati per titolo (se c'è la chiave e fpcalc). */
+    private readonly acoustId?: { client: AcoustId; enabled: () => boolean; fpcalc: () => string | null }
   ) {
     this.mb = mb ?? new MusicBrainz()
+  }
+
+  private acoustIdOn(): boolean {
+    return !!this.acoustId?.enabled() && !!this.acoustId.fpcalc()
   }
 
   status(): MbStatus {
     return {
       running: this.running,
-      ...this.db.mbStats(),
+      ...this.db.mbStats(this.acoustIdOn()),
+      acoustId: this.acoustIdOn(),
       current: this.current,
       lastError: this.lastError,
       doneNow: this.doneNow
@@ -84,10 +95,22 @@ export class MusicBrainzService {
    * cercata senza trovarla non si ricerca; altrimenti ricerca completa. Se la registrazione non ha generi
    * si prendono quelli del primo artista (letti una volta sola per artista).
    */
-  private async one(t: Track & { recordingId?: string; checked?: boolean }, signal?: AbortSignal): Promise<void> {
+  private async one(t: Track & { recordingId?: string; checked?: boolean; acoustIdTried?: boolean }, signal?: AbortSignal): Promise<void> {
     let r: MbResult | null = null
     if (t.recordingId) r = await this.mb.recording(t.recordingId, signal)
     else if (!t.checked) r = await this.mb.find(t, signal)
+    // non trovato per titolo: si prova dall'audio (una volta sola per brano)
+    if (!r && !t.recordingId && !t.acoustIdTried && this.acoustIdOn()) {
+      let fp: { fingerprint: string; duration: number } | null = null
+      try {
+        fp = await fingerprint(this.acoustId!.fpcalc()!, t.path, signal)
+      } catch {
+        // file illeggibile o mancante: non si riprova
+      }
+      const id = fp ? await this.acoustId!.client.recording(fp, signal) : null
+      if (id) r = await this.mb.recording(id, signal)
+      this.db.markAcoustId(t.id)
+    }
     let genres = r?.genres ?? []
     const artist = r?.artistIds[0]
     if (r && !genres.length && artist) {
@@ -112,7 +135,7 @@ export class MusicBrainzService {
     let failures = 0
     try {
       while (!ac.signal.aborted) {
-        const batch = this.db.mbPending(20)
+        const batch = this.db.mbPending(20, this.acoustIdOn())
         if (!batch.length) break
         for (const t of batch) {
           if (ac.signal.aborted) break

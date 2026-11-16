@@ -152,6 +152,8 @@ export function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose
         <div className="section-title">Scheda brano</div>
         <div className="file-path">{track.path}</div>
         {track.mbGenres && <div className="hint">Generi da MusicBrainz: {track.mbGenres}</div>}
+        {track.dcGenres && <div className="hint">Generi da Discogs: {track.dcGenres}</div>}
+        {track.lfmTags && <div className="hint">Etichette da Last.fm: {track.lfmTags}</div>}
         <div className="form-grid">
           {TEXT_FIELDS.map((f) => (
             <label key={f.key}>

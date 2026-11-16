@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { MbStatus } from '../../main/musicbrainz'
+import type { TagStatus } from '../../main/tagServices'
 import type { Track } from '../../core/types'
 
 const api = window.radio
@@ -10,7 +11,15 @@ export function MusicBrainzSection({ onEdit, refreshKey }: { onEdit: (t: Track) 
   const [list, setList] = useState<{ tracks: Track[]; total: number } | null>(null)
   const [open, setOpen] = useState(false)
 
+  const [tags, setTags] = useState<TagStatus[]>([])
   useEffect(() => api.onMbStatus(setSt), [])
+  useEffect(
+    () => api.onTagStatus((t) => setTags((prev) => (prev.some((x) => x.service === t.service) ? prev.map((x) => (x.service === t.service ? t : x)) : [...prev, t]))),
+    []
+  )
+  useEffect(() => {
+    void api.tagStatus().then(setTags)
+  }, [refreshKey])
   // dopo una scansione o una correzione dalla scheda
   useEffect(() => {
     void api.mbStatus().then(setSt)
@@ -25,7 +34,7 @@ export function MusicBrainzSection({ onEdit, refreshKey }: { onEdit: (t: Track) 
 
   return (
     <section className="panel mb-panel">
-      <div className="section-title">Dati per il report SIAE e generi</div>
+      <div className="section-title">Dati dei brani: report SIAE e generi</div>
       <p className="hint">
         MusicBrainz completa autori, editore, ISWC e ISRC dove mancano: i dati scritti a mano non vengono toccati. Il
         codice opera SIAE non è su MusicBrainz e va scritto nella scheda. Legge anche i generi (per le rotazioni) e
@@ -57,6 +66,49 @@ export function MusicBrainzSection({ onEdit, refreshKey }: { onEdit: (t: Track) 
           </button>
         )}
       </div>
+      {st.acoustId && (
+        <p className="hint">AcoustID attivo: i brani non trovati per titolo vengono cercati anche dall'audio.</p>
+      )}
+      <div className="subsection">Altri servizi</div>
+      {tags.map((t) => {
+        const h = Math.ceil((t.todo * (t.service === 'dc' ? 1.1 : 0.3)) / 3600)
+        return (
+          <div key={t.service} className="tag-service">
+            <b>{t.name}</b>{' '}
+            {!t.configured
+              ? 'manca la chiave: aggiungila in Impostazioni → Servizi per i dati dei brani.'
+              : t.running
+                ? `ricerca in corso: ${t.doneNow} controllati, ne restano ${t.todo}. Ora: ${t.current}`
+                : t.todo > 0
+                  ? `${t.todo} brani da cercare (circa ${h} ${h === 1 ? 'ora' : 'ore'}).`
+                  : 'tutti i brani sono stati cercati.'}{' '}
+            {t.checked > 0 && `Cercati ${t.checked}, con dati ${t.found}.`}
+            {t.lastError && <div className="banner error inline-banner">Ricerca fermata: {t.lastError}</div>}
+            <div className="row">
+              {t.running ? (
+                <button className="small" onClick={() => void api.tagStop(t.service)}>
+                  Ferma
+                </button>
+              ) : (
+                <button className="small primary" disabled={!t.configured || !t.todo} onClick={() => void api.tagStart(t.service)}>
+                  Cerca su {t.name}
+                </button>
+              )}
+              <button
+                className="small"
+                disabled={t.running}
+                title="Rimette in coda i brani già cercati senza risultato"
+                onClick={async () => {
+                  const n = await api.tagRetry(t.service)
+                  setTags((prev) => prev.map((x) => (x.service === n.service ? n : x)))
+                }}
+              >
+                Riprova i brani non trovati
+              </button>
+            </div>
+          </div>
+        )
+      })}
       {open && list && (
         <div className="siae-table">
           <table className="table">
