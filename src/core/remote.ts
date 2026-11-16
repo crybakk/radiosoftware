@@ -96,6 +96,8 @@ export interface RemoteLinkOptions {
 
 /** Il ponte manda un ping ogni 15 s: senza notizie per 40 s il collegamento è considerato caduto. */
 const SILENCE_MS = 40_000
+/** Ricerche dai pannelli in attesa sulla regia, al massimo (oltre si risponde "riprova"). */
+const MAX_SEARCHES_WAITING = 4
 
 /**
  * Canale WebSocket dalla regia al ponte. È la regia ad aprirlo (funziona anche dietro il NAT del 4G)
@@ -119,6 +121,8 @@ export class RemoteLink {
   private watchdog: ReturnType<typeof setInterval> | null = null
   /** I comandi (tranne la ricerca) vengono eseguiti uno alla volta, nell'ordine di arrivo. */
   private queue: Promise<unknown> = Promise.resolve()
+  private searchQueue: Promise<unknown> = Promise.resolve()
+  private searchesWaiting = 0
 
   constructor(
     onCommand: (cmd: RemoteCommand, by: string) => Promise<unknown>,
@@ -204,8 +208,9 @@ export class RemoteLink {
         if (this.pendingState) this.flushState()
       } else if (msg.t === 'cmd') {
         const { id, cmd, by } = msg
-        // la ricerca non tocca la messa in onda: può andare subito; il resto rispetta l'ordine
-        const run = cmd?.type === 'search' ? this.onCommand(cmd, by) : this.enqueue(() => this.onCommand(cmd, by))
+        // la ricerca non tocca la messa in onda: non aspetta gli altri comandi, ma le ricerche vanno
+        // una alla volta e poche in attesa, perché tanti pannelli insieme non blocchino la regia
+        const run = cmd?.type === 'search' ? this.enqueueSearch(() => this.onCommand(cmd, by)) : this.enqueue(() => this.onCommand(cmd, by))
         run.then(
           (data) => this.send({ t: 'reply', id, ok: true, data: data ?? undefined }),
           (e: unknown) => this.send({ t: 'reply', id, ok: false, error: e instanceof Error ? e.message : String(e) })
@@ -226,6 +231,14 @@ export class RemoteLink {
         if (ws.readyState !== 1) down(0)
       }, 500)
     }
+  }
+
+  private enqueueSearch<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.searchesWaiting >= MAX_SEARCHES_WAITING) return Promise.reject(new Error('troppe ricerche insieme: riprova tra poco'))
+    this.searchesWaiting++
+    const run = this.searchQueue.then(fn).finally(() => this.searchesWaiting--)
+    this.searchQueue = run.catch(() => {})
+    return run
   }
 
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
