@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -83,6 +83,26 @@ describe('bot Telegram', () => {
     await bot.handle(msg('Lucio Dalla - Caruso\nDalla', { reply_to_message: { message_id: 101 } }))
     expect(labelled).toEqual([{ id: 'sconosciuto/1', label: { artist: 'Lucio Dalla', title: 'Caruso', composer: 'Dalla', publisher: '' }, by: 'Telegram: @cri' }])
     expect(calls.at(-1)!.body.text).toMatch(/^✅ Salvato/)
+    // il pulsante "Non è musica" si toglie dal messaggio dell'audio
+    expect(calls.find((c) => c.method === 'editMessageReplyMarkup')!.body).toEqual({ chat_id: '-100', message_id: 101, reply_markup: { inline_keyboard: [] } })
+  })
+
+  it('"Non è musica" su un brano già etichettato: rifiutato con la spiegazione, il pulsante sparisce', async () => {
+    const { bot, calls, discarded } = setup()
+    await bot.handle(press('scarta:sconosciuto/2'))
+    expect(discarded).toEqual([])
+    const ans = calls.find((c) => c.method === 'answerCallbackQuery')!
+    expect(ans.body.text).toContain('Già etichettato come "Già - Fatto"')
+    expect(calls.find((c) => c.method === 'editMessageReplyMarkup')!.body.message_id).toBe(50)
+  })
+
+  it('file di stato rovinato: copiato da parte', () => {
+    const { dir } = setup()
+    writeFileSync(join(dir, 'stato.json'), '{rotto')
+    const logs: string[] = []
+    new LabelBot({ token: 'T', chatId: '-1', stateFile: join(dir, 'stato.json'), stationName: 'R', get: () => undefined, pending: () => [], clipFile: () => null, label: () => {}, discard: () => {}, log: (s) => logs.push(s) })
+    expect(readdirSync(dir).some((f) => f.startsWith('stato.json.rovinato-'))).toBe(true)
+    expect(logs.join('\n')).toContain('non leggibile')
   })
 
   it('ricorda i messaggi anche dopo un riavvio', async () => {

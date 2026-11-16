@@ -78,6 +78,11 @@ interface Slot {
   ended: boolean
 }
 
+/** Identifica un jingle della cartwall (i brani della libreria per id, gli altri per file). */
+function cartKey(t: Track): string {
+  return t.id > 0 ? `id:${t.id}` : `file:${t.path}`
+}
+
 let uidCounter = 0
 export function newUid(): string {
   uidCounter++
@@ -98,6 +103,8 @@ export class PlayoutEngine {
   /** Occorrenze già eseguite (id evento @ orario), per non ripeterle se l'orologio torna indietro. */
   private firedEvents = new Map<string, number>()
   private starting = false
+  /** Jingle della cartwall che stanno caricando. */
+  private cartsStarting = new Set<string>()
   private filling = false
   private lastError: string | null = null
   /** Tolleranza degli eventi soft: uid del brano evento da proteggere -> ora limite. */
@@ -197,11 +204,21 @@ export class PlayoutEngine {
     this.emit()
   }
 
-  /** Suona un jingle dalla cartwall, sopra a quello che è in onda. */
+  /**
+   * Suona un jingle dalla cartwall, sopra a quello che è in onda.
+   * Se lo stesso jingle sta già suonando (o sta partendo) il clic viene ignorato: niente due copie sovrapposte.
+   */
   async playCart(track: Track): Promise<void> {
+    const key = cartKey(track)
+    if (this.cartsStarting.has(key) || this.carts.some((c) => !c.ended && !c.fading && cartKey(c.item.track) === key)) return
     const item: QueueItem = { uid: newUid(), track, origin: 'manual' }
-    const slot = await this.launch(item, this.carts)
-    if (!slot) this.emit()
+    this.cartsStarting.add(key)
+    try {
+      const slot = await this.launch(item, this.carts)
+      if (!slot) this.emit()
+    } finally {
+      this.cartsStarting.delete(key)
+    }
   }
 
   stopCarts(): void {
@@ -513,4 +530,27 @@ export class PlayoutEngine {
     const s = this.snapshot()
     for (const l of this.listeners) l(s)
   }
+}
+
+/**
+ * Dopo un riavvio o un blackout: se la regia era in AUTOMATICO riparte in automatico
+ * (e quindi riprende a suonare da sola, la radio non resta muta); se era in MANUALE resta in manuale.
+ * Da quel momento salva la modalità a ogni cambio (tasto, pannello remoto, evento, STOP).
+ * Restituisce la funzione che smette di seguire i cambi.
+ */
+export function restoreAndPersistMode(
+  engine: PlayoutEngine,
+  saved: PlayoutMode,
+  save: (mode: PlayoutMode) => void
+): () => void {
+  if (saved === 'auto' && engine.getMode() !== 'auto') engine.setMode('auto')
+  let last = saved
+  const check = (mode: PlayoutMode): void => {
+    if (mode === last) return
+    last = mode
+    save(mode)
+  }
+  // cambiata a mano prima che le impostazioni fossero lette
+  check(engine.getMode())
+  return engine.subscribe((s) => check(s.mode))
 }

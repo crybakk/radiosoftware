@@ -110,9 +110,12 @@ export function spokenDate(d: Date): string {
   return d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
+/** Lunghezza massima di una parte riempita: un titolo enorme nei tag non deve rendere l'annuncio troppo lungo. */
+const MAX_PART = 150
+
 /** Riempie le parti tra graffe. Restituisce anche quelle rimaste vuote (per avvisare). */
 export function fillTemplate(text: string, ctx: AnnounceContext): { text: string; missing: string[] } {
-  const values: Record<string, string | undefined> = {
+  const raw: Record<string, string | undefined> = {
     ora: spokenTime(ctx.now),
     data: spokenDate(ctx.now),
     radio: ctx.radio?.trim() || undefined,
@@ -123,6 +126,12 @@ export function fillTemplate(text: string, ctx: AnnounceContext): { text: string
     programma: ctx.program?.trim() || undefined,
     prossimo_programma: ctx.nextProgram?.title?.trim() || undefined,
     ora_prossimo_programma: ctx.nextProgram ? spokenTime(ctx.nextProgram.at) : undefined
+  }
+  const values: Record<string, string | undefined> = {}
+  for (const [k, v] of Object.entries(raw)) {
+    // a capo e caratteri di controllo dai tag diventano spazi; testo tagliato se troppo lungo
+    const clean = v?.replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim()
+    values[k] = clean ? (clean.length > MAX_PART ? clean.slice(0, MAX_PART).replace(/\s+\S*$/, '') || clean.slice(0, MAX_PART) : clean) : undefined
   }
   const missing: string[] = []
   const out = text.replace(/\{([a-z_]+)\}/g, (all, key: string) => {

@@ -10,6 +10,8 @@ let meterCtx = null
 let seq = 0
 const waiting = new Map()
 let ended = false
+let inside = false
+let retry = null
 
 function show(id) {
   for (const s of ['g-join', 'g-wait', 'g-in', 'g-end']) $(s).hidden = s !== id
@@ -76,10 +78,11 @@ function waitIce(conn) {
 }
 
 async function connectAudio() {
+  let conn = null
   try {
     const s = await getMic()
     pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
-    const conn = pc
+    conn = pc
     for (const t of s.getAudioTracks()) conn.addTrack(t, s)
     conn.ontrack = (e) => {
       const a = $('g-ret')
@@ -88,19 +91,40 @@ async function connectAudio() {
       a.play().catch(() => {})
     }
     conn.onconnectionstatechange = () => {
-      if (conn.connectionState === 'failed') error('Collegamento audio caduto: controlla la connessione e ricarica la pagina.')
+      if (conn.connectionState === 'failed' && pc === conn) audioFailed('Collegamento audio caduto: riprovo tra poco…')
     }
     await conn.setLocalDescription(await conn.createOffer())
     await waitIce(conn)
     const ans = await request({ t: 'rtc-offer', sdp: conn.localDescription.sdp })
     if (pc !== conn) return
     await conn.setRemoteDescription({ type: 'answer', sdp: ans.sdp })
+    error('')
   } catch (e) {
-    error(e.name === 'NotAllowedError' ? 'Il browser non ha dato il permesso per il microfono.' : e.message)
+    // un tentativo vecchio, già sostituito o chiuso: non tocca quello nuovo
+    if (conn && pc !== conn) return
+    // senza permesso del microfono non si riprova da soli (si riprova al prossimo cambio di stato)
+    if (e.name === 'NotAllowedError') audioFailed('Il browser non ha dato il permesso per il microfono.', false)
+    else audioFailed(e.message)
   }
 }
 
+/** Audio non collegato: si chiude la connessione e si riprova da soli, senza ricaricare la pagina. */
+function audioFailed(text, again = true) {
+  if (pc) pc.close()
+  pc = null
+  error(text)
+  clearTimeout(retry)
+  retry = null
+  if (!again) return
+  retry = setTimeout(() => {
+    retry = null
+    if (inside && !ended && !pc && ws && ws.readyState === 1) void connectAudio()
+  }, 5000)
+}
+
 function cleanup() {
+  clearTimeout(retry)
+  retry = null
   if (pc) pc.close()
   pc = null
   if (stream) for (const t of stream.getTracks()) t.stop()
@@ -120,6 +144,7 @@ function finish(text) {
 }
 
 function onState(m) {
+  inside = m.state === 'dentro'
   if (m.state === 'attesa') {
     show('g-wait')
   } else if (m.state === 'dentro') {
@@ -132,6 +157,8 @@ function onState(m) {
     finish('Il conduttore non può farti entrare adesso')
   } else if (m.state === 'pieno') {
     finish("La sala d'attesa è piena: riprova tra poco")
+    // il ponte chiude la connessione: la si chiude anche da qui
+    ws.close()
   } else {
     finish('Collegamento chiuso')
   }

@@ -104,6 +104,8 @@ export class AnnounceScheduler {
   private readonly now: () => Date
   private readonly log: (s: string) => void
   private lastMinute = ''
+  /** Ultima volta che è partito ogni annuncio (per non ripeterlo quando l'ora legale finisce). */
+  private fired = new Map<string, string>()
   private pending: Interjection[] = []
   private timer: ReturnType<typeof setInterval> | null = null
 
@@ -131,10 +133,16 @@ export class AnnounceScheduler {
   /** Controlla se in questo minuto c'è un annuncio da fare (una volta sola per minuto). */
   async tick(): Promise<void> {
     const now = this.now()
-    const key = `${now.toDateString()} ${now.getHours()}:${now.getMinutes()}`
+    // minuto vero (non l'ora del giorno): con il ritorno all'ora solare le 2:xx vengono due volte
+    const key = String(Math.floor(now.getTime() / 60_000))
     if (key === this.lastMinute) return
     this.lastMinute = key
-    const due = dueAt(this.d.store.get().items, now)
+    const items = this.d.store.get().items
+    // "ogni ora" va ogni ora vera; un orario fisso una volta sola al giorno, anche se le 2:30 vengono due volte
+    const firedKey = (a: ScheduledAnnounce): string => (a.time.startsWith('*') ? key : `${now.toDateString()} ${a.time}`)
+    const due = dueAt(items, now).filter((a) => this.fired.get(a.id) !== firedKey(a))
+    for (const a of due) this.fired.set(a.id, firedKey(a))
+    for (const id of this.fired.keys()) if (!items.some((a) => a.id === id)) this.fired.delete(id)
     if (!due.length) return
     if (!(await this.d.onAir().catch(() => false))) return
     for (const a of due) {

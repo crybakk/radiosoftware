@@ -62,6 +62,7 @@ if [[ ! -f .env ]]; then
   imposta ESTERNA_PASSWORD "$(openssl rand -hex 8)"
   imposta ICECAST_PASSWORD_SORGENTE "$(openssl rand -hex 12)"
   imposta ICECAST_PASSWORD_ADMIN "$(openssl rand -hex 12)"
+  imposta ICECAST_PASSWORD_RELAY "$(openssl rand -hex 12)"
   imposta PANNELLO_ADMIN_PASSWORD "$(openssl rand -base64 12 | tr -d '/+=' | cut -c1-12)"
   # il microfono remoto funziona anche dalla rete di casa
   imposta WEBRTC_INDIRIZZI "$(hostname -I | awk '{print $1}')"
@@ -106,7 +107,8 @@ cat <<FINE
      utente: admin   password: $(leggi PANNELLO_ADMIN_PASSWORD)
 
 4) Ascolto della radio: https://$DOM$(leggi ICECAST_MOUNT)
-   Amministrazione di Icecast: http://$DOM:$(leggi ICECAST_PORTA)/admin/  (utente admin, password ICECAST_PASSWORD_ADMIN nel .env)
+   Amministrazione di Icecast: https://$DOM/admin/  (utente admin, password ICECAST_PASSWORD_ADMIN nel .env;
+   sulla porta $(leggi ICECAST_PORTA), in chiaro, è bloccata)
 
 5) Dirette esterne: nell'app che usavi come DJ su AzuraCast metti
      server $DOM, porta $(leggi ESTERNA_PORTA), mount $(leggi ESTERNA_MOUNT), utente $(leggi ESTERNA_UTENTE), password $(leggi ESTERNA_PASSWORD)

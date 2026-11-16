@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { PlayoutEngine, type PlayoutHost, type PlayoutSnapshot } from '../../core/playout'
+import { PlayoutEngine, restoreAndPersistMode, type PlayoutHost, type PlayoutSnapshot } from '../../core/playout'
 import type { ScheduledEvent, Settings, Track } from '../../core/types'
 import { DEFAULT_SETTINGS } from '../../core/types'
 import type { PonteStatus } from '../../main/ponte'
@@ -173,12 +173,31 @@ export function useRadio() {
   }, [engine])
 
   useEffect(() => {
-    void api.getSettings().then(applySettings)
+    let cancelled = false
+    let unfollow: (() => void) | null = null
+    void api.getSettings().then((s) => {
+      if (cancelled) return
+      void applySettings(s)
+      // modalità com'era alla chiusura (o al blackout), poi salvata a ogni cambio
+      unfollow = restoreAndPersistMode(engine, s.playoutMode, (mode) => {
+        setSettings((cur) => ({ ...cur, playoutMode: mode }))
+        void api.saveSettings({ playoutMode: mode })
+      })
+    })
     void reloadEvents()
-  }, [applySettings, reloadEvents])
+    return () => {
+      cancelled = true
+      unfollow?.()
+    }
+  }, [applySettings, reloadEvents, engine])
 
   const saveSettings = useCallback(
-    async (patch: Partial<Settings>) => applySettings(await api.saveSettings(patch)),
+    async (patch: Partial<Settings>) => {
+      // la modalità la salva solo il motore: una copia vecchia delle impostazioni (es. dalla scheda
+      // Impostazioni) non deve riportarla indietro
+      const { playoutMode: _mode, ...rest } = patch
+      return applySettings(await api.saveSettings(rest))
+    },
     [applySettings]
   )
 

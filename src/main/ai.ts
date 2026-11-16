@@ -4,7 +4,7 @@
  * Il motore vero (node-llama-cpp) è in llm.ts; qui si può sostituire con uno finto nelle prove.
  */
 import { createWriteStream, existsSync, statSync } from 'node:fs'
-import { mkdir, rename, rm } from 'node:fs/promises'
+import { mkdir, open, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -108,14 +108,18 @@ export class AiService {
   private readonly engine: LlmEngine
   private readonly fetchFn?: Fetch
   private readonly onStatus: (s: AiStatus) => void
+  private readonly generateTimeoutMs: number
   private downloading: AbortController | null = null
   private generating: AbortController | null = null
+  private userCancelled = false
   private progress = 0
   private downloadedMb = 0
   private error: string | null = null
 
-  constructor(o: { dir: string; engine: LlmEngine; onStatus?: (s: AiStatus) => void; fetch?: Fetch }) {
+  constructor(o: { dir: string; engine: LlmEngine; onStatus?: (s: AiStatus) => void; fetch?: Fetch; generateTimeoutMs?: number }) {
     this.dir = o.dir
+    // su un PC lento (N100) un piano grande può volerci parecchio, ma non deve restare "occupato" per sempre
+    this.generateTimeoutMs = o.generateTimeoutMs ?? 30 * 60_000
     this.engine = o.engine
     this.fetchFn = o.fetch
     this.onStatus = o.onStatus ?? (() => {})
@@ -165,6 +169,18 @@ export class AiService {
           this.emit()
         }
       })
+      // al posto del modello può arrivare una pagina d'errore: un modello vero comincia con "GGUF"
+      const fh = await open(this.modelPath, 'r')
+      const head = Buffer.alloc(4)
+      try {
+        await fh.read(head, 0, 4, 0)
+      } finally {
+        await fh.close()
+      }
+      if (head.toString('latin1') !== 'GGUF') {
+        await rm(this.modelPath, { force: true })
+        throw new Error('il file scaricato non è un modello')
+      }
     } catch (e) {
       if (!ac.signal.aborted) this.error = `modello non scaricato: ${e instanceof Error ? e.message : String(e)} (riprova: riparte da dove si è fermato)`
     } finally {
@@ -179,6 +195,7 @@ export class AiService {
   }
 
   async removeModel(): Promise<void> {
+    if (this.generating) throw new Error('aspetta che finisca la generazione del piano')
     this.cancelDownload()
     await rm(this.modelPath, { force: true })
     await rm(`${this.modelPath}.part`, { force: true })
@@ -190,6 +207,13 @@ export class AiService {
     this.generating?.abort()
   }
 
+  /** Interrompe la generazione in corso (tasto "Interrompi"). */
+  cancelGeneration(): void {
+    if (!this.generating) return
+    this.userCancelled = true
+    this.generating.abort()
+  }
+
   /** Dal palinsesto a parole al piano di fasce, già ricontrollato, con i brani di ogni fascia. */
   async generate(description: string, music: Track[]): Promise<AiResult> {
     if (!description.trim()) throw new Error('scrivi prima il palinsesto')
@@ -198,13 +222,22 @@ export class AiService {
     if (this.generating) throw new Error('sto già generando un piano')
     const ac = new AbortController()
     this.generating = ac
+    this.userCancelled = false
     this.error = null
     this.emit()
     const t0 = Date.now()
+    const timer = setTimeout(() => ac.abort(), this.generateTimeoutMs)
     try {
       const summary: LibrarySummary = summarize(music)
       const { system, user } = buildPrompt(description, summary)
-      const raw = await this.engine.complete({ modelPath: this.modelPath, system, user, schema: planSchema(promptGenres(summary)), signal: ac.signal })
+      let raw: string
+      try {
+        raw = await this.engine.complete({ modelPath: this.modelPath, system, user, schema: planSchema(promptGenres(summary)), signal: ac.signal })
+      } catch (e) {
+        if (ac.signal.aborted && this.userCancelled) throw new Error('generazione interrotta')
+        if (ac.signal.aborted) throw new Error('generazione interrotta: ci ha messo troppo (prova con un palinsesto più corto)')
+        throw e
+      }
       let parsed: unknown
       try {
         parsed = JSON.parse(raw)
@@ -214,6 +247,7 @@ export class AiService {
       const { plan, warnings } = cleanPlan(parsed, summary)
       return { plan, warnings, ...previewCounts(plan, music), seconds: Math.round((Date.now() - t0) / 1000) }
     } finally {
+      clearTimeout(timer)
       this.generating = null
       this.emit()
     }

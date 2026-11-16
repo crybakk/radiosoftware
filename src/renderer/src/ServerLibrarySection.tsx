@@ -4,6 +4,8 @@ import type { PonteSettings } from '../../core/types'
 import { cleanError } from './ConnectionView'
 
 const api = window.radio
+/** "Conferma cancellazioni": c'è solo se la regia espone il comando (serverSyncConfirmRemove). */
+const confirmRemove = (api as typeof api & { serverSyncConfirmRemove?: () => Promise<string> }).serverSyncConfirmRemove
 
 /**
  * Libreria del server per la diretta autonoma: quali brani ci vanno, prima copia su disco USB,
@@ -84,7 +86,24 @@ export function ServerLibrarySection({
           </span>
         </div>
       )}
-      {st?.running && <p className="hint">⏳ {st.running === 'copia' ? 'Copia su disco' : 'Invio al server'}: {st.progress}</p>}
+      {st?.running && (
+        <p className="hint">
+          ⏳ {st.running === 'copia' ? 'Copia su disco' : st.running === 'cancellazione' ? 'Cancellazione dal server' : 'Invio al server'}:{' '}
+          {st.progress}
+        </p>
+      )}
+      {!!st?.toConfirmRemove && !st.running && (
+        <div className="banner error inline-banner">
+          L'ultimo invio toglierebbe {st.toConfirmRemove} brani dal server, più di quanti se ne tolgono senza chiedere: non
+          ne ho tolto nessuno. Controlla che le cartelle della libreria siano collegate e che le esclusioni siano giuste, poi
+          conferma.{' '}
+          {confirmRemove && (
+            <button className="small" onClick={() => void run(() => confirmRemove())}>
+              Conferma cancellazioni
+            </button>
+          )}
+        </div>
+      )}
       {st?.lastResult && !st.running && <p className="hint">Ultima operazione: {st.lastResult}</p>}
       {st?.lastError && !st.running && <div className="banner error inline-banner">{st.lastError}</div>}
       {msg && <div className={`banner ${msg.kind === 'ok' ? 'ok' : 'error'} inline-banner`}>{msg.text}</div>}

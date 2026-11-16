@@ -60,6 +60,7 @@ const api: RadioApi = {
   aiCancelDownload: call('aiCancelDownload'),
   aiRemoveModel: call('aiRemoveModel'),
   aiGenerate: call('aiGenerate'),
+  aiCancelGenerate: call('aiCancelGenerate'),
   aiPreview: call('aiPreview'),
   aiApply: call('aiApply'),
   onAiStatus: (cb: (s: AiStatus) => void) => {
@@ -89,6 +90,7 @@ const api: RadioApi = {
   serverSyncList: call('serverSyncList'),
   serverSyncChoice: call('serverSyncChoice'),
   serverSyncNow: call('serverSyncNow'),
+  serverSyncConfirmRemove: call('serverSyncConfirmRemove'),
   serverSyncStop: call('serverSyncStop'),
   serverSyncExport: call('serverSyncExport'),
   onServerSyncStatus: (cb: (s: ServerSyncStatus) => void) => {

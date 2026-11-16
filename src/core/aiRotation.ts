@@ -41,6 +41,12 @@ export interface LibrarySummary {
 export const AI_LABEL = 'AI · '
 /** Generi passati all'AI: oltre si perde precisione e il modello piccolo si confonde. */
 const MAX_PROMPT_GENRES = 150
+/**
+ * Un genere vero è corto e su una riga: i tag lunghi o con a capo (scritti male, o apposta per dare
+ * ordini al modello) non vanno nelle istruzioni dell'AI e non si possono scegliere.
+ */
+const MAX_GENRE_CHARS = 40
+const usableGenre = (g: string): boolean => g.length <= MAX_GENRE_CHARS && !/[\u0000-\u001f\u007f]/.test(g)
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
 const DAY_NAMES = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato']
 
@@ -59,7 +65,7 @@ export function summarize(tracks: Track[]): LibrarySummary {
   let yearMin: number | null = null
   let yearMax: number | null = null
   for (const t of tracks) {
-    for (const g of trackGenres(t)) counts.set(g, (counts.get(g) ?? 0) + 1)
+    for (const g of trackGenres(t)) if (usableGenre(g)) counts.set(g, (counts.get(g) ?? 0) + 1)
     if (t.year != null) {
       yearMin = yearMin == null ? t.year : Math.min(yearMin, t.year)
       yearMax = yearMax == null ? t.year : Math.max(yearMax, t.year)
@@ -174,7 +180,7 @@ export function cleanPlan(input: unknown, s: LibrarySummary): { plan: AiPlan; wa
   const slots: AiSlot[] = []
   for (const [i, x] of (Array.isArray(raw) ? raw : []).slice(0, 30).entries()) {
     const o = (x ?? {}) as Record<string, unknown>
-    const name = String(o.name ?? '').trim().slice(0, 40) || `Fascia ${i + 1}`
+    const name = String(o.name ?? '').replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim().slice(0, 40) || `Fascia ${i + 1}`
     const start = String(o.start ?? '').trim()
     const end = String(o.end ?? '').trim()
     if (!TIME.test(start) || !TIME.test(end)) {

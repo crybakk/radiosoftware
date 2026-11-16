@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { NewsFetcher, parseFeed, validateSource, type NewsSource } from '../src/core/news'
-import { expandEvent, newsTrack } from '../src/core/eventActions'
+import { expandEvent, EXTERNAL_TIMEOUT_MS, newsTrack } from '../src/core/eventActions'
 import type { ScheduledEvent } from '../src/core/types'
 
 const NOW = Date.parse('2026-11-15T20:05:00Z')
@@ -155,5 +155,142 @@ describe('azione Notiziario negli eventi', () => {
     }
     expect(await expandEvent({} as never, ev('gr'), fx)).toEqual([{ kind: 'tracks', tracks: [track], placement: 'front' }])
     expect(await expandEvent({} as never, ev('x'), fx)).toEqual([{ kind: 'error', message: 'notiziario "GR": è vecchio: saltato' }])
+  })
+})
+
+describe('notiziari: feed e file ostili o rotti', () => {
+  it('feed malformato enorme: si legge in fretta senza bloccare', () => {
+    const t0 = Date.now()
+    expect(parseFeed('<item <enclosure url="'.repeat(200_000))).toBeNull()
+    expect(parseFeed('<item>' + '<title'.repeat(100_000) + '</item>')).toBeNull()
+    expect(parseFeed('</item'.repeat(200_000))).toBeNull()
+    expect(Date.now() - t0).toBeLessThan(2000)
+  })
+
+  it('link della puntata relativo al feed; link non http rifiutato', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'news-'))
+    const s = server()
+    s.routes.set('https://x.it/feed.xml', () => new Response(rss([{ url: '/audio/gr.mp3', title: 'GR', date: 'Sun, 15 Nov 2026 20:00:00 GMT' }])))
+    s.routes.set('https://x.it/audio/gr.mp3', audio())
+    const f = new NewsFetcher(dir, { fetch: s.fetch, now: () => NOW })
+    expect((await f.forAir(src())).fresh).toBe(true)
+    s.routes.set('https://x.it/feed.xml', () => new Response(rss([{ url: 'file:///etc/passwd', title: 'GR', date: 'Sun, 15 Nov 2026 20:01:00 GMT' }])))
+    expect((await f.forAir(src())).note).toMatch(/link della puntata non è valido/)
+  })
+
+  it('una pagina web al posto dell\'audio non si scarica né va in onda', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'news-'))
+    const s = server()
+    s.routes.set('https://x.it/feed.xml', () => new Response(rss([{ url: 'https://x.it/gr.mp3', title: 'GR', date: 'Sun, 15 Nov 2026 20:00:00 GMT' }])))
+    s.routes.set('https://x.it/gr.mp3', () => new Response('<html>accedi</html>', { headers: { 'content-type': 'text/html' } }))
+    const f = new NewsFetcher(dir, { fetch: s.fetch, now: () => NOW })
+    expect((await f.forAir(src())).note).toMatch(/non dà un file audio/)
+    // link diretto che risponde con una pagina: niente file audio finto
+    s.routes.set('https://x.it/diretto.mp3', () => new Response('<html>errore</html>', { headers: { 'content-type': 'text/html; charset=utf-8' } }))
+    const d = await f.forAir(src({ url: 'https://x.it/diretto.mp3' }))
+    expect(d.item).toBeNull()
+    expect(readdirSync(dir).filter((x) => x.endsWith('.mp3'))).toEqual([])
+  })
+
+  it('file senza lunghezza che supera il limite: si ferma e non resta niente su disco', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'news-'))
+    let sent = 0
+    const endless = new ReadableStream<Uint8Array>({
+      pull(c) {
+        sent += 1024 * 1024
+        c.enqueue(new Uint8Array(1024 * 1024))
+      }
+    })
+    const s = server()
+    s.routes.set('https://x.it/senza-fine.mp3', () => new Response(endless, { headers: { 'content-type': 'audio/mpeg' } }))
+    const r = await new NewsFetcher(dir, { fetch: s.fetch, now: () => NOW }).forAir(src({ url: 'https://x.it/senza-fine.mp3' }))
+    expect(r.note).toMatch(/troppo grande/)
+    expect(sent).toBeLessThan(260 * 1024 * 1024)
+    expect(readdirSync(dir)).toEqual([])
+  })
+
+  it('feed troppo grande rifiutato', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'news-'))
+    const s = server()
+    s.routes.set('https://x.it/feed.xml', () => new Response('<rss>' + ' '.repeat(6 * 1024 * 1024), { headers: { 'content-type': 'application/rss+xml' } }))
+    expect((await new NewsFetcher(dir, { fetch: s.fetch, now: () => NOW }).forAir(src())).note).toMatch(/feed troppo grande/)
+  })
+
+  it('non cancella i notiziari di un\'altra fonte con il nome simile', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'news-'))
+    const s = server()
+    s.routes.set('https://x.it/a.mp3', audio())
+    s.routes.set('https://x.it/b.mp3', audio())
+    const f = new NewsFetcher(dir, { fetch: s.fetch, now: () => NOW })
+    const other = await f.forAir(src({ id: 'gr-sera', url: 'https://x.it/b.mp3' }))
+    await f.forAir(src({ id: 'gr', url: 'https://x.it/a.mp3' }))
+    expect(existsSync(other.item!.file)).toBe(true)
+  })
+
+  it('due richieste insieme per la stessa fonte: un solo scaricamento', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'news-'))
+    const s = server()
+    s.routes.set('https://x.it/feed.xml', () => new Response(rss([{ url: 'https://x.it/gr.mp3', title: 'GR', date: 'Sun, 15 Nov 2026 20:00:00 GMT' }])))
+    s.routes.set('https://x.it/gr.mp3', audio())
+    const f = new NewsFetcher(dir, { fetch: s.fetch, now: () => NOW })
+    const [a, b] = await Promise.all([f.forAir(src()), f.forAir(src())])
+    expect(a.item?.file).toBe(b.item?.file)
+    expect(existsSync(a.item!.file)).toBe(true)
+    expect(s.calls.filter((c) => c.url.endsWith('.mp3'))).toHaveLength(1)
+  })
+})
+
+describe('notiziario e annuncio troppo lenti', () => {
+  it('dopo il tempo massimo l\'evento va avanti con un errore', async () => {
+    vi.useFakeTimers()
+    try {
+      const e = (actions: unknown[]): ScheduledEvent => ({ id: 1, label: 'GR', time: '*:00', days: [0], repeatMinutes: 0, untilTime: null, validFrom: null, validTo: null, mode: 'soft', toleranceSeconds: 0, actions, enabled: true }) as ScheduledEvent
+      const fx = {
+        now: () => new Date(NOW),
+        runCommand: () => {},
+        news: () => new Promise<never>(() => {}),
+        voice: () => new Promise<never>(() => {})
+      }
+      const p = expandEvent({} as never, e([{ type: 'news', sourceId: 'gr', title: 'GR' }, { type: 'voice', text: 'Ciao' }]), fx)
+      await vi.advanceTimersByTimeAsync(EXTERNAL_TIMEOUT_MS + 10)
+      await vi.advanceTimersByTimeAsync(EXTERNAL_TIMEOUT_MS + 10)
+      const steps = await p
+      expect(steps).toEqual([
+        { kind: 'error', message: expect.stringMatching(/notiziario "GR": scaricamento troppo lento/) },
+        { kind: 'error', message: expect.stringMatching(/annuncio vocale: preparazione troppo lenta/) }
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('notiziario con il link della puntata sempre uguale', () => {
+  it('se la data nel feed è più nuova si riscarica (e non se il file non è cambiato)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'news-'))
+    const s = server()
+    const feedAt = (date: string) => () => new Response(rss([{ url: 'https://x.it/ultimo.mp3', title: 'GR', date }]))
+    s.routes.set('https://x.it/feed.xml', feedAt('Sun, 15 Nov 2026 18:00:00 GMT'))
+    s.routes.set('https://x.it/ultimo.mp3', audio({ etag: '"v1"' }))
+    const f = new NewsFetcher(dir, { fetch: s.fetch, now: () => NOW })
+    const first = await f.forAir(src())
+    expect(first.note).toMatch(/vecchio/) // 18:00, limite 90 minuti
+
+    // nuova edizione allo stesso link
+    s.routes.set('https://x.it/feed.xml', feedAt('Sun, 15 Nov 2026 20:00:00 GMT'))
+    s.routes.set('https://x.it/ultimo.mp3', () => new Response(new Uint8Array([9, 9, 9, 9]), { headers: { 'content-type': 'audio/mpeg', etag: '"v2"' } }))
+    const second = await f.forAir(src())
+    expect(second.fresh).toBe(true)
+    expect(readFileSync(second.item!.file)).toEqual(Buffer.from([9, 9, 9, 9]))
+    const audioCalls = s.calls.filter((c) => c.url.endsWith('.mp3'))
+    expect(audioCalls).toHaveLength(2)
+    expect(audioCalls[1].headers['If-None-Match']).toBe('"v1"')
+
+    // data più nuova ma file uguale (304): niente scaricamento, e resta la data vera del file
+    s.routes.set('https://x.it/feed.xml', feedAt('Sun, 15 Nov 2026 22:00:00 GMT'))
+    s.routes.set('https://x.it/ultimo.mp3', () => new Response(null, { status: 304 }))
+    const third = await f.forAir(src())
+    expect(third.item?.file).toBe(second.item?.file)
+    expect(third.item?.publishedAt).toBe(Date.parse('2026-11-15T20:00:00Z'))
   })
 })

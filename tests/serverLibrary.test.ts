@@ -71,6 +71,8 @@ describe('selezione per il server', () => {
         ]
       )
     ).toEqual({ upload: [{ id: 'b', size: 2, track: t }], remove: ['c'] })
+    // i brani da tenere non si tolgono
+    expect(planSync([], [{ id: 'c', size: 1 }, { id: 'd', size: 1 }], (id) => id === 'c').remove).toEqual(['d'])
   })
 })
 
@@ -205,12 +207,23 @@ describe('copia della libreria sul server', () => {
     expect(await sync.syncNow(true)).not.toMatch(/impronte/)
   })
 
-  it('non svuota il server se la libreria sembra scollegata', async () => {
+  it('oltre 20 brani da togliere non toglie nulla finché non confermi, poi li toglie una volta', async () => {
     const c = new FakeClient()
-    for (let i = 0; i < 100; i++) c.files.set(`regia/Musica/x${i}.mp3`, 1)
+    for (let i = 0; i < 21; i++) c.files.set(`regia/Musica/x${i}.mp3`, 1)
     const sync = new ServerLibrarySync(db, dir, () => c as unknown as PonteClient, () => {})
-    await expect(sync.syncNow(true)).rejects.toThrow(/toglierebbe 100 brani/)
-    expect(c.files.size).toBe(100)
+    expect(await sync.syncNow(true)).toMatch(/21 brani da togliere dal server aspettano la tua conferma/)
+    expect([...c.files.keys()].filter((id) => id.includes('/x')).length).toBe(21)
+    expect(sync.status().toConfirmRemove).toBe(21)
+    // un brano rimesso sul server nel frattempo dalla regia non si toglie
+    c.files.delete('regia/Musica/x0.mp3')
+    expect(await sync.confirmRemovals()).toMatch(/Tolti dal server 20 brani \(1 non più da togliere\)/)
+    expect([...c.files.keys()].filter((id) => id.includes('/x'))).toEqual([])
+    expect(sync.status().toConfirmRemove).toBe(0)
+    expect(await sync.confirmRemovals()).toMatch(/Nessun brano/)
+    // fino a 20 si tolgono senza chiedere
+    for (let i = 0; i < 20; i++) c.files.set(`regia/Musica/y${i}.mp3`, 1)
+    expect(await sync.syncNow(true)).toMatch(/tolti 20/)
+    expect(sync.status().toConfirmRemove).toBe(0)
   })
 })
 
@@ -305,6 +318,32 @@ describe('invio al server: casi difficili', () => {
     const res = await sync.syncNow(true)
     expect(c.uploads).toEqual(['regia/Musica/b.mp3'])
     expect(res).toMatch(/1 saltati perché troppo grandi/)
+  })
+
+  it('non toglie dal server i brani che mancano solo per ora in regia; toglie quelli esclusi', async () => {
+    const db = new RadioDb(':memory:')
+    const m = join(base2, 'M5', 'Musica')
+    const nas = join(base2, 'M5', 'NAS', 'Archivio')
+    db.addFolder(m, 'music')
+    const gone = add(db, join(m, 'sparito.mp3'), 'File sparito', 10)
+    const excluded = add(db, join(m, 'escluso.mp3'), 'Escluso a mano', 10)
+    add(db, join(m, 'resta.mp3'), 'Resta', 10)
+    const live = add(db, join(m, 'live.mp3'), 'Sally (Live)', 10)
+    db.markMissing(gone) // file non trovato dalla scansione: tornerà
+    db.markMissing(live) // mancante, ma la regola lo esclude comunque
+    db.setServerChoice(excluded, false)
+    db.addFolder(nas, 'music') // cartella che adesso non si legge (NAS spento)
+    const c = new FakeClient()
+    for (const id of ['sparito', 'escluso', 'resta', 'live']) c.files.set(`regia/Musica/${id}.mp3`, 10)
+    c.files.set('regia/Archivio/Rock/a.mp3', 5)
+    c.files.set('regia/Vecchia/b.mp3', 5) // cartella tolta dalla libreria
+    const sync = new ServerLibrarySync(db, mkdtempSync(join(base2, 'dati-')), () => c as unknown as PonteClient, () => {})
+    await sync.syncNow(true)
+    expect([...c.files.keys()].sort()).toEqual([
+      'regia/Archivio/Rock/a.mp3',
+      'regia/Musica/resta.mp3',
+      'regia/Musica/sparito.mp3'
+    ])
   })
 
   it('un brano caricato dal pannello resta sul server anche se la regola lo escluderebbe', async () => {

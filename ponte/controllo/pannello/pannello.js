@@ -496,7 +496,7 @@ function renderGuests() {
       } else {
         const air = button(g.onAir ? '● IN ONDA' : 'Metti in onda', g.onAir ? 'Togli dall\'onda' : '', () => guestAct({ type: 'air', id: g.id, on: !g.onAir }), `small ${g.onAir ? 'live' : ''}`)
         air.disabled = !g.connected
-        row.append(air, button('Chiudi', '', () => guestAct({ type: 'kick', id: g.id }), 'small ghost'))
+        row.append(air, button('Chiudi', "Chiude l'ospite e revoca il link con cui è entrato", () => guestAct({ type: 'kick', id: g.id }).then(() => $('invites-list').hidden || loadInvites()), 'small ghost'))
       }
     }
     box.append(row)

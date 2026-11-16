@@ -9,6 +9,7 @@
  *     musica di riserva del server e, quando ci saranno, le esterne riconosciute.
  *
  * Una riga per opera e interprete, con il numero di passaggi nel trimestre.
+ * Dove la regia e la riserva (o la diretta autonoma) del server si sovrappongono conta solo il server.
  */
 import { csvField } from './csv'
 import type { LogEntry, Track } from './types'
@@ -80,13 +81,67 @@ export function counts(e: LogEntry): boolean {
   return true
 }
 
+/** Fonti del server in cui gli ascoltatori sentivano il server e non la regia (4G caduto, regia spenta). */
+const SERVER_ON_AIR = new Set(['riserva', 'autonoma'])
+/** Fonti dei passaggi importati dal server (tutte le altre sono della regia). */
+const SERVER_SOURCES = new Set(['riserva', 'autonoma', 'esterna'])
+
+/** Inizio e fine (ms) di un passaggio; senza fine si usa la durata suonata. */
+function span(e: LogEntry): [number, number] | null {
+  const a = Date.parse(e.startedAt)
+  if (Number.isNaN(a)) return null
+  const end = e.endedAt ? Date.parse(e.endedAt) : NaN
+  const b = Number.isNaN(end) ? a + Math.max(0, e.playedSeconds) * 1000 : end
+  return [a, Math.max(b, a + 1)]
+}
+
+/**
+ * Toglie i passaggi della regia che si sovrappongono a quelli della musica di riserva o della diretta autonoma
+ * del server: in quei periodi gli ascoltatori sentivano il server, e contarli tutti e due li conterebbe due volte.
+ * I passaggi delle esterne restano come sono.
+ */
+export function dropOverlapped(entries: LogEntry[]): LogEntry[] {
+  const server = entries
+    .filter((e) => SERVER_ON_AIR.has(e.source))
+    .map(span)
+    .filter((s): s is [number, number] => s !== null)
+    .sort((x, y) => x[0] - y[0])
+  if (!server.length) return entries
+  // intervalli uniti, per cercare con una ricerca binaria
+  const merged: [number, number][] = []
+  for (const [a, b] of server) {
+    const last = merged[merged.length - 1]
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b)
+    else merged.push([a, b])
+  }
+  const overlaps = (a: number, b: number): boolean => {
+    // ultimo intervallo che inizia prima della fine del passaggio
+    let lo = 0
+    let hi = merged.length - 1
+    let i = -1
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      if (merged[mid][0] < b) {
+        i = mid
+        lo = mid + 1
+      } else hi = mid - 1
+    }
+    return i >= 0 && merged[i][1] > a
+  }
+  return entries.filter((e) => {
+    if (SERVER_SOURCES.has(e.source)) return true
+    const s = span(e)
+    return !s || !overlaps(s[0], s[1])
+  })
+}
+
 /**
  * Raggruppa i passaggi per opera e interprete.
  * Per i brani della libreria si usano i dati attuali della scheda (così le correzioni fatte dopo valgono).
  */
 export function siaeRows(entries: LogEntry[], tracks: Map<number, Track>): SiaeRow[] {
   const rows = new Map<string, SiaeRow>()
-  for (const e of entries) {
+  for (const e of dropOverlapped(entries)) {
     if (!counts(e)) continue
     const t = e.trackId != null ? tracks.get(e.trackId) : undefined
     if (t && t.kind !== 'music') continue

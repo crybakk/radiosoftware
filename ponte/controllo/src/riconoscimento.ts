@@ -13,6 +13,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { setAsideBroken } from './statoFile.ts'
 import { FpIndex, fingerprint, fingerprintWeak, fpFromBytes, fpToBytes, LIBRARY_HOP, QUERY_HOP, SAMPLE_RATE, type Match } from './impronta.ts'
 
 const WINDOW_S = 12
@@ -129,14 +130,22 @@ export class UnknownStore {
     for (const f of readdirSync(dir)) {
       const m = /^(\d+)\.json$/.exec(f)
       if (!m) continue
+      // il numero non si riusa anche se la voce è rovinata (un brano nuovo la sovrascriverebbe)
+      this.next = Math.max(this.next, Number(m[1]) + 1)
+      let u: Unknown
       try {
-        const u = JSON.parse(readFileSync(join(dir, f), 'utf8')) as Unknown
+        u = JSON.parse(readFileSync(join(dir, f), 'utf8')) as Unknown
+      } catch (e) {
+        // voce rovinata: si ignora, e il file si sposta da parte
+        setAsideBroken(join(dir, f), e, undefined, true)
+        continue
+      }
+      try {
         const fp = fpFromBytes(new Uint8Array(readFileSync(join(dir, `${m[1]}.fp`))))
         this.items.set(u.id, u)
         index.put({ id: u.id, title: u.label?.title ?? '', artist: u.label?.artist ?? '', fp })
-        this.next = Math.max(this.next, Number(m[1]) + 1)
       } catch {
-        // voce rovinata: si ignora
+        // impronta mancante o rovinata: si ignora
       }
     }
   }

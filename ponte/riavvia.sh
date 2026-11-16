@@ -5,4 +5,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # libreria musicale del server (diretta autonoma e musica di riserva): scrivibile dal servizio di controllo (utente 1000)
 mkdir -p musica
 chown 1000:1000 musica 2>/dev/null || true
+# password del relay di Icecast: propria, non più uguale a quella di amministrazione (installazioni vecchie)
+if [[ -f .env ]] && ! grep -q '^ICECAST_PASSWORD_RELAY=.' .env; then
+  sed -i '/^ICECAST_PASSWORD_RELAY=/d' .env
+  echo "ICECAST_PASSWORD_RELAY=$(openssl rand -hex 12)" >> .env
+fi
 docker compose up -d --build --remove-orphans "$@"

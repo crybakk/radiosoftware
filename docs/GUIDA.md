@@ -93,14 +93,18 @@ Scheda **In onda**:
 
 - In alto a sinistra la spia **IN ONDA / FERMO**. In alto a destra il tasto **AUTOMATICO / MANUALE** e l'orologio.
 - **AUTOMATICO**: la regia riempie la coda da sola rispettando le regole di rotazione e non lascia mai il silenzio.
-- **MANUALE**: va in onda solo quello che metti in coda tu. Alla fine di un brano parte il successivo in coda.
+- **MANUALE**: va in onda solo quello che metti in coda tu. Alla fine di un brano la regia si ferma: il successivo
+  in coda parte quando premi **▶ PLAY** (o **⏭ AVANTI**). Fanno eccezione gli eventi a orario, che partono da soli.
+- **Dopo un riavvio o un blackout** la regia riparte nella modalità in cui era: se era in AUTOMATICO riprende a
+  suonare da sola (la radio non resta muta), se era in MANUALE resta ferma in manuale.
 - **▶ PLAY** fa partire la coda, **⏭ AVANTI** sfuma il brano in onda e passa al successivo, **■ STOP** sfuma e
   ferma tutto (e passa in manuale).
 - Il riquadro grande mostra il brano in onda, il tempo trascorso e quello mancante: negli ultimi secondi diventa rosso.
 - **Coda**: con le frecce sposti i brani, con la ✕ li togli. Accanto a ogni brano c'è l'orario previsto.
 - **Ricerca** (a destra): cerca per titolo o artista. Con i tasti del brano lo metti come prossimo, lo aggiungi
   in fondo alla coda, oppure lo ascolti in cuffia (preascolto).
-- **Jingle istantanei** (12 tasti): un clic lo fa partire sopra la musica. Con la matita assegni il jingle a un tasto.
+- **Jingle istantanei** (12 tasti): un clic lo fa partire sopra la musica (un altro clic mentre quel jingle suona
+  non fa niente, per non sovrapporre due copie). Con la matita assegni il jingle a un tasto.
 
 ## 5. Libreria e scheda brano
 

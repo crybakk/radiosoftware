@@ -1,5 +1,5 @@
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawn as spawnChild } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
@@ -120,5 +120,114 @@ describe('voce sintetica', () => {
     expect(b.toString('ascii', 0, 4)).toBe('RIFF')
     expect(b.readUInt32LE(24)).toBe(16000)
     expect([b.readInt16LE(44), b.readInt16LE(46), b.readInt16LE(48), b.readInt16LE(50)]).toEqual([0, 32767, -32767, 32767])
+  })
+})
+
+describe('voce sintetica: usi sbagliati e guasti', () => {
+  const okEngine = (calls: string[], delay = 0) => async (): Promise<TtsEngine> => ({
+    sampleRate: 16000,
+    generate: async (text) => {
+      calls.push(text)
+      if (delay) await new Promise((r) => setTimeout(r, delay))
+      return new Float32Array(1600).fill(0.1)
+    }
+  })
+  /** Voce già "scaricata" (file finti). */
+  function withVoice(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'voce-'))
+    const d = join(dir, 'vits-piper-it_IT-paola-medium')
+    mkdirSync(join(d, 'espeak-ng-data'), { recursive: true })
+    writeFileSync(join(d, 'it_IT-paola-medium.onnx'), 'x')
+    writeFileSync(join(d, 'tokens.txt'), 'x')
+    return dir
+  }
+
+  it('titoli enormi o con a capo nei tag non allungano l\'annuncio', () => {
+    const r = fillTemplate('Avete ascoltato {brano}.', { now: new Date(), track: { title: `Titolo\nlungo ${'parola '.repeat(500)}`, artist: '' } })
+    expect(r.text.length).toBeLessThan(200)
+    expect(r.text).not.toContain('\n')
+    expect(r.text.startsWith('Avete ascoltato Titolo lungo parola')).toBe(true)
+  })
+
+  it('testo troppo lungo rifiutato prima di fare qualsiasi cosa', async () => {
+    const dir = withVoice()
+    const calls: string[] = []
+    const synth = new Synth({ voicesDir: dir, outDir: join(dir, 'out'), ffmpeg, engine: okEngine(calls) })
+    await expect(synth.speak('a. '.repeat(2000), {})).rejects.toThrow(/troppo lungo/)
+    expect(calls).toEqual([])
+  })
+
+  it('stesso annuncio chiesto due volte insieme: prodotto una volta sola; annunci diversi uno alla volta', async () => {
+    const dir = withVoice()
+    const calls: string[] = []
+    let running = 0
+    let maxRunning = 0
+    const engine = async (): Promise<TtsEngine> => ({
+      sampleRate: 16000,
+      generate: async (text) => {
+        calls.push(text)
+        maxRunning = Math.max(maxRunning, ++running)
+        await new Promise((r) => setTimeout(r, 20))
+        running--
+        return new Float32Array(1600).fill(0.1)
+      }
+    })
+    const synth = new Synth({ voicesDir: dir, outDir: join(dir, 'out'), ffmpeg, engine })
+    const [a, b, c] = await Promise.all([synth.speak('Ciao.', {}), synth.speak('Ciao.', {}), synth.speak('Altro.', {})])
+    expect(a.file).toBe(b.file)
+    expect(c.file).not.toBe(a.file)
+    expect(calls.sort()).toEqual(['Altro.', 'Ciao.'])
+    expect(maxRunning).toBe(1)
+  })
+
+  it('voce bloccata: errore dopo il tempo massimo, e la volta dopo si riapre', async () => {
+    const dir = withVoice()
+    let opened = 0
+    let hang = true
+    const engine = async (): Promise<TtsEngine> => {
+      opened++
+      return {
+        sampleRate: 16000,
+        generate: (): Promise<Float32Array> => (hang ? new Promise(() => {}) : Promise.resolve(new Float32Array(1600).fill(0.1)))
+      }
+    }
+    const synth = new Synth({ voicesDir: dir, outDir: join(dir, 'out'), ffmpeg, engine, sentenceTimeoutMs: 50 })
+    await expect(synth.speak('Ciao.', {})).rejects.toThrow(/non risponde/)
+    hang = false
+    expect((await synth.speak('Ciao.', {})).seconds).toBeGreaterThan(0)
+    expect(opened).toBe(2)
+  })
+
+  it('modello rotto: errore chiaro', async () => {
+    const dir = withVoice()
+    const synth = new Synth({ voicesDir: dir, outDir: join(dir, 'out'), ffmpeg, engine: async () => { throw new Error('Load model failed') } })
+    await expect(synth.speak('Ciao.', {})).rejects.toThrow(/la voce non si apre .*scaricala di nuovo/)
+  })
+
+  it('ffmpeg bloccato: chiuso dopo il tempo massimo', async () => {
+    const dir = withVoice()
+    const synth = new Synth({
+      voicesDir: dir,
+      outDir: join(dir, 'out'),
+      ffmpeg: process.execPath,
+      ffmpegTimeoutMs: 200,
+      engine: okEngine([]),
+      // al posto di ffmpeg un programma che non finisce mai
+      spawn: (cmd) => spawnChild(cmd, ['-e', 'setInterval(() => {}, 1000)'])
+    })
+    await expect(synth.speak('Ciao.', {})).rejects.toThrow(/non ha finito/)
+  })
+
+  it('archivio della voce rovinato: la voce non risulta installata e non resta niente a metà', async () => {
+    const src = mkdtempSync(join(tmpdir(), 'voce-src-'))
+    const d = join(src, 'vits-piper-it_IT-paola-medium')
+    mkdirSync(d, { recursive: true })
+    writeFileSync(join(d, 'it_IT-paola-medium.onnx'), 'x') // mancano tokens ed espeak
+    execFileSync('tar', ['-cjf', join(src, 'v.tar.bz2'), '-C', src, 'vits-piper-it_IT-paola-medium'])
+    const dir = mkdtempSync(join(tmpdir(), 'voce-'))
+    const synth = new Synth({ voicesDir: dir, outDir: join(dir, 'out'), ffmpeg, engine: okEngine([]), fetch: async () => new Response(new Uint8Array(readFileSync(join(src, 'v.tar.bz2')))) })
+    await expect(synth.installVoice('it_IT-paola-medium')).rejects.toThrow(/non trovata/)
+    expect(synth.hasVoice('it_IT-paola-medium')).toBe(false)
+    expect(readdirSync(dir)).toEqual([])
   })
 })
