@@ -20,6 +20,7 @@ export function makeTrack(p: Partial<Track> = {}): Track {
     mbGenres: '',
     dcGenres: '',
     lfmTags: '',
+    userTags: '',
     siaeCode: '',
     duration: 180,
     bitrate: 192,

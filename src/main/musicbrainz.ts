@@ -7,7 +7,7 @@
 import type { MbTrack, RadioDb } from '../core/db'
 import { MbError, MusicBrainz, type MbResult } from '../core/musicbrainz'
 import type { AcoustId } from '../core/acoustid'
-import { ServiceError } from '../core/webLimit'
+import { pauseAfter, ServiceError, sleepOrAbort } from '../core/webLimit'
 import { fingerprint, FpcalcMissing } from './fpcalc'
 
 export interface MbStatus {
@@ -21,6 +21,8 @@ export interface MbStatus {
   acoustId: boolean
   current: string
   lastError: string | null
+  /** In pausa dopo errori di fila: riprende da sola a quest'ora (ISO). */
+  pausedUntil: string | null
   /** Brani completati in questa sessione di ricerca. */
   doneNow: number
 }
@@ -32,6 +34,9 @@ export class MusicBrainzService {
   private lastError: string | null = null
   private doneNow = 0
   private lastEmit = 0
+  private pausedUntil: string | null = null
+  /** Attesa delle pause (sostituibile nelle prove). */
+  sleepFn = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
   private readonly mb: MusicBrainz
 
   constructor(
@@ -55,6 +60,7 @@ export class MusicBrainzService {
       acoustId: this.acoustIdOn(),
       current: this.current,
       lastError: this.lastError,
+      pausedUntil: this.pausedUntil,
       doneNow: this.doneNow
     }
   }
@@ -147,6 +153,7 @@ export class MusicBrainzService {
           try {
             await this.one(t, ac.signal)
             this.doneNow++
+            if (failures) this.lastError = null
             failures = 0
           } catch (e) {
             if (ac.signal.aborted) break
@@ -155,7 +162,16 @@ export class MusicBrainzService {
             this.lastError =
               e instanceof MbError || e instanceof ServiceError || e instanceof FpcalcMissing ? e.message : 'errore nella ricerca su MusicBrainz'
             // chiave sbagliata o fpcalc che non parte: inutile continuare
-            if (e instanceof FpcalcMissing || /chiave/.test(this.lastError) || ++failures >= 5) throw new MbError(this.lastError)
+            if (e instanceof FpcalcMissing || /chiave/.test(this.lastError)) throw new MbError(this.lastError)
+            const wait = pauseAfter(++failures)
+            if (wait == null) throw new MbError(`${this.lastError} (ancora dopo mezz'ora di tentativi)`)
+            if (wait > 0) {
+              // servizio in difficoltà: pausa e poi riprende da solo dallo stesso brano
+              this.pausedUntil = new Date(Date.now() + wait).toISOString()
+              this.emit(true)
+              await sleepOrAbort(this.sleepFn, wait, ac.signal).catch(() => {})
+              this.pausedUntil = null
+            }
           }
           this.emit()
         }

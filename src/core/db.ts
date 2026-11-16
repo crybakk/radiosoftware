@@ -157,6 +157,7 @@ function rowToTrack(r: Row): Track {
     mbGenres: r.mb_genres == null ? '' : String(r.mb_genres),
     dcGenres: r.dc_genres == null ? '' : String(r.dc_genres),
     lfmTags: r.lfm_tags == null ? '' : String(r.lfm_tags),
+    userTags: r.user_tags == null ? '' : String(r.user_tags),
     composer: String(r.composer),
     publisher: String(r.publisher),
     isrc: String(r.isrc),
@@ -223,6 +224,8 @@ export interface AnalysisResult {
 export interface TrackSearch {
   text?: string
   kind?: TrackKind
+  /** Solo i brani di questa categoria (genere del file, dei servizi o etichetta tua). */
+  category?: string
   limit?: number
   offset?: number
 }
@@ -246,6 +249,7 @@ export type TrackEdit = Partial<
     | 'cueIn'
     | 'cueOut'
     | 'mixPoint'
+    | 'userTags'
   >
 >
 
@@ -264,7 +268,8 @@ const EDIT_COLUMNS: Record<keyof TrackEdit, string> = {
   enabled: 'enabled',
   cueIn: 'cue_in',
   cueOut: 'cue_out',
-  mixPoint: 'mix_point'
+  mixPoint: 'mix_point',
+  userTags: 'user_tags'
 }
 
 /**
@@ -323,6 +328,8 @@ export class RadioDb {
     if (!cols.includes('dc_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN dc_at TEXT')
     if (!cols.includes('lfm_tags')) this.db.exec("ALTER TABLE tracks ADD COLUMN lfm_tags TEXT NOT NULL DEFAULT ''")
     if (!cols.includes('lfm_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN lfm_at TEXT')
+    // v0.11: etichette scritte a mano (categorie tue per le rotazioni)
+    if (!cols.includes('user_tags')) this.db.exec("ALTER TABLE tracks ADD COLUMN user_tags TEXT NOT NULL DEFAULT ''")
     if (!cols.includes('acoustid_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN acoustid_at TEXT')
     this.db.exec('CREATE TABLE IF NOT EXISTS lfm_artists (name TEXT PRIMARY KEY, tags TEXT NOT NULL, checked_at TEXT NOT NULL)')
     this.db.exec('CREATE TABLE IF NOT EXISTS mb_artists (id TEXT PRIMARY KEY, genres TEXT NOT NULL, checked_at TEXT NOT NULL)')
@@ -644,6 +651,10 @@ export class RadioDb {
       where.push("minuscolo(title || ' ' || artist || ' ' || album) LIKE ? ESCAPE '\\'")
       params.push(`%${escapeLike(perRicerca(w))}%`)
     }
+    if (q.category?.trim()) {
+      where.push("minuscolo(genre || ',' || mb_genres || ',' || dc_genres || ',' || lfm_tags || ',' || user_tags) LIKE ? ESCAPE '\\'")
+      params.push(`%${escapeLike(q.category.trim().toLowerCase())}%`)
+    }
     const clause = where.join(' AND ')
     const total = Number(
       (this.db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE ${clause}`).get(...params) as Row).n
@@ -791,9 +802,9 @@ export class RadioDb {
       params.push(`${prefix.replace(/[\\%_]/g, (c) => '\\' + c)}%`)
     }
     if (f.genre) {
-      // genere del file o generi di MusicBrainz
-      where.push("(genre || ',' || mb_genres || ',' || dc_genres || ',' || lfm_tags) LIKE ? ESCAPE '\\'")
-      params.push(`%${f.genre.replace(/[\\%_]/g, (c) => '\\' + c)}%`)
+      // genere del file, dei servizi o etichetta tua, senza badare alle maiuscole
+      where.push("minuscolo(genre || ',' || mb_genres || ',' || dc_genres || ',' || lfm_tags || ',' || user_tags) LIKE ? ESCAPE '\\'")
+      params.push(`%${f.genre.toLowerCase().replace(/[\\%_]/g, (c) => '\\' + c)}%`)
     }
     const clause = where.join(' AND ')
     if (avoidSince) {
@@ -824,7 +835,8 @@ export class RadioDb {
     const rows = this.db
       .prepare(
         "SELECT genre AS g FROM tracks WHERE enabled = 1 AND genre != '' UNION SELECT mb_genres FROM tracks WHERE enabled = 1 AND mb_genres != '' " +
-          "UNION SELECT dc_genres FROM tracks WHERE enabled = 1 AND dc_genres != '' UNION SELECT lfm_tags FROM tracks WHERE enabled = 1 AND lfm_tags != ''"
+          "UNION SELECT dc_genres FROM tracks WHERE enabled = 1 AND dc_genres != '' UNION SELECT lfm_tags FROM tracks WHERE enabled = 1 AND lfm_tags != '' " +
+          "UNION SELECT user_tags FROM tracks WHERE enabled = 1 AND user_tags != ''"
       )
       .all() as Row[]
     // senza distinguere maiuscole: "Pop" del file e "pop" di MusicBrainz sono lo stesso genere
@@ -981,6 +993,58 @@ export class RadioDb {
   getFingerprint(id: number): Uint8Array | null {
     const r = this.db.prepare('SELECT fp FROM fingerprints WHERE track_id = ?').get(id) as Row | undefined
     return r ? (r.fp as Uint8Array) : null
+  }
+
+  // ---------- categorie ed etichette ----------
+
+  /** Categorie della musica attiva con il numero di brani; mine = c'è almeno un brano con l'etichetta scritta a mano. */
+  categories(): { name: string; count: number; mine: boolean }[] {
+    const rows = this.db
+      .prepare("SELECT genre, mb_genres, dc_genres, lfm_tags, user_tags FROM tracks WHERE kind = 'music' AND enabled = 1")
+      .all() as Row[]
+    const map = new Map<string, { name: string; count: number; mine: boolean }>()
+    for (const r of rows) {
+      const seen = new Set<string>()
+      const mine = new Set(String(r.user_tags).split(',').map((x) => x.trim().toLowerCase()).filter(Boolean))
+      for (const col of [r.genre, r.mb_genres, r.dc_genres, r.lfm_tags, r.user_tags]) {
+        for (const g of String(col ?? '').split(/[,;/]/)) {
+          const k = g.trim().toLowerCase()
+          if (!k || seen.has(k)) continue
+          seen.add(k)
+          const c = map.get(k) ?? { name: k, count: 0, mine: false }
+          c.count++
+          if (mine.has(k)) c.mine = true
+          map.set(k, c)
+        }
+      }
+    }
+    return [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'it'))
+  }
+
+  /** Mette o toglie un'etichetta tua su più brani; restituisce quanti brani sono cambiati. */
+  setUserTag(ids: number[], tag: string, on: boolean): number {
+    const t = tag.trim().toLowerCase().replace(/[,;/]+/g, ' ').replace(/\s+/g, ' ').slice(0, 40)
+    if (!t) return 0
+    const get = this.db.prepare('SELECT user_tags FROM tracks WHERE id = ?')
+    const set = this.db.prepare('UPDATE tracks SET user_tags = ? WHERE id = ?')
+    let n = 0
+    this.db.exec('BEGIN')
+    try {
+      for (const id of ids.slice(0, 5000)) {
+        const r = get.get(id) as Row | undefined
+        if (!r) continue
+        const list = String(r.user_tags).split(',').map((x) => x.trim()).filter(Boolean)
+        const has = list.includes(t)
+        if (has === on) continue
+        set.run((on ? [...list, t] : list.filter((x) => x !== t)).join(', '), id)
+        n++
+      }
+      this.db.exec('COMMIT')
+    } catch (e) {
+      this.db.exec('ROLLBACK')
+      throw e
+    }
+    return n
   }
 
   // ---------- MusicBrainz ----------

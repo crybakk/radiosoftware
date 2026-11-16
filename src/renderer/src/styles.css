@@ -281,3 +281,11 @@ button.tiny.on { opacity: 1; background: var(--green); border-color: var(--green
 
 /* gli screenshot del telefono restano piccoli come un telefono */
 .guida img[src*="pannello-"], .guida img[src*="ospite-"] { max-width: min(100%, 400px); }
+
+/* categorie della libreria */
+.categories { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chip { padding: 3px 9px; border-radius: 999px; font-size: 12px; }
+.chip em { opacity: 0.6; font-style: normal; margin-left: 3px; }
+.chip.mine { border-color: #eab308; }
+.chip.on { background: var(--green); border-color: var(--green); color: #04130a; }
+.label-bar { margin: 6px 0; align-items: center; }

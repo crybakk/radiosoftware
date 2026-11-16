@@ -27,6 +27,8 @@ export interface Track {
   dcGenres: string
   /** Etichette di Last.fm (carattere, decennio…), separate da virgole. */
   lfmTags: string
+  /** Etichette scritte a mano (categorie tue), separate da virgole. */
+  userTags: string
   composer: string
   publisher: string
   isrc: string

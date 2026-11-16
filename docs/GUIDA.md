@@ -6,8 +6,8 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 16/11/2026, guida riscritta più semplice, con gli screenshot; scheda **Guida** nella
-regia e nel pannello.
+**Ultimo aggiornamento:** 16/11/2026, categorie ed etichette tue nella Libreria; le ricerche sui servizi
+riprovano da sole quando il servizio è occupato.
 
 ## Indice
 
@@ -357,6 +357,28 @@ Poi, in **Libreria**:
 
 Generi ed etichette di tutti i servizi compaiono nella scheda brano e valgono nelle regole di rotazione, nel
 **Brano casuale** e nelle rotazioni con l'AI.
+
+Se un servizio risponde "occupato" (errore 503) la regia riprova da sola più volte. Se continua, la ricerca va
+**in pausa** e riparte da sola dopo qualche minuto (il riquadro dice a che ora); si ferma solo se il servizio non
+risponde per più di mezz'ora.
+
+### Categorie ed etichette tue
+
+![Libreria, categorie ed etichette](immagini/regia-categorie.png)
+
+Nel riquadro **Categorie** della **Libreria** vedi tutte le categorie della musica, con il numero di brani:
+i generi dei file, quelli di MusicBrainz, Discogs e Last.fm, e le **etichette tue** (con la ★).
+
+1. Tocca una categoria: l'elenco **Brani** mostra solo i suoi brani (✕ per tornare a tutti).
+2. Per mettere un'etichetta tua (es. "sera", "estate", "da ballare"): scrivila in **Etichetta i brani** e premi
+   **Inizia**.
+3. Nell'elenco dei brani compare il pulsante **🏷 +**: toccalo per mettere l'etichetta (diventa **🏷 ✓**, toccalo
+   di nuovo per toglierla). **Mettila a tutti i … brani mostrati** la mette a tutto l'elenco in una volta: puoi
+   prima scegliere una categoria o cercare un artista.
+4. **Fine** quando hai finito.
+
+Le etichette tue si vedono e si correggono anche nella **Scheda** del brano (campo **Etichette tue**). Valgono
+come i generi: nelle regole di rotazione, nel **Brano casuale** e nelle rotazioni con l'AI.
 
 ## 10. Rotazioni con l'AI
 
@@ -832,7 +854,8 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 |---|---|
 | La scheda audio scelta non è disponibile | il RodeCaster è scollegato o spento |
 | In manuale la regia si ferma dopo ogni brano | è normale: premi **▶ PLAY**, oppure passa in AUTOMATICO |
-| "Ricerca fermata: MusicBrainz non raggiungibile" | niente internet o MusicBrainz in manutenzione: riprova più tardi, riparte da dove era |
+| "Ricerca fermata: MusicBrainz non raggiungibile" | niente internet o MusicBrainz in manutenzione da più di mezz'ora: riprova più tardi, riparte da dove era |
+| "… in pausa, riprovo da solo alle …" | il servizio è occupato (errore 503): non serve fare niente, riparte da solo |
 | "chiave non valida" (Discogs, Last.fm o AcoustID) | ricopia la chiave in **Impostazioni** → **Servizi per i dati dei brani** e **Salva** |
 | "Ricerca fermata: fpcalc non si avvia" | il programma per l'impronta audio è bloccato (spesso dall'antivirus): sbloccalo o reinstalla la regia; i brani restano da provare |
 | Il riquadro non dice "AcoustID attivo" | manca la chiave di AcoustID, oppure la regia è vecchia: aggiornala |
@@ -911,3 +934,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 16/11/2026 | Guida riscritta più semplice: prima le cose di tutti i giorni, poi l'installazione; screenshot con i numeri; dirette esterne passo passo (anche con BUTT); scheda **Guida** nella regia e **📖 Guida** nel menu del pannello |
 | 16/11/2026 | Controllo di sicurezza: ricerche lunghissime limitate, regia che non apre pagine esterne, eventi con comando esterno spenti dopo un ripristino, frase segreta per il video da OBS, etichette e registro protetti dalle formule di Excel |
 | 16/11/2026 | Secondo controllo di sicurezza: video da OBS solo con frase segreta, backup ripuliti prima del ripristino, notiziari con feed costruiti apposta, al massimo 20 accessi aperti per utente, una ricerca alla volta per pannello, microfono remoto tolto di sicuro dall'onda |
+| 16/11/2026 | Categorie della musica nella Libreria e etichette tue sui brani (anche su molti insieme); ricerche su MusicBrainz e servizi che dopo un 503 riprovano e vanno in pausa invece di fermarsi |

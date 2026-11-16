@@ -63,6 +63,7 @@ export function streamTrack(url: string, minutes: number, title: string): Track 
     mbGenres: '',
     dcGenres: '',
     lfmTags: '',
+    userTags: '',
     siaeCode: '',
     duration: seconds,
     bitrate: 0,
