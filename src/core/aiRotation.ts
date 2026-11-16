@@ -44,10 +44,15 @@ const MAX_PROMPT_GENRES = 150
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
 const DAY_NAMES = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato']
 
+/** Tutti i generi del brano in un testo: file, MusicBrainz, Discogs, Last.fm. */
+export function genreText(t: Pick<Track, 'genre' | 'mbGenres' | 'dcGenres' | 'lfmTags'>): string {
+  return `${t.genre},${t.mbGenres},${t.dcGenres},${t.lfmTags}`
+}
+
 /** Generi del brano: quello del file (anche più di uno, separati) e quelli di MusicBrainz. */
-export function trackGenres(t: Pick<Track, 'genre' | 'mbGenres'>): string[] {
+export function trackGenres(t: Pick<Track, 'genre' | 'mbGenres' | 'dcGenres' | 'lfmTags'>): string[] {
   const out: string[] = []
-  for (const g of `${t.genre},${t.mbGenres}`.split(/[,;/]/)) {
+  for (const g of genreText(t).split(/[,;/]/)) {
     const n = g.trim().toLowerCase()
     if (n && !out.includes(n)) out.push(n)
   }
@@ -239,7 +244,7 @@ export function matchCount(s: AiSlot, tracks: Track[]): number {
   let n = 0
   for (const t of tracks) {
     if (want.length) {
-      const g = `${t.genre}, ${t.mbGenres}`.toLowerCase()
+      const g = genreText(t).toLowerCase()
       if (!want.some((x) => g.includes(x))) continue
     }
     if (s.yearFrom != null && (t.year == null || t.year < s.yearFrom)) continue

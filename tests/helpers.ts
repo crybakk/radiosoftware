@@ -18,6 +18,8 @@ export function makeTrack(p: Partial<Track> = {}): Track {
     isrc: '',
     iswc: '',
     mbGenres: '',
+    dcGenres: '',
+    lfmTags: '',
     siaeCode: '',
     duration: 180,
     bitrate: 192,

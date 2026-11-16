@@ -10,6 +10,9 @@ import { logToCsv } from '../core/csv'
 import { quarterRange, siaeCsv, siaeRows } from '../core/siae'
 import { syncServerPlays } from '../core/serverPlays'
 import { MusicBrainzService } from './musicbrainz'
+import { tagWorkers, type TagService } from './tagServices'
+import { fpcalcPath } from './fpcalc'
+import { AcoustId } from '../core/acoustid'
 import { AiService, previewCounts } from './ai'
 import { llamaEngine } from './llm'
 import { AI_LABEL, cleanPlan, planEvents, summarize, type AiPlan } from '../core/aiRotation'
@@ -134,7 +137,13 @@ if (primary) app.whenReady().then(() => {
   const serverSync = new ServerLibrarySync(db, app.getPath('userData'), () => ponte.client(), (st) =>
     win?.webContents.send('serverSyncStatus', st)
   )
-  const mb = new MusicBrainzService(db, (st) => win?.webContents.send('mbStatus', st))
+  const mb = new MusicBrainzService(db, (st) => win?.webContents.send('mbStatus', st), undefined, {
+    client: new AcoustId(() => db.getSettings().acoustidKey.trim()),
+    enabled: () => !!db.getSettings().acoustidKey.trim(),
+    fpcalc: fpcalcPath
+  })
+  const tags = tagWorkers(db, (st) => win?.webContents.send('tagStatus', st))
+  const tagWorker = (s: TagService) => tags.find((w) => w.service === s)!
   const ai = new AiService({
     dir: join(app.getPath('userData'), 'ai'),
     engine: llamaEngine(),
@@ -353,6 +362,12 @@ if (primary) app.whenReady().then(() => {
     void mb.start()
   })
   handle('mbStop', () => mb.stop())
+  handle('tagStatus', () => tags.map((w) => w.status()))
+  handle('tagStart', (s: TagService) => {
+    void tagWorker(s).start()
+  })
+  handle('tagStop', (s: TagService) => tagWorker(s).stop())
+  handle('tagRetry', (s: TagService) => tagWorker(s).retry())
 
   // rotazioni generate dall'AI
   handle('aiStatus', () => ai.status())
@@ -456,6 +471,7 @@ if (primary) app.whenReady().then(() => {
   app.on('before-quit', () => {
     clearInterval(syncTimer)
     mb.stop()
+    for (const w of tags) w.stop()
     ai.stop()
     serverSync.stop()
     library.stop()
