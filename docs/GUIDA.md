@@ -2,7 +2,7 @@
 
 Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modifiche.
 
-**Ultimo aggiornamento:** 16/11/2026, rotazioni con l'AI dal palinsesto scritto a parole e generi da MusicBrainz.
+**Ultimo aggiornamento:** 16/11/2026, generi ed etichette da Discogs e Last.fm, brani riconosciuti dall'audio con AcoustID.
 
 ## Indice
 
@@ -12,6 +12,7 @@ Guida d'uso aggiornata a ogni nuova funzione. In fondo trovi l'elenco delle modi
 4. [In onda: uso quotidiano](#4-in-onda-uso-quotidiano)
 5. [Libreria e scheda brano](#5-libreria-e-scheda-brano)
     - [Dati per il report SIAE (MusicBrainz)](#dati-per-il-report-siae-musicbrainz)
+    - [Discogs, Last.fm e AcoustID](#discogs-lastfm-e-acoustid)
 6. [Eventi a orario](#6-eventi-a-orario)
     - [Rotazioni con l'AI](#rotazioni-con-lai)
 7. [Registro di trasmissione](#7-registro-di-trasmissione)
@@ -140,6 +141,29 @@ Il **codice opera SIAE** non è su MusicBrainz: va scritto nella scheda brano.
 mese perché MusicBrainz si arricchisce.
 **Mostra la musica con dati mancanti** elenca i brani a cui mancano autori, editore o un codice (codice opera,
 ISWC o ISRC): con **Scheda** li completi a mano.
+
+### Discogs, Last.fm e AcoustID
+
+Altri tre servizi gratuiti completano i dati dei brani. Ognuno vuole una chiave personale, che si crea una volta
+sola dal sito del servizio e si incolla in **Impostazioni** → **Servizi per i dati dei brani** (sotto ogni campo
+c'è il link giusto), poi **Salva**.
+
+| Servizio | Cosa aggiunge | Dove si crea la chiave |
+|---|---|---|
+| **Discogs** | generi e stili dettagliati (es. "rock", "pop rock", "ballad") | discogs.com → Impostazioni → Developers → **Generate new token** |
+| **Last.fm** | etichette scelte dagli ascoltatori: carattere e decennio (es. "chill", "80s", "italian") | last.fm/api/account/create → copia la **API key** |
+| **AcoustID** | riconosce il brano **dall'audio** quando la ricerca per titolo su MusicBrainz non lo trova | acoustid.org/new-application → copia la **API key** |
+
+Poi, nella **Libreria**, riquadro **Dati dei brani: report SIAE e generi**:
+
+- **Cerca su Discogs** (circa 6 ore per 20.000 brani) e **Cerca su Last.fm** (circa 2 ore) partono quando
+  vuoi, si possono fermare e riprendono da dove erano rimasti;
+- **AcoustID** non ha un pulsante suo: con la chiave salvata, **Cerca su MusicBrainz** prova dall'audio i brani
+  che non trova per titolo (anche quelli già cercati in passato), una volta sola per brano;
+- **Riprova i brani non trovati** rimette in coda quelli senza risultato, utile dopo qualche mese.
+
+Generi ed etichette di tutti i servizi compaiono nella scheda brano e valgono, insieme al genere del file, nelle
+regole di rotazione, nel **Brano casuale** e nelle [Rotazioni con l'AI](#rotazioni-con-lai).
 
 ## 6. Eventi a orario
 
@@ -794,6 +818,8 @@ Il ponte tiene gli ultimi 14.
 | "modello non scaricato" | serve internet per scaricarlo la prima volta: premi **Riprendi lo scaricamento**, riparte da dove si era fermato |
 | L'AI sbaglia giorni od orari | scrivi giorni e orari in modo esplicito ("dal lunedì al venerdì dalle 7 alle 10") e correggi nell'anteprima prima di creare gli eventi |
 | Una fascia ha pochi brani (⚠) | aggiungi generi alla fascia, oppure fai la ricerca su MusicBrainz per avere più generi |
+| "chiave non valida" (Discogs, Last.fm o AcoustID) | ricopia la chiave dal sito del servizio in **Impostazioni** → **Servizi per i dati dei brani** e premi **Salva** |
+| Il riquadro non dice "AcoustID attivo" | manca la chiave di AcoustID, oppure la regia è una versione vecchia senza fpcalc: aggiornala |
 | Nel report mancano i brani della notte | il ponte non era raggiungibile quando hai aperto il report: premi **Aggiorna** con il ponte collegato |
 
 ## 16. In arrivo
@@ -822,3 +848,4 @@ Prossime fasi:
 | 15/11/2026 | Notiziari scaricati in automatico: fonti in Impostazioni (feed di un podcast o link diretto), età massima, cosa fare se manca; azione **Notiziario** negli eventi |
 | 15/11/2026 | Voce sintetica gratuita (Paola o Riccardo) con regolazioni: azione **Annuncio vocale** negli eventi, notiziario mancante letto dalla voce, annunci a orario del server dal pannello |
 | 16/11/2026 | Rotazioni con l'AI: palinsesto scritto a parole, fasce in anteprima da correggere, eventi **AI · …** creati da soli; modello locale scaricato una volta; generi e anno da MusicBrainz |
+| 16/11/2026 | Discogs (generi e stili), Last.fm (etichette) e AcoustID (brani riconosciuti dall'audio): chiavi in Impostazioni, ricerca dalla Libreria |

@@ -257,3 +257,4 @@ label.block { display: flex; flex-direction: column; gap: 4px; }
 .ai-days { display: flex; gap: 2px; }
 button.tiny { padding: 1px 5px; font-size: 11px; min-width: 20px; opacity: 0.5; }
 button.tiny.on { opacity: 1; background: var(--green); border-color: var(--green); color: #04130a; }
+.mb-panel .tag-service { margin: 6px 0 10px; }

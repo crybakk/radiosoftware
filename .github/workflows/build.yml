@@ -44,6 +44,15 @@ jobs:
           cache: npm
       # installa anche ffmpeg per Windows (ffmpeg-static scarica il binario della piattaforma corrente)
       - run: npm ci
+      # fpcalc (Chromaprint, il programma ufficiale di AcoustID) per cercare i brani dall'audio
+      - name: Scarica fpcalc
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://github.com/acoustid/chromaprint/releases/download/v1.5.1/chromaprint-fpcalc-1.5.1-windows-x86_64.zip -OutFile fpcalc.zip
+          if ((Get-FileHash fpcalc.zip -Algorithm SHA256).Hash -ne '36B478E16AA69F757F376645DB0D436073A42C0097B6BB2677109E7835B59BBC') { throw 'fpcalc: checksum diverso' }
+          Expand-Archive fpcalc.zip -DestinationPath fpcalc-tmp
+          New-Item -ItemType Directory -Force build-resources/fpcalc | Out-Null
+          Copy-Item fpcalc-tmp/*/fpcalc.exe build-resources/fpcalc/
       - run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

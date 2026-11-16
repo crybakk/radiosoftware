@@ -8,6 +8,7 @@ import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { PonteStatus, StudioReport } from '../main/ponte'
 import type { ServerSyncStatus, ServerTrackRow } from '../main/serverSync'
 import type { MbStatus } from '../main/musicbrainz'
+import type { TagService, TagStatus } from '../main/tagServices'
 import type { AiResult, AiStatus } from '../main/ai'
 import type { AiPlan } from '../core/aiRotation'
 import type { SiaeRow } from '../core/siae'
@@ -86,6 +87,12 @@ export interface RadioApi {
   mbStop(): Promise<void>
   mbRetry(): Promise<MbStatus>
   onMbStatus(cb: (s: MbStatus) => void): () => void
+  /** Discogs e Last.fm. */
+  tagStatus(): Promise<TagStatus[]>
+  tagStart(s: TagService): Promise<void>
+  tagStop(s: TagService): Promise<void>
+  tagRetry(s: TagService): Promise<TagStatus>
+  onTagStatus(cb: (s: TagStatus) => void): () => void
 
   // rotazioni generate dall'AI
   aiStatus(): Promise<AiStatus>
