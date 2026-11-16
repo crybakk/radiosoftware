@@ -1,0 +1,83 @@
+name: Pubblica release
+
+# Si avvia a mano da GitHub (Actions > Pubblica release > Run workflow).
+# Controlla che il numero coincida con package.json, rifà test e installer Windows,
+# prepara lo ZIP del server e pubblica la release con il tag v<versione>.
+on:
+  workflow_dispatch:
+    inputs:
+      versione:
+        description: 'Numero di versione, senza la v (deve coincidere con package.json)'
+        required: true
+      anteprima:
+        description: 'Segna come anteprima (pre-release)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  controllo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versione uguale a package.json e tag non ancora usato
+        env:
+          VERSIONE: ${{ inputs.versione }}
+        run: |
+          nel_codice=$(node -p "require('./package.json').version")
+          if [ "$VERSIONE" != "$nel_codice" ]; then
+            echo "::error::Hai scritto $VERSIONE ma package.json dice $nel_codice"; exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSIONE" >/dev/null; then
+            echo "::error::Il tag v$VERSIONE esiste già"; exit 1
+          fi
+          if ! grep -q "^## v$VERSIONE" CHANGELOG.md; then
+            echo "::error::Manca la sezione '## v$VERSIONE' in CHANGELOG.md"; exit 1
+          fi
+
+  build:
+    needs: controllo
+    uses: ./.github/workflows/build.yml
+
+  pubblica:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RadioRegia-Setup-Windows
+          path: regia
+      - name: Prepara i file della release
+        env:
+          VERSIONE: ${{ inputs.versione }}
+        run: |
+          mkdir -p uscita
+          # installer della regia con un nome che dice la versione
+          exe=$(ls regia/*.exe | head -n 1)
+          cp "$exe" "uscita/RadioRegia-Setup-$VERSIONE.exe"
+          # ZIP del server: cartella ponte + guida con le immagini (le copia installa-server.sh)
+          cartella="radio-ponte-$VERSIONE"
+          mkdir -p "$cartella/docs"
+          cp -r ponte "$cartella/"
+          cp docs/GUIDA.md "$cartella/docs/"
+          cp -r docs/immagini "$cartella/docs/"
+          zip -qr "uscita/RadioPonte-server-$VERSIONE.zip" "$cartella"
+          (cd uscita && sha256sum * > SHA256SUMS.txt)
+          # note della release = sezione della versione nel CHANGELOG
+          awk -v v="## v$VERSIONE" '$0 ~ "^## v" { dentro = (index($0, v) == 1); next } dentro' CHANGELOG.md > note.md
+          ls -l uscita; cat note.md
+      - name: Crea tag e release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSIONE: ${{ inputs.versione }}
+          ANTEPRIMA: ${{ inputs.anteprima }}
+        run: |
+          extra=""
+          if [ "$ANTEPRIMA" = "true" ]; then extra="--prerelease"; fi
+          gh release create "v$VERSIONE" uscita/* \
+            --target "$GITHUB_SHA" \
+            --title "Radio Regia $VERSIONE" \
+            --notes-file note.md $extra

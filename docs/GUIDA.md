@@ -639,9 +639,10 @@ eventi, registro e impostazioni. Il server tiene gli ultimi 14.
 
 ## 18. Installare la regia su Windows
 
-1. Apri il repository su GitHub → scheda **Actions** → l'ultima esecuzione verde di "Test e build Windows".
-2. In fondo alla pagina scarica **RadioRegia-Setup-Windows** ed estrai lo zip.
-3. Avvia l'installer. Se Windows avvisa che il programma non è firmato: "Ulteriori informazioni" → "Esegui
+1. Apri la pagina delle [release](https://github.com/crybakk/radiosoftware/releases) e, nell'ultima, scarica
+   **RadioRegia-Setup-<versione>.exe**. (Per provare una modifica non ancora pubblicata: scheda **Actions** →
+   l'ultima esecuzione verde di "Test e build Windows" → artefatto **RadioRegia-Setup-Windows**.)
+2. Avvia l'installer. Se Windows avvisa che il programma non è firmato: "Ulteriori informazioni" → "Esegui
    comunque".
 
 Il programma si apre a schermo intero; può esserne aperta una sola copia alla volta. Poi:
@@ -681,9 +682,11 @@ automatico).
    domestica → Rete → "radio" → "Assegna sempre lo stesso indirizzo IPv4"). L'indirizzo della VM si vede sul router
    o dalla console della VM (**Console → xterm.js**, entra come `radio`, scrivi `ip -br a`). La console di Proxmox
    non incolla bene: usala solo per questo e lavora via SSH dal PC.
-4. **Copia il programma**: su GitHub **Code → Download ZIP**. In PowerShell:
-   `scp $HOME\Downloads\radiosoftware-main.zip radio@<indirizzo>:` ed entra con `ssh radio@<indirizzo>`. Nella VM:
-   `sudo apt-get install -y unzip && unzip -q radiosoftware-main.zip && cd radiosoftware-main/ponte`
+4. **Copia il programma**: dall'ultima [release](https://github.com/crybakk/radiosoftware/releases) scarica
+   **RadioPonte-server-<versione>.zip** (per esempio `RadioPonte-server-0.1.0.zip`). In PowerShell:
+   `scp $HOME\Downloads\RadioPonte-server-0.1.0.zip radio@<indirizzo>:` ed entra con `ssh radio@<indirizzo>`. Nella VM:
+   `sudo apt-get install -y unzip && unzip -q RadioPonte-server-0.1.0.zip && cd radio-ponte-0.1.0/ponte`
+   (va bene anche lo ZIP di tutto il repository, **Code → Download ZIP**: la cartella è `radiosoftware-main/ponte`).
 5. **Installa**: `sudo DOMINIO=radio.esempio.it bash installa-server.sh` (con il tuo dominio). Alla fine stampa i
    valori per la regia, la password del pannello, i dati delle dirette esterne e le porte da aprire. **Tienili da
    parte**: le password poi non si vedono più nel pannello.
@@ -940,3 +943,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 16/11/2026 | Secondo controllo di sicurezza: video da OBS solo con frase segreta, backup ripuliti prima del ripristino, notiziari con feed costruiti apposta, al massimo 20 accessi aperti per utente, una ricerca alla volta per pannello, microfono remoto tolto di sicuro dall'onda |
 | 16/11/2026 | Indirizzi del server: `/` è il player pubblico per gli ascoltatori, il pannello si apre da `/dashboard`; pulsante **← Panoramica** in ogni sezione del pannello |
 | 16/11/2026 | Categorie della musica nella Libreria e etichette tue sui brani (anche su molti insieme); ricerche su MusicBrainz e servizi che dopo un 503 riprovano e vanno in pausa invece di fermarsi |
+| 16/11/2026 | Prima release (0.1.0, anteprima): installer della regia e ZIP del server si scaricano dalla pagina delle release |
