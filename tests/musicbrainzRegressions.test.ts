@@ -147,3 +147,26 @@ describe('MusicBrainz: casi limite', () => {
     db.close()
   })
 })
+
+describe('correzione a mano di titolo o interprete', () => {
+  it('toglie l\'abbinamento a MusicBrainz e rimette il brano in coda', async () => {
+    const { RadioDb } = await import('../src/core/db')
+    const db = new RadioDb(':memory:')
+    const id = db.upsertScanned({
+      path: '/x.mp3', kind: 'music', size: 1, mtime: 1, title: 'Sbagliato', artist: 'X', album: '', year: null, genre: '',
+      composer: '', publisher: '', isrc: '', duration: 100, bitrate: 320, sampleRate: 44100
+    })
+    db.saveMb(id, 'rec-sbagliata', { composer: 'Autore', genres: ['pop'] })
+    expect(db.mbTrack(id)).toMatchObject({ recordingId: 'rec-sbagliata', checked: true })
+    // cambiare altro non tocca l'abbinamento
+    db.updateTrack(id, { genre: 'rock' })
+    expect(db.mbTrack(id)!.recordingId).toBe('rec-sbagliata')
+    db.updateTrack(id, { title: 'Giusto' })
+    const t = db.mbTrack(id)!
+    expect(t.recordingId).toBe('')
+    expect(t.checked).toBe(false)
+    expect(t.composer).toBe('Autore')
+    expect(db.mbPending(10).map((x) => x.id)).toContain(id)
+    db.close()
+  })
+})

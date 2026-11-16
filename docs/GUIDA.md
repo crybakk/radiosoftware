@@ -306,10 +306,14 @@ dove far partire il brano successivo. Con 20.000 brani ci vuole un po', ma puoi 
 
 Sotto c'è l'elenco dei brani. **Scheda** apre la scheda del brano, dove puoi:
 
-- correggere titolo, interprete, album, anno, genere e tipo;
+- correggere titolo, interprete, album, anno, genere e tipo (se cambi titolo o interprete, i dati di MusicBrainz e
+  degli altri servizi si cercano di nuovo per il brano corretto);
 - scrivere **autori/compositori**, **editore** e **codice opera SIAE** (servono per il report SIAE);
 - spostare inizio, fine e punto di mix se l'analisi automatica non ti convince;
 - togliere **Attivo** per escludere un brano da rotazione e ricerca senza cancellarlo.
+
+Se rinomini un file cambiando solo maiuscole e minuscole (per esempio `canzone.mp3` → `Canzone.mp3`), su Windows
+resta lo stesso brano, con correzioni e storico.
 
 ### Dati per il report SIAE (MusicBrainz)
 
@@ -547,7 +551,8 @@ Scegli **Giorno** o **Settimana** e la data (◀ ▶ per spostarti). Trovi **ade
 e la tabella **per programma**.
 
 Per il secondario il server prova la sua pagina pubblica `status-json.xsl`; se è chiusa, metti utente e password
-di amministrazione di quell'Icecast in **Impostazioni server** → **Icecast secondario**. Se non si riesce a
+di amministrazione di quell'Icecast in **Impostazioni server** → **Icecast secondario**. Se il secondario risponde
+in HTTPS, metti **Statistiche lette in HTTPS** su Sì, così la password non passa in chiaro. Se non si riesce a
 leggere, le statistiche contano solo il principale e la pagina lo dice.
 
 ## 15. Dirette video su YouTube e Facebook
@@ -565,8 +570,8 @@ chiave salvata.
 - **Video da OBS**: in OBS, Impostazioni → Stream: Servizio **Personalizzato**, Server
   `srt://<indirizzo della radio>:9020` (in casa basta l'IP del server), chiave vuota. Uscita: **x264**, al massimo
   **1280×720**, fotogrammi chiave ogni **2 s**, 2500-4000 kbit/s. Il pannello mostra l'indirizzo esatto, con la
-  **frase segreta** (`passphrase`) se è impostata. L'installazione ne crea una; se manca, il pannello avvisa:
-  impostala in **Impostazioni server**, altrimenti chiunque raggiunga la porta potrebbe mandare il suo video.
+  **frase segreta** (`passphrase`). L'installazione ne crea una (e la crea anche al prossimo riavvio se manca).
+  Senza frase segreta la diretta da OBS **non parte**: impostala in **Impostazioni server** → Dirette video.
 
 **Andare in onda:** scegli l'immagine, spunta **YouTube** e/o **Facebook** e premi **▶ Avvia diretta video** (con
 OBS, dopo, premi "Avvia trasmissione" in OBS). **■ Ferma diretta video** la chiude. L'audio è sempre quello della
@@ -625,7 +630,8 @@ eventi, registro e impostazioni. Il server tiene gli ultimi 14.
 - **Mostra i backup sul ponte** → **Ripristina** → **Sì, ripristina**: la regia si riavvia con il backup scelto. La
   messa in onda si ferma per qualche secondo. Il database di prima resta in una copia a parte. Per sicurezza gli
   eventi che lanciano un **comando esterno** ripartono spenti: la regia li elenca in alto, controllali e
-  riaccendili dalla scheda **Eventi**.
+  riaccendili dalla scheda **Eventi**. Un backup che contiene parti strane (fatte apposta per eseguire comandi)
+  viene ripulito; se non si riesce, la regia non lo apre e lo segnala.
 
 ## 18. Installare la regia su Windows
 
@@ -733,8 +739,8 @@ Riconoscimento brani e puntate, Allarmi (Telegram ed email).
 - Cambia i valori e premi **Salva e applica**. Prima di salvare il pannello ti dice cosa riparte: se tocca l'audio
   (per esempio la password delle esterne) la radio resta muta per qualche secondo; se tocca solo il pannello (per
   esempio Telegram o le email) l'audio non si ferma. Finché il server lavora compare **Applico le impostazioni…**,
-  poi **✓ Impostazioni applicate** oppure **✗ Errore** con il motivo. Nei valori non si possono usare apostrofi
-  e non si può finire con `\`.
+  poi **✓ Impostazioni applicate** oppure **✗ Errore** con il motivo. Un valore non può finire con `\`; con un
+  apostrofo (per esempio "Radio dell'Isola") non può contenere anche `$`, `\`, `"` o `` ` ``.
 - **Password**: non si vedono. Lasciale vuote per tenere quelle di adesso; l'occhio 👁 mostra quello che stai
   scrivendo; **Cancella** la toglie.
 - **Avanzate** (dominio, porte, frase segreta SRT, token della regia, password di Icecast, mount dell'ascolto):
@@ -927,4 +933,5 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 16/11/2026 | Impostazioni del server dal pannello (menu ☰ → Impostazioni server): tutti i valori del `.env`, riavvio automatico solo delle parti cambiate, valori avanzati protetti |
 | 16/11/2026 | Guida riscritta più semplice: prima le cose di tutti i giorni, poi l'installazione; screenshot con i numeri; dirette esterne passo passo (anche con BUTT); scheda **Guida** nella regia e **📖 Guida** nel menu del pannello |
 | 16/11/2026 | Controllo di sicurezza: ricerche lunghissime limitate, regia che non apre pagine esterne, eventi con comando esterno spenti dopo un ripristino, frase segreta per il video da OBS, etichette e registro protetti dalle formule di Excel |
+| 16/11/2026 | Secondo controllo di sicurezza: video da OBS solo con frase segreta, backup ripuliti prima del ripristino, notiziari con feed costruiti apposta, al massimo 20 accessi aperti per utente, una ricerca alla volta per pannello, microfono remoto tolto di sicuro dall'onda |
 | 16/11/2026 | Categorie della musica nella Libreria e etichette tue sui brani (anche su molti insieme); ricerche su MusicBrainz e servizi che dopo un 503 riprovano e vanno in pausa invece di fermarsi |

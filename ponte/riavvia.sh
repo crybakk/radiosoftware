@@ -10,6 +10,11 @@ if [[ -f .env ]] && ! grep -q '^ICECAST_PASSWORD_RELAY=.' .env; then
   sed -i '/^ICECAST_PASSWORD_RELAY=/d' .env
   echo "ICECAST_PASSWORD_RELAY=$(openssl rand -hex 12)" >> .env
 fi
+# frase segreta del video da OBS (installazioni vecchie): senza, la diretta da OBS non parte
+if [[ -f .env ]] && ! grep -q '^VIDEO_OBS_PASSPHRASE=.' .env; then
+  sed -i '/^VIDEO_OBS_PASSPHRASE=/d' .env
+  echo "VIDEO_OBS_PASSPHRASE=$(openssl rand -hex 16)" >> .env
+fi
 # il pannello modifica le impostazioni: il file .env deve essere scrivibile dal servizio di controllo (resta privato)
 chown 1000:1000 .env 2>/dev/null || true
 chmod 600 .env 2>/dev/null || true

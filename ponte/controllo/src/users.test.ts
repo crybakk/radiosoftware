@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { scryptSync } from 'node:crypto'
-import { can, sameSecret, Users } from './users.ts'
+import { can, MAX_SESSIONS_PER_USER, sameSecret, Users } from './users.ts'
 
 function make(now = () => Date.now()) {
   const d = mkdtempSync(join(tmpdir(), 'utenti-'))
@@ -21,6 +21,23 @@ describe('utenti del pannello', () => {
     expect(users.session(s.token)?.name).toBe('cristian')
     users.logout(s.token)
     expect(users.session(s.token)).toBeNull()
+  })
+
+  it('troppi accessi dello stesso utente chiudono le sessioni più vecchie', async () => {
+    let t = 0
+    const { users } = make(() => t)
+    users.save('anna', 'conduttore', 'password-anna')
+    users.save('bea', 'conduttore', 'password-bea')
+    const bea = (await users.login('bea', 'password-bea'))!
+    const tokens: string[] = []
+    for (let i = 0; i < MAX_SESSIONS_PER_USER + 3; i++) {
+      t += 1000
+      tokens.push((await users.login('anna', 'password-anna'))!.token)
+    }
+    expect(tokens.filter((x) => users.session(x)).length).toBe(MAX_SESSIONS_PER_USER)
+    expect(users.session(tokens[0])).toBeNull()
+    expect(users.session(tokens.at(-1))?.name).toBe('anna')
+    expect(users.session(bea.token)?.name).toBe('bea')
   })
 
   it('i dati restano dopo un riavvio', async () => {

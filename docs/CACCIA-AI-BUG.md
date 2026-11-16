@@ -207,3 +207,31 @@ Il controllo di sicurezza ha seguito il metodo di Cloudflare (security-audit-ski
 ## Rimandato al giro 2
 
 Sette aree non sono state coperte per limite di budget e passano al giro 2: servizi esterni dei brani (lato rete), statistiche degli ascoltatori, scansione delle cartelle, tagli delle puntate e indirizzo delle esterne, download dei notiziari, e un secondo passaggio su limiti del server e voce/WebRTC.
+
+# Controllo di sicurezza e caccia ai bug, giro 2 – 16/11/2026
+
+Stesso metodo del giro 1. Coperte le 7 aree rimandate e ricontrollate le correzioni del giro 1 (ricerche, etichette e Telegram, comandi della regia, impostazioni dal pannello): tutte chiuse tranne il ripristino, vedi sotto. Ogni punto trovato è stato riverificato da un altro agente. Nessun punto critico.
+
+## Sicurezza: corretti
+
+| Gravità | Problema | Correzione |
+|---|---|---|
+| Media | Un backup sul server costruito apposta (con un "trigger" SQLite) poteva tenere accesi gli eventi con comando esterno dopo il ripristino, mentre la regia li diceva spenti. | Il backup viene ripulito da trigger e viste prima dell'uso; se resta un evento con comando acceso la regia non parte e lo dice. |
+| Bassa | Un feed di notiziario costruito apposta bloccava la regia per decine di secondi. | Lettura del feed in tempo lineare. |
+| Bassa | Il video da OBS partiva anche senza frase segreta. | Come hai scelto: la frase si crea al riavvio se manca, e senza frase la diretta da OBS non parte. |
+| Bassa | Accessi ripetuti con un utente valido facevano crescere senza limite le sessioni e rallentavano il server. | Al massimo 20 sessioni per utente (si chiude la più vecchia) e 500 in tutto. |
+| Bassa | Tante ricerche dal pannello potevano sommergere la regia in onda. | Una ricerca alla volta per pannello, al massimo 20 comandi in attesa, comandi lunghi rifiutati; in regia ricerche una alla volta, al massimo 4 in attesa. |
+| Bassa | Se il mixer non rispondeva al "fuori onda", la voce di un ospite poteva restare aperta. | Il ponte riprova finché il mixer conferma. |
+| Da verificare | La password amministratore dell'Icecast secondario passa in chiaro (HTTP). | Nuova impostazione **Statistiche lette in HTTPS** (spenta di base: accendila se il secondario risponde in HTTPS). |
+
+## Scelte applicate
+
+Apostrofi nelle impostazioni del server (virgolette doppie), ricerca MusicBrainz da capo dopo una correzione a mano di titolo o interprete, stesso brano su Windows se cambiano solo maiuscole e minuscole.
+
+## Rafforzamenti piccoli
+
+Contatore dei brani sconosciuti robusto a valori rovinati; un pacchetto audio di ritorno rovinato non ferma il ponte.
+
+## Non coperto (limite settimanale degli agenti raggiunto)
+
+Il controllo finale ha indicato 7 aree da riguardare con il metodo del giro 2; erano già state viste nel giro 1, ma non sono state ripassate: pagine del pannello, annunci e voce sintetica, decodifica audio delle impronte, notifiche e "in onda" pubblico, backup e puntate lato server, collegamento audio della regia, rotazioni con l'AI. Anche la caccia ai bug del giro 2 si è fermata per lo stesso limite: i bug corretti in questo giro sono quelli emersi dal controllo (sopra).

@@ -15,9 +15,14 @@ interface Pending {
   panel: Peer
   panelId: string
   timer: ReturnType<typeof setTimeout>
+  search: boolean
 }
 
 const REPLY_TIMEOUT_MS = 10_000
+/** Comandi in attesa di risposta dalla regia, al massimo, per ogni pannello. */
+export const MAX_PENDING_PER_PANEL = 20
+/** Dimensione massima di un comando per la regia (JSON). */
+const MAX_CMD_BYTES = 16 * 1024
 
 export class Relay {
   private studio: Peer | null = null
@@ -205,10 +210,21 @@ export class Relay {
         // la ricerca è una lettura: la può fare anche chi non comanda
         if (msg.cmd.type !== 'search' && !can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la regia')
         if (!this.studio) return reply(false, 'regia scollegata')
+        // limiti per non sommergere la regia in onda: una ricerca alla volta e pochi comandi in attesa per pannello
+        const search = msg.cmd.type === 'search'
+        let mine = 0
+        for (const p of this.pending.values()) {
+          if (p.panel !== peer) continue
+          mine++
+          if (search && p.search) return reply(false, 'una ricerca è già in corso: attendi il risultato')
+        }
+        if (mine >= MAX_PENDING_PER_PANEL) return reply(false, 'troppi comandi in attesa: attendi le risposte della regia')
+        if (Buffer.byteLength(JSON.stringify(msg.cmd)) > MAX_CMD_BYTES) return reply(false, 'comando troppo grande')
         const id = `c${++this.seq}`
         this.pending.set(id, {
           panel: peer,
           panelId: msg.id,
+          search,
           timer: setTimeout(() => {
             this.pending.delete(id)
             reply(false, 'la regia non ha risposto')

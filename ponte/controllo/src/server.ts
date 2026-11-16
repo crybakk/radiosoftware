@@ -515,7 +515,8 @@ const secondaryIcecast: SecondaryConfig = {
   port: num('ICECAST_ESTERNO_PORTA', 8000),
   mount: env('ICECAST_ESTERNO_MOUNT', '/radio.mp3'),
   adminUser: env('ICECAST_ESTERNO_ADMIN_UTENTE', 'admin'),
-  adminPassword: env('ICECAST_ESTERNO_ADMIN_PASSWORD')
+  adminPassword: env('ICECAST_ESTERNO_ADMIN_PASSWORD'),
+  https: env('ICECAST_ESTERNO_HTTPS', 'no') === 'si'
 }
 let secondaryWarned = false
 async function sampleListeners(): Promise<void> {
