@@ -529,7 +529,8 @@ Scegli **Giorno** o **Settimana** e la data (◀ ▶ per spostarti). Trovi **ade
 e la tabella **per programma**.
 
 Per il secondario il server prova la sua pagina pubblica `status-json.xsl`; se è chiusa, metti utente e password
-di amministrazione di quell'Icecast in **Impostazioni server** → **Icecast secondario**. Se non si riesce a
+di amministrazione di quell'Icecast in **Impostazioni server** → **Icecast secondario**. Se il secondario risponde
+in HTTPS, metti **Statistiche lette in HTTPS** su Sì, così la password non passa in chiaro. Se non si riesce a
 leggere, le statistiche contano solo il principale e la pagina lo dice.
 
 ## 15. Dirette video su YouTube e Facebook

@@ -66,6 +66,7 @@ export const VOCI: Voce[] = [
   { chiave: 'ICECAST_ESTERNO_PASSWORD', gruppo: 'Icecast secondario', etichetta: 'Password per trasmettere', tipo: 'password', vuoto: true, predefinito: '', parti: ['audio'] },
   { chiave: 'ICECAST_ESTERNO_ADMIN_UTENTE', gruppo: 'Icecast secondario', etichetta: 'Utente amministratore (statistiche)', tipo: 'testo', vuoto: true, predefinito: 'admin', parti: ['pannello'], aiuto: 'Serve solo se la pagina pubblica di stato del secondario è chiusa.' },
   { chiave: 'ICECAST_ESTERNO_ADMIN_PASSWORD', gruppo: 'Icecast secondario', etichetta: 'Password amministratore (statistiche)', tipo: 'password', vuoto: true, predefinito: '', parti: ['pannello'] },
+  { chiave: 'ICECAST_ESTERNO_HTTPS', gruppo: 'Icecast secondario', etichetta: 'Statistiche lette in HTTPS', tipo: 'sino', predefinito: 'no', parti: ['pannello'], aiuto: 'Sì se il secondario risponde in HTTPS sulla stessa porta: la password amministratore non passa in chiaro.' },
 
   // --- Microfono remoto e ospiti ---
   { chiave: 'MICROFONO_REMOTO', gruppo: 'Microfono remoto e ospiti', etichetta: 'Microfono remoto dal pannello', tipo: 'sino', predefinito: 'si', parti: ['audio', 'pannello'] },
