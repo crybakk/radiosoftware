@@ -1,0 +1,10 @@
+# Guarda la cartella delle richieste del pannello: quando compare "applica", applica le impostazioni.
+[Unit]
+Description=Radio: impostazioni salvate dal pannello
+
+[Path]
+PathExists=/opt/radio-ponte/richieste/applica
+Unit=radio-ponte-impostazioni.service
+
+[Install]
+WantedBy=multi-user.target

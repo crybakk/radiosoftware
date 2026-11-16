@@ -33,6 +33,7 @@
         <button id="stats-btn" class="ghost">Ascoltatori</button>
         <button id="ann-btn" class="ghost" hidden>Annunci vocali</button>
         <button id="users-btn" class="ghost" hidden>Utenti</button>
+        <button id="imp-btn" class="ghost" hidden>Impostazioni server</button>
         <button id="logout" class="ghost">Esci</button>
       </nav>
 
@@ -249,6 +250,29 @@
         </details>
       </section>
 
+      <section id="imp" class="users progs" hidden>
+        <div class="card">
+          <div class="section-title">Impostazioni del server <button class="small ghost" id="imp-close">Chiudi</button></div>
+          <p class="hint">Quando salvi, il server riparte da solo soltanto nelle parti che usano i valori cambiati.
+            Le password non si vedono: lasciale vuote per tenere quelle di adesso.</p>
+          <p class="banner info" id="imp-status" hidden></p>
+        </div>
+        <form id="imp-form" class="imp-form">
+          <div id="imp-groups"></div>
+          <div class="card prog-form">
+            <div class="section-title">Avanzate</div>
+            <p class="hint">Se sbagliati, la regia o il pannello non si collegano più. Di solito vanno cambiati anche nella regia,
+              sul router o nelle app delle esterne.</p>
+            <label class="check"><input type="checkbox" id="imp-adv" /> Modifica avanzata</label>
+            <div id="imp-adv-fields"></div>
+          </div>
+          <div class="card row imp-save">
+            <button class="primary" type="submit" id="imp-save">Salva e applica</button>
+            <span class="hint" id="imp-msg"></span>
+          </div>
+        </form>
+      </section>
+
       <section id="ann" class="users progs" hidden>
         <div class="card">
           <div class="section-title">Annunci vocali del server <button class="small ghost" id="ann-close">Chiudi</button></div>
@@ -297,5 +321,6 @@
     <script src="programmi.js"></script>
     <script src="ascoltatori.js"></script>
     <script src="annunci.js"></script>
+    <script src="impostazioni.js"></script>
   </body>
 </html>
