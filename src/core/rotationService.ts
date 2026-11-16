@@ -11,7 +11,8 @@ export function applyProfile(tracks: Track[], profile: RotationProfile | null): 
   const genres = profile.genres.map((g) => g.trim().toLowerCase()).filter(Boolean)
   const filtered = tracks.filter((t) => {
     if (genres.length) {
-      const g = t.genre.toLowerCase()
+      // genere del file e generi di MusicBrainz insieme
+      const g = `${t.genre}, ${t.mbGenres}`.toLowerCase()
       if (!genres.some((x) => g.includes(x))) return false
     }
     if (profile.yearFrom != null && (t.year == null || t.year < profile.yearFrom)) return false

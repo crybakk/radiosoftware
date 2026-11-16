@@ -21,6 +21,8 @@ export interface Track {
   album: string
   year: number | null
   genre: string
+  /** Generi di MusicBrainz, separati da virgole (vuoto se non ancora letti o non trovati). */
+  mbGenres: string
   composer: string
   publisher: string
   isrc: string

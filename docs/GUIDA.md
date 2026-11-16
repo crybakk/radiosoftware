@@ -127,6 +127,13 @@ Come funziona:
   **12 ore**. Si può fermare e riprendere quando vuoi, riparte da dove era rimasta;
 - usa internet, quindi conviene farla partire con la regia collegata a una rete senza limiti, o di notte.
 
+Insieme a questi dati legge anche i **generi** ufficiali di MusicBrainz (per le regole di rotazione e per le
+rotazioni generate dall'AI) e l'**anno** della prima uscita, se nel file manca. Se il brano non ha generi su
+MusicBrainz prende quelli dell'artista. I generi compaiono nella scheda brano sotto il percorso del file e si
+aggiungono al genere scritto nel file: nelle regole di rotazione e nel **Brano casuale** valgono tutti e due.
+Dopo l'aggiornamento la ricerca va rifatta una volta su tutta la musica, anche sui brani già completi: per quelli
+già trovati basta una richiesta (circa 6 ore per 20.000 brani).
+
 Il **codice opera SIAE** non è su MusicBrainz: va scritto nella scheda brano.
 **Riprova i brani non trovati** rimette in coda quelli già cercati che sono ancora incompleti, utile dopo qualche
 mese perché MusicBrainz si arricchisce.

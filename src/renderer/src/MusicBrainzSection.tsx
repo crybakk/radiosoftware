@@ -4,7 +4,7 @@ import type { Track } from '../../core/types'
 
 const api = window.radio
 
-/** Completamento di autori, editore, ISWC e ISRC con MusicBrainz, e musica ancora incompleta. */
+/** Completamento di autori, editore, ISWC, ISRC e generi con MusicBrainz, e musica ancora incompleta. */
 export function MusicBrainzSection({ onEdit, refreshKey }: { onEdit: (t: Track) => void; refreshKey: string }) {
   const [st, setSt] = useState<MbStatus | null>(null)
   const [list, setList] = useState<{ tracks: Track[]; total: number } | null>(null)
@@ -25,10 +25,11 @@ export function MusicBrainzSection({ onEdit, refreshKey }: { onEdit: (t: Track) 
 
   return (
     <section className="panel mb-panel">
-      <div className="section-title">Dati per il report SIAE</div>
+      <div className="section-title">Dati per il report SIAE e generi</div>
       <p className="hint">
         MusicBrainz completa autori, editore, ISWC e ISRC dove mancano: i dati scritti a mano non vengono toccati. Il
-        codice opera SIAE non è su MusicBrainz e va scritto nella scheda.
+        codice opera SIAE non è su MusicBrainz e va scritto nella scheda. Legge anche i generi (per le rotazioni) e
+        l'anno, se nel file manca.
       </p>
       <div>
         {st.running

@@ -151,6 +151,7 @@ export function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose
       <div className="modal-body editor" onClick={(e) => e.stopPropagation()}>
         <div className="section-title">Scheda brano</div>
         <div className="file-path">{track.path}</div>
+        {track.mbGenres && <div className="hint">Generi da MusicBrainz: {track.mbGenres}</div>}
         <div className="form-grid">
           {TEXT_FIELDS.map((f) => (
             <label key={f.key}>

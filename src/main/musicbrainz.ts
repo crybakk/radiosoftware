@@ -1,10 +1,12 @@
 /**
- * Ricerca su MusicBrainz dei dati mancanti per il report SIAE, in background, un brano alla volta.
+ * Ricerca su MusicBrainz dei dati mancanti per il report SIAE e dei generi (per le rotazioni),
+ * in background, un brano alla volta.
  * Parte solo quando lo chiedi (sono circa due richieste al secondo per brano e il 4G non è illimitato)
  * e si può fermare: riprende da dove era rimasta.
  */
 import type { RadioDb } from '../core/db'
-import { MbError, MusicBrainz } from '../core/musicbrainz'
+import { MbError, MusicBrainz, type MbResult } from '../core/musicbrainz'
+import type { Track } from '../core/types'
 
 export interface MbStatus {
   running: boolean
@@ -69,13 +71,34 @@ export class MusicBrainzService {
       const t = this.db.getTrack(id)
       if (!t) continue
       try {
-        const r = await this.mb.find(t)
-        this.db.saveMb(t.id, r?.recordingId ?? '', r ?? {})
+        await this.one(t)
       } catch {
         // resta in coda per la prossima ricerca
       }
     }
     this.emit(true)
+  }
+
+  /**
+   * Un brano: se la registrazione è già stata trovata basta rileggerla (generi); se era già stata
+   * cercata senza trovarla non si ricerca; altrimenti ricerca completa. Se la registrazione non ha generi
+   * si prendono quelli del primo artista (letti una volta sola per artista).
+   */
+  private async one(t: Track & { recordingId?: string; checked?: boolean }, signal?: AbortSignal): Promise<void> {
+    let r: MbResult | null = null
+    if (t.recordingId) r = await this.mb.recording(t.recordingId, signal)
+    else if (!t.checked) r = await this.mb.find(t, signal)
+    let genres = r?.genres ?? []
+    const artist = r?.artistIds[0]
+    if (r && !genres.length && artist) {
+      const known = this.db.mbArtistGenres(artist)
+      if (known) genres = known
+      else {
+        genres = await this.mb.artistGenres(artist, signal)
+        this.db.saveMbArtistGenres(artist, genres)
+      }
+    }
+    this.db.saveMb(t.id, r?.recordingId ?? '', { ...(r ?? {}), genres })
   }
 
   async start(): Promise<void> {
@@ -96,8 +119,7 @@ export class MusicBrainzService {
           this.current = `${t.artist} - ${t.title}`
           this.emit()
           try {
-            const r = await this.mb.find(t, ac.signal)
-            this.db.saveMb(t.id, r?.recordingId ?? '', r ?? {})
+            await this.one(t, ac.signal)
             this.doneNow++
             failures = 0
           } catch (e) {

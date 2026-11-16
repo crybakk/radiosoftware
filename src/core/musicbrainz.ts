@@ -3,6 +3,8 @@
  *
  * Per ogni brano: ricerca della registrazione per titolo e interprete, poi lettura della registrazione
  * con le opere collegate. Da lì arrivano ISRC (registrazione), ISWC, autori ed editore (opera).
+ * Dalla stessa lettura arrivano anche i generi (quelli ufficiali di MusicBrainz, non le etichette libere)
+ * e l'anno della prima uscita; se la registrazione non ha generi si usano quelli dell'artista.
  * MusicBrainz chiede al massimo una richiesta al secondo e un nome del programma riconoscibile:
  * non si manda nessun dato della radio o dell'utente.
  */
@@ -21,14 +23,28 @@ export interface MbResult {
   publisher: string
   isrc: string
   iswc: string
+  /** Generi della registrazione, dal più votato (al massimo 5). */
+  genres: string[]
+  /** Anno della prima uscita, null se non si sa. */
+  year: number | null
+  /** Artisti accreditati (per i generi dell'artista quando la registrazione non ne ha). */
+  artistIds: string[]
 }
+
+/** Massimo numero di generi tenuti per brano o artista. */
+const MAX_GENRES = 5
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
 
 interface Credit {
   name?: string
   joinphrase?: string
-  artist?: { name?: string }
+  artist?: { id?: string; name?: string }
+}
+
+interface Genre {
+  name?: string
+  count?: number
 }
 
 interface SearchRecording {
@@ -51,6 +67,20 @@ interface Recording {
   id: string
   isrcs?: string[]
   relations?: Relation[]
+  genres?: Genre[]
+  'first-release-date'?: string
+  'artist-credit'?: Credit[]
+}
+
+/** I generi più votati, in minuscolo, senza doppioni. */
+export function topGenres(list: Genre[] | undefined): string[] {
+  const out: string[] = []
+  for (const g of [...(list ?? [])].sort((a, b) => (b.count ?? 0) - (a.count ?? 0))) {
+    const n = (g.name ?? '').trim().toLowerCase()
+    if (n && !out.includes(n)) out.push(n)
+    if (out.length >= MAX_GENRES) break
+  }
+  return out
 }
 
 /** Testo confrontabile: senza accenti, punteggiatura e parti tra parentesi ("(Remastered 2009)"). */
@@ -81,8 +111,12 @@ export function searchUrl(title: string, artist: string): string {
 }
 
 export function lookupUrl(id: string): string {
-  const inc = 'isrcs+work-rels+work-level-rels+artist-rels+label-rels'
+  const inc = 'isrcs+work-rels+work-level-rels+artist-rels+label-rels+genres+artist-credits'
   return `${BASE}/recording/${encodeURIComponent(id)}?inc=${inc}&fmt=json`
+}
+
+export function artistUrl(id: string): string {
+  return `${BASE}/artist/${encodeURIComponent(id)}?inc=genres&fmt=json`
 }
 
 /** La registrazione migliore tra i risultati: titolo e interprete uguali, durata simile. */
@@ -134,8 +168,16 @@ export function parseRecording(rec: Recording): MbResult {
     publisher: publishers.join(', '),
     // una registrazione può avere più ISRC (riedizioni): basta il primo
     isrc: (rec.isrcs ?? [])[0] ?? '',
-    iswc: iswcs[0] ?? ''
+    iswc: iswcs[0] ?? '',
+    genres: topGenres(rec.genres),
+    year: yearOf(rec['first-release-date']),
+    artistIds: (rec['artist-credit'] ?? []).map((c) => c.artist?.id ?? '').filter(Boolean)
   }
+}
+
+function yearOf(d: string | undefined): number | null {
+  const y = Number(/^(\d{4})/.exec(d ?? '')?.[1])
+  return y >= 1900 && y <= 2100 ? y : null
 }
 
 export class MbError extends Error {}
@@ -188,7 +230,18 @@ export class MusicBrainz {
     const s = await this.get<{ recordings?: SearchRecording[] }>(searchUrl(t.title, t.artist), signal)
     const best = pickRecording(s?.recordings ?? [], t)
     if (!best) return null
-    const rec = await this.get<Recording | null>(lookupUrl(best.id), signal)
+    return this.recording(best.id, signal)
+  }
+
+  /** Lettura diretta di una registrazione già trovata (per esempio per aggiungere i generi). */
+  async recording(id: string, signal?: AbortSignal): Promise<MbResult | null> {
+    const rec = await this.get<Recording | null>(lookupUrl(id), signal)
     return rec ? parseRecording(rec) : null
+  }
+
+  /** Generi di un artista. */
+  async artistGenres(id: string, signal?: AbortSignal): Promise<string[]> {
+    const a = await this.get<{ genres?: Genre[] } | null>(artistUrl(id), signal)
+    return topGenres(a?.genres)
   }
 }
