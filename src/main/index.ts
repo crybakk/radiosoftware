@@ -268,6 +268,8 @@ if (primary) app.whenReady().then(() => {
   handle('search', (q: TrackSearch) => db.searchTracks(q))
   handle('getTrack', (id: number) => db.getTrack(id))
   handle('getTracks', (ids: number[]) => db.getTracks(ids))
+  handle('categories', () => db.categories())
+  handle('setUserTag', (ids: number[], tag: string, on: boolean) => db.setUserTag(Array.isArray(ids) ? ids.map(Number) : [], String(tag ?? ''), !!on))
   handle('updateTrack', (id: number, edit: TrackEdit) => db.updateTrack(id, edit))
 
   // impostazioni

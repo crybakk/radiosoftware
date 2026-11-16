@@ -47,6 +47,10 @@ export interface RadioApi {
   getTrack(id: number): Promise<Track | null>
   getTracks(ids: number[]): Promise<Track[]>
   updateTrack(id: number, edit: TrackEdit): Promise<Track | null>
+  /** Categorie della musica (generi di file e servizi, etichette tue) con il numero di brani. */
+  categories(): Promise<{ name: string; count: number; mine: boolean }[]>
+  /** Mette (on) o toglie un'etichetta tua sui brani; restituisce quanti sono cambiati. */
+  setUserTag(ids: number[], tag: string, on: boolean): Promise<number>
   mediaUrl(track: Pick<Track, 'id' | 'path'>): string
   listGenres(): Promise<string[]>
 

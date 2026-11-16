@@ -20,6 +20,8 @@ const api: RadioApi = {
   getTrack: call('getTrack'),
   getTracks: call('getTracks'),
   updateTrack: call('updateTrack'),
+  categories: call('categories'),
+  setUserTag: call('setUserTag'),
   mediaUrl: (t) =>
     /^https?:\/\//i.test(t.path)
       ? `media://stream/${encodeURIComponent(t.path)}`
