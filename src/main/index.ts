@@ -10,6 +10,7 @@ import { logToCsv } from '../core/csv'
 import { quarterRange, siaeCsv, siaeRows } from '../core/siae'
 import { syncServerPlays } from '../core/serverPlays'
 import { MusicBrainzService } from './musicbrainz'
+import { MusicBrainz } from '../core/musicbrainz'
 import { tagWorkers, type TagService } from './tagServices'
 import { fpcalcPath } from './fpcalc'
 import { AcoustId } from '../core/acoustid'
@@ -137,7 +138,7 @@ if (primary) app.whenReady().then(() => {
   const serverSync = new ServerLibrarySync(db, app.getPath('userData'), () => ponte.client(), (st) =>
     win?.webContents.send('serverSyncStatus', st)
   )
-  const mb = new MusicBrainzService(db, (st) => win?.webContents.send('mbStatus', st), undefined, {
+  const mb = new MusicBrainzService(db, (st) => win?.webContents.send('mbStatus', st), new MusicBrainz({ contact: () => db.getSettings().mbContact }), {
     client: new AcoustId(() => db.getSettings().acoustidKey.trim()),
     enabled: () => !!db.getSettings().acoustidKey.trim(),
     fpcalc: fpcalcPath

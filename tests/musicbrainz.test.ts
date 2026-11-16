@@ -125,3 +125,12 @@ describe('MusicBrainz', () => {
     for (let i = 1; i < sorted.length; i++) expect(sorted[i] - sorted[i - 1]).toBeGreaterThanOrEqual(1000)
   })
 })
+
+describe('nome del programma per MusicBrainz', () => {
+  it('aggiunge il contatto delle Impostazioni, ripulito', async () => {
+    const { mbUserAgent } = await import('../src/core/musicbrainz')
+    expect(mbUserAgent('')).toBe('RadioRegia/0.1')
+    expect(mbUserAgent('  radio@example.org ')).toBe('RadioRegia/0.1 ( radio@example.org )')
+    expect(mbUserAgent('a (b)\nc')).toBe('RadioRegia/0.1 ( a b c )')
+  })
+})

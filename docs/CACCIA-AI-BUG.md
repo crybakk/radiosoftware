@@ -167,7 +167,7 @@ cristian ha chiesto di sistemare tutto: i punti "da decidere" sono stati risolti
 
 ## Ancora aperto
 
-- **Contatto per MusicBrainz:** chiede un sito o un'email nell'identificativo dell'app. Quale mettiamo?
+- **Contatto per MusicBrainz:** ora si scrive in Impostazioni → Servizi per i dati dei brani (16/11).
 - **Esportazione CSV per la SIAE:** un titolo che inizia con `=` verrebbe letto da Excel come formula. Non è stato toccato per non alterare i dati inviati alla SIAE.
 - **Ritorno all'ora solare:** un evento orario parte 24 volte invece di 25.
 - **Autori nei tag:** un tag "Rossi, Vasco" diventa due autori, perché la virgola separa gli autori come hai scelto per la SIAE.

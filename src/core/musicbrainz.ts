@@ -11,6 +11,12 @@
 
 const BASE = 'https://musicbrainz.org/ws/2'
 const USER_AGENT = 'RadioRegia/0.1'
+
+/** Nome del programma per MusicBrainz, con il contatto scelto nelle Impostazioni (lo chiede MusicBrainz). */
+export function mbUserAgent(contact: string): string {
+  const c = contact.replace(/[()\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100)
+  return c ? `${USER_AGENT} ( ${c} )` : USER_AGENT
+}
 /** Punteggio minimo della ricerca e scarto massimo di durata per accettare una registrazione. */
 const MIN_SCORE = 90
 const MAX_LENGTH_DIFF_S = 10
@@ -184,12 +190,16 @@ export class MbError extends Error {}
 
 /** Client con il limite di una richiesta al secondo. */
 export class MusicBrainz {
+  private readonly contact: () => string
   private last = 0
   private readonly fetchFn: Fetch
   private readonly sleep: (ms: number) => Promise<void>
   private readonly now: () => number
 
-  constructor(opts: { fetch?: Fetch; sleep?: (ms: number) => Promise<void>; now?: () => number } = {}) {
+  constructor(
+    opts: { fetch?: Fetch; sleep?: (ms: number) => Promise<void>; now?: () => number; contact?: () => string } = {}
+  ) {
+    this.contact = opts.contact ?? (() => '')
     this.fetchFn = opts.fetch ?? ((u, i) => fetch(u, i))
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
     this.now = opts.now ?? (() => Date.now())
@@ -206,7 +216,7 @@ export class MusicBrainz {
       let r: Response
       try {
         r = await this.fetchFn(url, {
-          headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+          headers: { 'User-Agent': mbUserAgent(this.contact()), Accept: 'application/json' },
           signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000)
         })
       } catch (e) {
