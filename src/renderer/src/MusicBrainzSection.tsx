@@ -48,7 +48,7 @@ export function MusicBrainzSection({ onEdit, refreshKey }: { onEdit: (t: Track) 
             : 'Tutti i brani di musica sono stati cercati.'}{' '}
         {st.checked > 0 && `Già cercati ${st.checked}, trovati ${st.found}.`}
       </div>
-      {st.lastError && <div className="banner error inline-banner">Ricerca fermata: {st.lastError}</div>}
+      <ProblemBanner s={st} />
       <div className="row">
         {st.running ? (
           <button onClick={() => void api.mbStop()}>Ferma</button>
@@ -83,7 +83,7 @@ export function MusicBrainzSection({ onEdit, refreshKey }: { onEdit: (t: Track) 
                   ? `${t.todo} brani da cercare (circa ${h} ${h === 1 ? 'ora' : 'ore'}).`
                   : 'tutti i brani sono stati cercati.'}{' '}
             {t.checked > 0 && `Cercati ${t.checked}, con dati ${t.found}.`}
-            {t.lastError && <div className="banner error inline-banner">Ricerca fermata: {t.lastError}</div>}
+            <ProblemBanner s={t} />
             <div className="row">
               {t.running ? (
                 <button className="small" onClick={() => void api.tagStop(t.service)}>
@@ -148,4 +148,19 @@ export function MusicBrainzSection({ onEdit, refreshKey }: { onEdit: (t: Track) 
       )}
     </section>
   )
+}
+
+/** Pausa dopo errori di fila (riprende da sola) oppure ricerca fermata. */
+function ProblemBanner({ s }: { s: { running: boolean; lastError: string | null; pausedUntil: string | null } }) {
+  if (!s.lastError) return null
+  if (s.pausedUntil) {
+    const at = new Date(s.pausedUntil).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+    return (
+      <div className="banner warn inline-banner">
+        {s.lastError}: in pausa, riprovo da solo alle {at}.
+      </div>
+    )
+  }
+  if (s.running) return <div className="hint">Ultimo problema: {s.lastError} (sto riprovando)</div>
+  return <div className="banner error inline-banner">Ricerca fermata: {s.lastError}</div>
 }

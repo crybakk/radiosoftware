@@ -9,7 +9,7 @@
  * non si manda nessun dato della radio o dell'utente.
  */
 
-import { sleepOrAbort } from './webLimit'
+import { busyWait, sleepOrAbort } from './webLimit'
 
 const BASE = 'https://musicbrainz.org/ws/2'
 const USER_AGENT = 'RadioRegia/0.1'
@@ -231,8 +231,9 @@ export class MusicBrainz {
         throw new MbError('MusicBrainz non raggiungibile')
       }
       // troppe richieste o servizio occupato: si aspetta e si riprova
-      if ((r.status === 503 || r.status === 429) && attempt < 3) {
-        await sleepOrAbort(this.sleep, 5000 * (attempt + 1), signal)
+      const wait = busyWait(r, attempt)
+      if (wait != null) {
+        await sleepOrAbort(this.sleep, wait, signal)
         continue
       }
       if (r.status === 404) return null as T

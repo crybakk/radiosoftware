@@ -24,6 +24,29 @@ export async function sleepOrAbort(sleep: (ms: number) => Promise<void>, ms: num
   }
 }
 
+/** Attese tra i tentativi quando il servizio è occupato (503, 429, 502): circa 3 minuti in tutto. */
+const BUSY_WAITS_S = [5, 10, 20, 40, 60, 60]
+
+/** Quanto aspettare prima del prossimo tentativo (null = basta tentativi). Rispetta "Retry-After" se c'è. */
+export function busyWait(r: Response, attempt: number): number | null {
+  if (![429, 502, 503].includes(r.status) || attempt >= BUSY_WAITS_S.length) return null
+  const after = Number(r.headers.get('retry-after'))
+  const s = Number.isFinite(after) && after > 0 ? Math.min(120, after) : BUSY_WAITS_S[attempt]
+  return s * 1000
+}
+
+/**
+ * Pause della ricerca in background dopo errori di fila (rete o servizio in difficoltà): invece di fermarsi
+ * aspetta e riprova da sola, sempre più a lungo; si ferma solo se va male per più di mezz'ora.
+ * failures = errori di fila (1, 2, ...); null = fermati.
+ */
+export function pauseAfter(failures: number): number | null {
+  if (failures < 3) return 0
+  const waits = [1, 2, 5, 10, 10] // minuti, 28 in tutto
+  const i = failures - 3
+  return i < waits.length ? waits[i] * 60_000 : null
+}
+
 export class Throttled {
   private last = 0
   private readonly fetchFn: Fetch
@@ -60,8 +83,9 @@ export class Throttled {
         if (signal?.aborted) throw e
         throw new ServiceError(`${this.name} non raggiungibile`)
       }
-      if ((r.status === 429 || r.status === 503 || r.status === 502) && attempt < 3) {
-        await sleepOrAbort(this.sleep, 5000 * (attempt + 1), signal)
+      const wait = busyWait(r, attempt)
+      if (wait != null) {
+        await sleepOrAbort(this.sleep, wait, signal)
         continue
       }
       if (r.status === 404) return null
