@@ -645,7 +645,8 @@ eventi, registro e impostazioni. Il server tiene gli ultimi 14.
 
 1. Apri la pagina delle [release](https://github.com/crybakk/radiosoftware/releases) e, nell'ultima, scarica
    **RadioRegia-Setup-<versione>.exe**. (Per provare una modifica non ancora pubblicata: scheda **Actions** →
-   l'ultima esecuzione verde di "Test e build Windows" → artefatto **RadioRegia-Setup-Windows**.)
+   "Test e build Windows" → **Run workflow** sul ramo da provare; a fine esecuzione scarica l'artefatto
+   **RadioRegia-Setup-Windows**, che resta disponibile per un giorno.)
 2. Avvia l'installer. Se Windows avvisa che il programma non è firmato: "Ulteriori informazioni" → "Esegui
    comunque".
 

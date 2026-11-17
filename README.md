@@ -65,7 +65,7 @@ L'architettura completa è in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
 
 Scarica **RadioRegia-Setup-<versione>.exe** dall'ultima [release](https://github.com/crybakk/radiosoftware/releases); nella stessa pagina c'è lo ZIP del server (**RadioPonte-server-<versione>.zip**). Le novità di ogni versione sono in [CHANGELOG.md](CHANGELOG.md).
 
-Per provare una modifica non ancora pubblicata: scheda **Actions**, l'ultima esecuzione di "Test e build Windows", artefatto **RadioRegia-Setup-Windows**.
+Per provare una modifica non ancora pubblicata: scheda **Actions** → "Test e build Windows" → **Run workflow** sul ramo da provare; a fine esecuzione scarica l'artefatto **RadioRegia-Setup-Windows** (resta disponibile per un giorno, così lo spazio gratuito di GitHub Actions non si riempie).
 
 Per pubblicare una nuova versione: aggiorna `version` in `package.json` e aggiungi la sezione `## v<versione>` in `CHANGELOG.md`, poi **Actions** → **Pubblica release** → **Run workflow** con lo stesso numero.
 

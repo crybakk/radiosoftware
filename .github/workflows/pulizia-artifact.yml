@@ -1,0 +1,44 @@
+name: Pulizia spazio Actions
+
+# Si avvia a mano da GitHub (Actions > Pulizia spazio Actions > Run workflow).
+# Cancella gli artifact delle build (installer salvati da Actions) e le cache più vecchi
+# del numero di ore indicato, per liberare lo spazio di GitHub Actions.
+# Non tocca le Release: i file pubblicati lì restano.
+on:
+  workflow_dispatch:
+    inputs:
+      ore:
+        description: 'Cancella ciò che è più vecchio di queste ore (0 = tutto)'
+        required: true
+        default: '0'
+
+permissions:
+  actions: write
+
+jobs:
+  pulisci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancella artifact e cache vecchi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ORE: ${{ inputs.ore }}
+        run: |
+          case "$ORE" in ''|*[!0-9]*) echo "::error::'ore' deve essere un numero"; exit 1;; esac
+          limite=$(date -u -d "-$ORE hours" +%Y-%m-%dT%H:%M:%SZ)
+          echo "Cancello ciò che è stato creato prima di $limite"
+          gh api "repos/$REPO/actions/artifacts" --paginate \
+            -q ".artifacts[] | select(.created_at < \"$limite\") | \"\(.id) \(.name) \(.size_in_bytes)\"" > artifact.txt
+          totale=0
+          while read -r id nome byte; do
+            gh api -X DELETE "repos/$REPO/actions/artifacts/$id" && echo "artifact $id $nome cancellato"
+            totale=$((totale + byte))
+          done < artifact.txt
+          gh api "repos/$REPO/actions/caches" --paginate \
+            -q ".actions_caches[] | select(.created_at < \"$limite\") | \"\(.id) \(.key) \(.size_in_bytes)\"" > cache.txt
+          while read -r id chiave byte; do
+            gh api -X DELETE "repos/$REPO/actions/caches/$id" && echo "cache $id $chiave cancellata"
+            totale=$((totale + byte))
+          done < cache.txt
+          echo "Liberati circa $((totale / 1000000)) MB" | tee -a "$GITHUB_STEP_SUMMARY"

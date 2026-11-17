@@ -59,8 +59,15 @@ jobs:
       - run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # L'installer (~200 MB) si salva solo quando serve davvero: avvio a mano ("Run workflow")
+      # o pubblicazione di una release (release.yml è avviata a mano, quindi l'evento è lo stesso).
+      # Sui push normali si controlla solo che l'installer si costruisca: salvarlo a ogni push
+      # riempiva lo spazio di GitHub Actions (0,5 GB gratuiti). Si cancella da solo dopo 1 giorno;
+      # le versioni pubblicate restano nelle Release, che non contano nello spazio.
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
         with:
           name: RadioRegia-Setup-Windows
           path: dist/*.exe
-          retention-days: 30
+          retention-days: 1
+          compression-level: 0
