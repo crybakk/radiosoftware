@@ -26,6 +26,7 @@ import { dentroCartella, paginaRegia } from '../core/finestraSicura'
 import { applyPendingRestore, PonteService, type StudioReport } from './ponte'
 import { ServerLibrarySync } from './serverSync'
 import { controllaAttivazione } from './attivazione'
+import { Aggiornamenti } from './aggiornamenti'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 
 protocol.registerSchemesAsPrivileged([
@@ -429,6 +430,12 @@ if (primary) app.whenReady().then(async () => {
     return db.listEvents()
   })
   handle('mbRetry', () => mb.retry())
+
+  // aggiornamento della regia (solo quando si preme "Aggiorna")
+  const aggiornamenti = new Aggiornamenti((st) => win?.webContents.send('aggiornamento', st))
+  aggiornamenti.avvia()
+  handle('aggiornamentoStato', () => aggiornamenti.get())
+  handle('aggiornamentoInstalla', () => aggiornamenti.installa())
 
   // ponte
   handle('ponteStatus', () => ponte.getStatus())

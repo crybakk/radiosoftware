@@ -92,6 +92,10 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || inputs.salva_installer
         with:
           name: RadioRegia-Setup-Windows
-          path: dist/*.exe
+          # latest.yml e .blockmap servono all'aggiornamento della regia dalle release
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
           retention-days: 1
           compression-level: 0

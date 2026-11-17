@@ -1,0 +1,65 @@
+/**
+ * Aggiornamento della regia dalle release di GitHub (OTA), solo a richiesta.
+ *
+ * Controlla all'avvio e poi ogni 6 ore se c'è una versione nuova e lo dice alla finestra; non scarica
+ * e non installa niente da solo. Quando si preme "Aggiorna" scarica l'installer (solo le parti cambiate,
+ * quando si può) e riavvia la regia con la versione nuova.
+ */
+import { app } from 'electron'
+import electronUpdater from 'electron-updater'
+import type { AggiornamentoStato } from '../shared/api'
+
+const { autoUpdater } = electronUpdater
+const OGNI = 6 * 3600_000
+
+export class Aggiornamenti {
+  private stato: AggiornamentoStato = { stato: 'nessuno', attuale: app.getVersion() }
+  private readonly avvisa: (s: AggiornamentoStato) => void
+
+  constructor(avvisa: (s: AggiornamentoStato) => void) {
+    this.avvisa = avvisa
+    autoUpdater.autoDownload = false
+    autoUpdater.autoInstallOnAppQuit = false
+    // le release automatiche sono segnate come anteprima
+    autoUpdater.allowPrerelease = true
+    autoUpdater.on('update-available', (i) => this.cambia({ stato: 'disponibile', versione: i.version }))
+    autoUpdater.on('update-not-available', () => {
+      if (this.stato.stato !== 'scarico') this.cambia({ stato: 'nessuno' })
+    })
+    autoUpdater.on('download-progress', (p) => this.cambia({ stato: 'scarico', percentuale: Math.round(p.percent) }))
+    autoUpdater.on('update-downloaded', (i) => this.cambia({ stato: 'pronto', versione: i.version }))
+    autoUpdater.on('error', (e) => {
+      // senza rete o senza release: si riprova al prossimo controllo, senza disturbare
+      if (this.stato.stato === 'scarico') this.cambia({ stato: 'errore', errore: e instanceof Error ? e.message : String(e) })
+    })
+  }
+
+  /** Avvia i controlli periodici (solo nel programma installato). */
+  avvia(): void {
+    if (!app.isPackaged) return
+    const controlla = (): void => void autoUpdater.checkForUpdates().catch(() => undefined)
+    setTimeout(controlla, 30_000)
+    setInterval(controlla, OGNI)
+  }
+
+  get(): AggiornamentoStato {
+    return this.stato
+  }
+
+  /** Scarica la versione nuova e riavvia la regia per installarla. */
+  async installa(): Promise<void> {
+    if (!app.isPackaged) throw new Error('Il programma non è installato: aggiornalo dal codice')
+    if (this.stato.stato !== 'pronto') {
+      this.cambia({ stato: 'scarico', percentuale: 0 })
+      await autoUpdater.downloadUpdate()
+    }
+    // installazione silenziosa e riapertura della regia
+    autoUpdater.quitAndInstall(true, true)
+  }
+
+  private cambia(s: Partial<AggiornamentoStato>): void {
+    const versione = s.versione ?? (s.stato === 'nessuno' ? undefined : this.stato.versione)
+    this.stato = { attuale: app.getVersion(), stato: s.stato ?? this.stato.stato, versione, percentuale: s.percentuale, errore: s.errore }
+    this.avvisa(this.stato)
+  }
+}

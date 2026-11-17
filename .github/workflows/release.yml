@@ -82,9 +82,11 @@ jobs:
           VERSIONE: ${{ needs.controllo.outputs.versione }}
         run: |
           mkdir -p uscita
-          # installer della regia con un nome che dice la versione
-          exe=$(ls regia/*.exe | head -n 1)
-          cp "$exe" "uscita/RadioRegia-Setup-$VERSIONE.exe"
+          # installer della regia (già chiamato RadioRegia-Setup-<versione>.exe) e i file per l'aggiornamento:
+          # latest.yml dice alla regia qual è l'ultima versione, il .blockmap permette di scaricare solo le parti cambiate
+          test -f "regia/RadioRegia-Setup-$VERSIONE.exe" || { echo "::error::manca regia/RadioRegia-Setup-$VERSIONE.exe"; ls regia; exit 1; }
+          cp "regia/RadioRegia-Setup-$VERSIONE.exe" "regia/RadioRegia-Setup-$VERSIONE.exe.blockmap" regia/latest.yml uscita/
+          grep -q "RadioRegia-Setup-$VERSIONE.exe" uscita/latest.yml
           # ZIP del server: cartella ponte + guida con le immagini (le copia installa-server.sh)
           cartella="radio-ponte-$VERSIONE"
           mkdir -p "$cartella/docs"
