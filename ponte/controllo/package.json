@@ -8,6 +8,7 @@
     "start": "node src/server.ts"
   },
   "dependencies": {
+    "hls.js": "^1.7.4",
     "music-metadata": "^12.5.0",
     "nodemailer": "^10.5.0",
     "sherpa-onnx-node": "1.13.8",

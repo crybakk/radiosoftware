@@ -60,4 +60,20 @@ describe('titolo in onda come AzuraCast', () => {
     const bad = { icestats: { source: [null, { listenurl: 'http://[x', listeners: 3 }, { listenurl: 'http://h/radio.mp3', listeners: 4 }] } }
     expect(icecastListeners(bad, '/radio.mp3')).toEqual({ listeners: 4, online: true })
   })
+
+  it('HLS acceso: indirizzo come AzuraCast e ascoltatori nel totale', () => {
+    const r = apiNowPlaying(new NowPlaying(), info({ hls: { url: 'https://radio.test/hls/radio_test/live.m3u8', listeners: 5 } })) as Record<string, any>
+    expect(r.station.hls_enabled).toBe(true)
+    expect(r.station.hls_is_default).toBe(true)
+    expect(r.station.hls_url).toBe('https://radio.test/hls/radio_test/live.m3u8')
+    expect(r.station.hls_listeners).toBe(5)
+    expect(r.listeners.total).toBe(17)
+    expect(r.station.mounts[0].listeners.total).toBe(12)
+    // l'MP3 resta l'indirizzo d'ascolto per chi non usa l'HLS
+    expect(r.station.listen_url).toBe('https://radio.test/radio.mp3')
+    const off = apiNowPlaying(new NowPlaying(), info()) as Record<string, any>
+    expect(off.station.hls_enabled).toBe(false)
+    expect(off.station.hls_url).toBeNull()
+    expect(off.listeners.total).toBe(12)
+  })
 })

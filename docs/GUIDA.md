@@ -761,6 +761,12 @@ definitivo come **Dominio** e svuota l'**Indirizzo di ascolto per gli ospiti**.
 - Indirizzo per gli ascoltatori (sito, app, lettori): `https://<dominio>/radio.mp3` (MP3 a 128 kbit/s). Per i
   lettori senza https: `http://<dominio>:8000/radio.mp3`.
 - Titolo in onda e numero di ascoltatori: `https://<dominio>/status-json.xsl`.
+- **Flusso HLS**: `https://<dominio>/hls/<stazione>/live.m3u8` (lo stesso indirizzo che usava AzuraCast; `<stazione>`
+  è il nome breve della radio, va bene anche `1`). Ha tre qualità AAC (64, 128 e 192 kbit/s) e il lettore sceglie
+  da solo quella adatta alla rete: utile soprattutto per chi ascolta dal telefono in auto. Arriva circa 15-20
+  secondi dopo la diretta. Il player pubblico usa l'HLS e, se non parte, passa da solo all'MP3; quando premi ▶
+  il pulsante gira finché l'audio non parte. Gli ascoltatori HLS sono contati insieme a quelli dell'Icecast
+  principale nelle statistiche. Per spegnerlo: `HLS=no` nel file `.env` del server.
 - **Icecast secondario**: se hai un Icecast su un altro server, scrivi i suoi dati in **Impostazioni server** →
   **Icecast secondario** (indirizzo, porta, mount, utente, password) e premi **Salva e applica**. Riceve sempre lo
   stesso segnale del principale: se il server di casa non è raggiungibile, gli ascoltatori passano al secondario e
@@ -786,6 +792,21 @@ Riconoscimento brani e puntate, Allarmi (Telegram ed email).
 **Aggiornando da una versione precedente** rilancia una volta `sudo bash installa-server.sh` dalla cartella `ponte`
 nuova: installa il piccolo servizio che riavvia il server quando salvi dal pannello. Se manca, il pannello lo dice
 con una striscia rossa.
+
+### Stereo Tool
+
+Stereo Tool (Thimeo) si può usare come processore audio del server al posto di quelli interni:
+
+1. Sul PC regola il suono con Stereo Tool per Windows e salva il preset (**File** → **Save preset**, file `.sts`).
+2. Nel pannello: **Impostazioni server**, riquadro **Stereo Tool** → **Carica il preset (.sts)**.
+3. In **Radio** → **Processore audio** scegli **stereotool** e premi **Salva e applica** (la radio resta muta per
+   qualche secondo).
+
+La libreria di Stereo Tool per Linux la scarica il server da solo (all'installazione o al primo aggiornamento).
+La **chiave di licenza** è facoltativa: senza, Stereo Tool aggiunge bip o una voce solo se il preset usa funzioni a
+pagamento. Se carichi un preset nuovo mentre Stereo Tool è in uso, l'audio riparte da solo per qualche secondo.
+Se Stereo Tool non parte (libreria o preset mancanti o rovinati) in onda va il processore **medio** e arriva un
+allarme; il riquadro Stereo Tool dice il motivo.
 
 ## 21. Collegare la regia al server
 

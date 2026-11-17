@@ -30,6 +30,9 @@
  * Titolo in onda come AzuraCast (senza accesso): GET /api/nowplaying, /api/nowplaying/<stazione>,
  *   /api/nowplaying_static/<stazione>.json, /api/station/<stazione>/playlist.m3u|pls, GET /api/logo,
  *   GET /api/copertina/<chiave>.jpg (copertine dei brani, vedi copertine.ts)
+ * Flusso HLS come AzuraCast: GET /hls/<stazione>/live.m3u8 e le playlist delle tre qualità (i pezzi .ts li
+ *   manda Caddy); chi rilegge la playlist di una qualità conta come ascoltatore (vedi hls.ts).
+ * Stereo Tool (amministratori): GET /api/impostazioni/stereotool, PUT /api/impostazioni/stereotool?nome=<file.sts>
  * Programmi e puntate on demand: vedi programmiApi.ts (API pubbliche come quelle dei podcast di AzuraCast,
  *   player pubblico su / e podcast.html, gestione dal pannello, ultime puntate per le repliche della regia).
  *
@@ -71,6 +74,8 @@ import { activeSlot, Programs } from './programmi.ts'
 import { apiNowPlaying, icecastListeners, NowPlaying, type Song } from './nowplaying.ts'
 import { CoverArt, isImage } from './copertine.ts'
 import { ListenerLog, period, readSecondary, report, type SecondaryConfig } from './ascoltatori.ts'
+import { MAX_PRESET_BYTES, StereoTool } from './stereotool.ts'
+import { HlsListeners, hlsPlaylistName, isVariantPlaylist, readHlsPlaylist } from './hls.ts'
 import { fixInterrupted, Recorder } from './puntate.ts'
 import { DEFAULT_MIN_FREE_MB, DiskGuard } from './disco.ts'
 import { handleProgramApi } from './programmiApi.ts'
@@ -99,12 +104,16 @@ const LISTEN_URL = env('ASCOLTO_URL') || (env('DOMINIO') ? `https://${env('DOMIN
 // di riavvio, che un servizio sul server (installato da installa-server.sh) controlla
 const impostazioni = new Impostazioni(env('IMPOSTAZIONI_FILE', '/impostazioni/.env'), env('IMPOSTAZIONI_RICHIESTE', '/richieste'))
 // aggiornamento del server dalle release (solo quando un amministratore preme "Aggiorna server")
+// Stereo Tool: libreria scaricata da riavvia.sh e preset caricato dal pannello (vedi stereotool.ts)
+const stereoTool = new StereoTool(env('STEREOTOOL_CARTELLA', '/stereotool'))
 const aggiornamento = new AggiornamentoServer({ attuale: env('VERSIONE_SERVER'), cartellaRichieste: env('IMPOSTAZIONI_RICHIESTE', '/richieste') })
 if (existsSync(env('IMPOSTAZIONI_RICHIESTE', '/richieste'))) aggiornamento.avvia()
 // chiave di attivazione: senza, il server risponde solo con la pagina per incollarla
 const attivazione = new Attivazione(process.env.CHIAVE_ATTIVAZIONE, env('IMPOSTAZIONI_FILE', '/impostazioni/.env'))
 if (!attivazione.attivo()) console.log('Server non attivato: apri il pannello e incolla la chiave di attivazione')
 const PANEL_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'pannello')
+// hls.js per il player pubblico (browser senza HLS nativo: Chrome, Firefox, Edge su computer)
+const HLS_JS = join(dirname(fileURLToPath(import.meta.url)), '..', 'node_modules', 'hls.js', 'dist', 'hls.light.min.js')
 // guida d'uso (docs/GUIDA.md e immagini), aperta dal menu del pannello
 const GUIDE_DIR = findGuideDir(join(dirname(fileURLToPath(import.meta.url)), '..'), env('CARTELLA_GUIDA'))
 
@@ -426,9 +435,11 @@ const riconoscimentoAttivo = env('RICONOSCIMENTO', 'si') !== 'no'
 // non sono "scollegate" (Liquidsoap avvisa solo dei cambiamenti)
 setTimeout(() => {
   void fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
-    .then((r) => r.json() as Promise<{ studio?: boolean; esterna?: boolean }>)
+    .then((r) => r.json() as Promise<{ studio?: boolean; esterna?: boolean; stereotool?: string }>)
     .then((st) => {
       alarms.sync(!!st?.studio, !!st?.esterna)
+      // Stereo Tool non partito prima del riavvio del controllo: l'allarme torna aperto
+      if (st?.stereotool && st.stereotool !== 'attivo' && st.stereotool !== 'spento') alarms.onEvent('stereotool_errore', st.stereotool)
       // anche la diretta esterna in corso torna "live" per /api/nowplaying
       if (st?.esterna) esternaSince ??= Date.now()
       if (riconoscimentoAttivo) esterne.setActive(!!st?.esterna)
@@ -527,6 +538,25 @@ async function icecastStatus(fresh = false): Promise<{ listeners: number; online
   return icecastCache
 }
 
+// ---------- flusso HLS (vedi hls.ts) ----------
+
+const HLS_ATTIVO = env('HLS', 'si') !== 'no'
+const HLS_DIR = env('HLS_CARTELLA', '/hls')
+const hlsListeners = new HlsListeners()
+
+/** Playlist HLS: /hls/<stazione>/live.m3u8 e quelle delle tre qualità (i pezzi audio li manda Caddy). */
+async function handleHls(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+  if (!url.pathname.startsWith('/hls/') || (req.method !== 'GET' && req.method !== 'HEAD')) return false
+  const cors = { 'Access-Control-Allow-Origin': '*' }
+  const name = HLS_ATTIVO ? hlsPlaylistName(url.pathname, programs.settings().station) : null
+  const body = name ? await readHlsPlaylist(HLS_DIR, name) : null
+  if (!name || body === null) return json(res, 404, { error: 'flusso HLS non disponibile' }, cors), true
+  if (isVariantPlaylist(name)) hlsListeners.hit(clientIp(req), String(req.headers['user-agent'] ?? ''))
+  res.writeHead(200, { ...cors, 'Content-Type': 'application/vnd.apple.mpegurl', 'Cache-Control': 'no-cache', 'Content-Length': Buffer.byteLength(body) })
+  res.end(req.method === 'HEAD' ? undefined : body)
+  return true
+}
+
 // ---------- statistiche degli ascoltatori (ogni minuto, storico di un anno) ----------
 
 const listenerLog = new ListenerLog(join(DATA_DIR, 'ascoltatori'))
@@ -548,7 +578,8 @@ async function sampleListeners(): Promise<void> {
     secondaryWarned = true
     console.log('[ascoltatori] Icecast secondario non leggibile: pagina status-json.xsl chiusa? Imposta ICECAST_ESTERNO_ADMIN_PASSWORD')
   }
-  listenerLog.add({ t: Date.now(), a: ice.listeners, b })
+  // "principale" = il server della radio: Icecast principale più gli ascoltatori HLS (cristian: bastano i totali)
+  listenerLog.add({ t: Date.now(), a: ice.listeners + (HLS_ATTIVO ? hlsListeners.count() : 0), b })
 }
 setInterval(() => void sampleListeners().catch(() => {}), 60_000)
 setTimeout(() => void sampleListeners().catch(() => {}), 10_000)
@@ -611,6 +642,7 @@ async function handleNowPlaying(req: IncomingMessage, res: ServerResponse, url: 
     mount: MOUNT,
     bitrate: num('ICECAST_BITRATE', 128),
     listeners: ice.listeners,
+    hls: HLS_ATTIVO ? { url: `${base}/hls/${st}/live.m3u8`, listeners: hlsListeners.count() } : null,
     online: ice.online,
     live: { isLive: esternaSince !== null, streamer: esternaSince !== null ? (prog?.title ?? 'Diretta esterna') : '', since: esternaSince },
     art: progArt || (logoFile() ? `${base}/api/logo` : ''),
@@ -884,7 +916,7 @@ async function serveStatic(res: ServerResponse, path: string): Promise<boolean> 
   }
   const name = PAGES[path] ?? path.slice(1)
   if (!/^[\w.-]+$/.test(name)) return false
-  const file = join(PANEL_DIR, name)
+  const file = name === 'hls.light.min.js' ? HLS_JS : join(PANEL_DIR, name)
   const data = await readFile(file).catch(() => null)
   if (!data) return false
   res.writeHead(200, {
@@ -991,6 +1023,8 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       }
       return json(res, 403, { error: 'server non attivato: apri il pannello e incolla la chiave di attivazione' })
     }
+    // flusso HLS (pubblico, come AzuraCast)
+    if (await handleHls(req, res, url)) return
     if (req.method === 'GET' && (url.pathname === '/guida' || url.pathname.startsWith('/guida/'))) return await serveGuide(req, res, url.pathname)
     if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
       if (await serveStatic(res, url.pathname)) return
@@ -1209,6 +1243,31 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
             console.log(`aggiornamento del server alla ${String(body.versione)} chiesto da ${me.name}`)
           }
           return json(res, 200, aggiornamento.stato())
+        }
+      }
+      if (url.pathname === '/api/impostazioni/stereotool') {
+        if (req.method === 'GET') {
+          const ls = await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
+            .then((r) => r.json() as Promise<{ stereotool?: string }>)
+            .catch(() => null)
+          return json(res, 200, { ...stereoTool.stato(), inUso: ls?.stereotool ?? null })
+        }
+        if (req.method === 'PUT') {
+          const dati = await readBody(req, MAX_PRESET_BYTES + 1)
+          let quando: string
+          try {
+            quando = await stereoTool.salvaPreset(url.searchParams.get('nome') ?? '', dati)
+          } catch (e) {
+            return json(res, 400, { error: (e as Error).message })
+          }
+          console.log(`[stereotool] ${me.name} ha caricato il preset ${url.searchParams.get('nome') ?? ''}`)
+          // con Stereo Tool in uso l'audio riparte per leggere il preset nuovo
+          const riavvio = impostazioni.valore('PROCESSORE_AUDIO') === 'stereotool'
+          if (riavvio) {
+            impostazioni.segnaInterno('STEREOTOOL_PRESET_CARICATO', quando.replace(/[^0-9TZ]/g, ''))
+            impostazioni.applica()
+          }
+          return json(res, 200, { ...stereoTool.stato(), riavvio, stato: impostazioni.stato() })
         }
       }
       if (req.method === 'POST' && url.pathname === '/api/impostazioni/applica') {

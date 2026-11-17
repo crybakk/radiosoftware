@@ -71,6 +71,8 @@ export interface NowPlayingInfo {
   mount: string
   bitrate: number
   listeners: number
+  /** Flusso HLS (null = spento): indirizzo di live.m3u8 e ascoltatori. */
+  hls?: { url: string; listeners: number } | null
   online: boolean
   /** Diretta esterna o programma in onda. */
   live: { isLive: boolean; streamer: string; since: number | null }
@@ -113,7 +115,11 @@ function history(s: Song, n: number, info: NowPlayingInfo): Record<string, unkno
 
 /** Api_NowPlaying di AzuraCast. */
 export function apiNowPlaying(np: NowPlaying, info: NowPlayingInfo): Record<string, unknown> {
-  const l: Listeners = { total: info.listeners, unique: info.listeners, current: info.listeners }
+  // come AzuraCast: il totale comprende anche gli ascoltatori HLS, il mount solo i suoi
+  const hls = info.hls ?? null
+  const all = info.listeners + (hls?.listeners ?? 0)
+  const l: Listeners = { total: all, unique: all, current: all }
+  const mountL: Listeners = { total: info.listeners, unique: info.listeners, current: info.listeners }
   const cur = np.current()
   let nowPlaying: Record<string, unknown> | null = null
   if (cur) {
@@ -139,13 +145,14 @@ export function apiNowPlaying(np: NowPlaying, info: NowPlayingInfo): Record<stri
       is_public: true,
       requests_enabled: false,
       mounts: [
-        { id: 1, name: `${info.mount} (${info.bitrate}kbps MP3)`, url: info.listenUrl, bitrate: info.bitrate, format: 'mp3', listeners: l, path: info.mount, is_default: true }
+        { id: 1, name: `${info.mount} (${info.bitrate}kbps MP3)`, url: info.listenUrl, bitrate: info.bitrate, format: 'mp3', listeners: mountL, path: info.mount, is_default: true }
       ],
       remotes: [],
-      hls_enabled: false,
-      hls_is_default: false,
-      hls_url: null,
-      hls_listeners: 0
+      // il player pubblico usa l'HLS (con l'MP3 come riserva): l'HLS è il predefinito, come in AzuraCast
+      hls_enabled: !!hls,
+      hls_is_default: !!hls,
+      hls_url: hls?.url ?? null,
+      hls_listeners: hls?.listeners ?? 0
     },
     listeners: l,
     live: { is_live: info.live.isLive, streamer_name: info.live.streamer, broadcast_start: info.live.since === null ? null : sec(info.live.since), art: null },

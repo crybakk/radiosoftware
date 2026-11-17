@@ -4,7 +4,7 @@
  * riceve le notifiche tramite il callback `notify`.
  */
 
-export type AlarmKey = 'silenzio' | 'studio_scollegato' | 'regia_muta' | 'collegamento_instabile' | 'icecast_principale' | 'icecast_esterno' | 'disco_pieno'
+export type AlarmKey = 'silenzio' | 'studio_scollegato' | 'regia_muta' | 'collegamento_instabile' | 'icecast_principale' | 'icecast_esterno' | 'disco_pieno' | 'stereotool'
 
 export interface AlarmConfig {
   /** Secondi di regia scollegata dal ponte prima di avvisare. */
@@ -42,6 +42,7 @@ const MESSAGES: Record<AlarmKey, [string, string]> = {
     '💾 Disco del server quasi pieno: niente registrazione delle puntate, caricamenti e backup rifiutati.',
     '✅ Di nuovo spazio sul disco del server.'
   ],
+  stereotool: ['🎛️ Stereo Tool non è partito: in onda c\'è il processore audio "medio".', '✅ Processore audio di nuovo come impostato.'],
   icecast_esterno: ["❌ Il ponte non riesce a mandare il segnale all'Icecast secondario (esterno).", "✅ Il ponte trasmette di nuovo all'Icecast secondario (esterno)."]
 }
 
@@ -144,6 +145,13 @@ export class Alarms {
         break
       case 'icecast_esterno_collegato':
         this.close('icecast_esterno')
+        break
+      case 'stereotool_errore':
+        this.open('stereotool', detail)
+        break
+      case 'stereotool_attivo':
+      case 'stereotool_spento':
+        this.close('stereotool')
         break
     }
   }

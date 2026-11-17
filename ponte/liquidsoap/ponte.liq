@@ -1,6 +1,6 @@
 # Ponte di Radio Regia
 # Riceve il programma dalla regia via SRT, lo tratta (processore audio),
-# lo manda all'Icecast principale (sullo stesso server), all'Icecast secondario esterno
+# lo manda all'Icecast principale (sullo stesso server), all'Icecast secondario esterno, al flusso HLS
 # e alle dirette video, e segnala al servizio di controllo collegamenti, cadute e silenzi.
 # Senza nessuna diretta suona da solo la libreria del server (riserva).
 #
@@ -236,25 +236,7 @@ programma =
     programma
   end
 
-# --- processore audio ---
-def processa(s) =
-  if
-    processing == "leggero"
-  then
-    limit(threshold=-1., compress(threshold=-14., ratio=2., attack=20., release=400., gain=1., s))
-  elsif
-    processing == "medio"
-  then
-    limit(threshold=-1., compress(threshold=-18., ratio=3., attack=10., release=250., gain=3., s))
-  elsif
-    processing == "forte"
-  then
-    limit(threshold=-1., compress(threshold=-22., ratio=5., attack=5., release=150., gain=6., s))
-  else
-    s
-  end
-end
-uscita = processa(programma)
+uscita = programma
 
 # --- allarme silenzio ---
 uscita =
@@ -323,11 +305,90 @@ segnale =
     transitions=[verso_programma, verso_riserva],
     [
       (programma_pronto, uscita),
-      ({time() - ultimo_programma() >= riserva_attesa}, processa(riserva))
+      ({time() - ultimo_programma() >= riserva_attesa}, riserva)
     ]
   )
 # se anche la libreria è vuota va silenzio, così le uscite restano collegate
 segnale_sicuro = mksafe(segnale)
+
+# --- processore audio ---
+# Uno solo, dopo la scelta tra programma e riserva: tutte le uscite hanno lo stesso suono.
+def processa_interno(livello, s) =
+  if
+    livello == "leggero"
+  then
+    limit(threshold=-1., compress(threshold=-14., ratio=2., attack=20., release=400., gain=1., s))
+  elsif
+    livello == "medio"
+  then
+    limit(threshold=-1., compress(threshold=-18., ratio=3., attack=10., release=250., gain=3., s))
+  elsif
+    livello == "forte"
+  then
+    limit(threshold=-1., compress(threshold=-22., ratio=5., attack=5., release=150., gain=6., s))
+  else
+    s
+  end
+end
+
+# Stereo Tool (Thimeo): libreria per Linux scaricata da riavvia.sh in ./stereotool, preset (.sts)
+# caricato dal pannello. La chiave di licenza è facoltativa: senza, Stereo Tool aggiunge bip o una voce
+# solo se il preset usa funzioni a pagamento. Scelta di cristian (17/11/2026): se Stereo Tool non parte
+# (libreria o preset mancanti o rovinati) si usa il processore "medio" e arriva un allarme.
+stereotool_cartella = env("STEREOTOOL_CARTELLA", "/stereotool")
+stereotool_libreria = "#{stereotool_cartella}/libStereoTool.so"
+stereotool_preset = "#{stereotool_cartella}/preset.sts"
+stereotool_chiave = env("STEREOTOOL_CHIAVE", "")
+# "spento", "attivo" oppure il motivo per cui non è partito (letto dal controllo con /stato)
+stereotool_stato = ref("spento")
+def processa(s) =
+  if
+    processing != "stereotool"
+  then
+    processa_interno(processing, s)
+  elsif
+    not file.exists(stereotool_libreria)
+  then
+    stereotool_stato := "manca la libreria di Stereo Tool sul server"
+    processa_interno("medio", s)
+  elsif
+    not file.exists(stereotool_preset)
+  then
+    stereotool_stato := "manca il preset: caricalo dal pannello"
+    processa_interno("medio", s)
+  else
+    try
+      st =
+        stereotool(
+          library_file=stereotool_libreria,
+          license_key=(stereotool_chiave == "" ? null() : stereotool_chiave),
+          preset=stereotool_preset,
+          s
+        )
+      if not st.valid_license() then
+        log.important("Stereo Tool senza licenza: funzioni a pagamento usate: #{st.unlincensed_used_features()}")
+      end
+      stereotool_stato := "attivo"
+      log.important("Stereo Tool attivo")
+      (st:source(audio=pcm(stereo)))
+    catch err do
+      stereotool_stato := "non parte: #{err.message}"
+      processa_interno("medio", s)
+    end
+  end
+end
+segnale_sicuro = processa(segnale_sicuro)
+stereotool_ok = stereotool_stato() == "spento" or stereotool_stato() == "attivo"
+if not stereotool_ok then
+  log.important("Stereo Tool: #{stereotool_stato()}. Uso il processore medio")
+end
+# all'avvio si dice al controllo come è andata (apre o chiude l'allarme); il controllo potrebbe non essere
+# ancora pronto, per questo si aspetta un po'
+thread.run(
+  delay=20.,
+  fun () ->
+    if stereotool_ok then notify("stereotool_#{stereotool_stato()}", "") else notify("stereotool_errore", stereotool_stato()) end
+)
 
 # --- Icecast secondario esterno (MP3), stesso segnale del principale ---
 ice_host = env("ICECAST_ESTERNO_HOST", "")
@@ -358,6 +419,36 @@ output.harbor(
   mount="programma",
   segnale_sicuro
 )
+
+# --- flusso HLS (scelte di cristian, 17/11/2026) ---
+# Tre qualità AAC (64, 128 e 192 kbit/s): il lettore sceglie da solo in base alla rete. Pezzi da
+# 6 secondi. I file stanno in memoria (volume tmpfs "hls"): Caddy manda i pezzi, il controllo le playlist
+# (così conta gli ascoltatori). Indirizzo come AzuraCast: https://DOMINIO/hls/<stazione>/live.m3u8
+hls_cartella = env("HLS_CARTELLA", "/hls")
+if
+  env("HLS", "si") == "no"
+then
+  log.important("HLS=no: flusso HLS spento")
+else
+  hls_aac_64 = %ffmpeg(format = "mpegts", %audio(codec = "aac", samplerate = 44100, channels = 2, b = "64k"))
+  hls_aac_128 = %ffmpeg(format = "mpegts", %audio(codec = "aac", samplerate = 44100, channels = 2, b = "128k"))
+  hls_aac_192 = %ffmpeg(format = "mpegts", %audio(codec = "aac", samplerate = 44100, channels = 2, b = "192k"))
+  output.file.hls(
+    id="hls",
+    playlist="live.m3u8",
+    segment_duration=6.,
+    segments=5,
+    segments_overhead=5,
+    perm=420,
+    hls_cartella,
+    [
+      ("aac_lofi", hls_aac_64.{bandwidth=72000, codecs="mp4a.40.2"}),
+      ("aac_midfi", hls_aac_128.{bandwidth=140000, codecs="mp4a.40.2"}),
+      ("aac_hifi", hls_aac_192.{bandwidth=208000, codecs="mp4a.40.2"})
+    ],
+    segnale_sicuro
+  )
+end
 
 # --- HTTP interno: metadati e stato (solo rete Docker, porta non pubblicata) ---
 def set_metadata(req) =
@@ -434,7 +525,7 @@ harbor.http.register.simple(port=8092, method="POST", "/autonoma/salta", autonom
 def stato(_) =
   http.response(
     content_type="application/json",
-    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready(), voce=list.map(fun (v) -> (v.nome, v.in_onda()), voci), autonoma=autonoma_attiva()})
+    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready(), voce=list.map(fun (v) -> (v.nome, v.in_onda()), voci), autonoma=autonoma_attiva(), stereotool=stereotool_stato()})
   )
 end
 harbor.http.register.simple(port=8092, method="GET", "/stato", stato)

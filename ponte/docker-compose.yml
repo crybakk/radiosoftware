@@ -36,8 +36,17 @@ services:
       ICECAST_ESTERNO_MOUNT: ${ICECAST_ESTERNO_MOUNT:-/radio.mp3}
       ICECAST_ESTERNO_UTENTE: ${ICECAST_ESTERNO_UTENTE:-source}
       ICECAST_ESTERNO_PASSWORD: ${ICECAST_ESTERNO_PASSWORD:-}
+      HLS: ${HLS:-si}
+      # Stereo Tool (PROCESSORE_AUDIO=stereotool): chiave facoltativa; quando dal pannello si carica un
+      # preset nuovo cambia STEREOTOOL_PRESET_CARICATO, così "docker compose up -d" riavvia l'audio
+      STEREOTOOL_CHIAVE: ${STEREOTOOL_CHIAVE:-}
+      STEREOTOOL_PRESET_CARICATO: ${STEREOTOOL_PRESET_CARICATO:-}
     volumes:
       - ./liquidsoap:/cfg:ro
+      # flusso HLS: pezzi e playlist in memoria
+      - hls:/hls
+      # libreria di Stereo Tool (scaricata da riavvia.sh) e preset caricato dal pannello
+      - ./stereotool:/stereotool:ro
       # libreria musicale del server: diretta autonoma e musica di riserva
       - ./musica:/musica:ro
     ports:
@@ -89,6 +98,10 @@ services:
       - ./richieste:/richieste
       # guida d'uso con gli screenshot (copiata da installa-server.sh), aperta dal menu del pannello
       - ./guida:/app/guida:ro
+      # flusso HLS: il controllo manda le playlist (e conta gli ascoltatori)
+      - hls:/hls:ro
+      # preset di Stereo Tool caricato dal pannello
+      - ./stereotool:/stereotool
     ports:
       # audio del microfono remoto e degli ospiti (WebRTC): da inoltrare anche sul router
       - "${WEBRTC_PORTE:-40000-40049}:${WEBRTC_PORTE:-40000-40049}/udp"
@@ -104,6 +117,8 @@ services:
       ICECAST_MOUNT: ${ICECAST_MOUNT:-/radio.mp3}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # flusso HLS: Caddy manda i pezzi audio
+      - hls:/hls:ro
       - caddy_dati:/data
       - caddy_config:/config
     ports:
@@ -117,5 +132,11 @@ services:
 
 volumes:
   dati:
+  # flusso HLS in memoria (pochi MB, si rifà da solo a ogni avvio): niente scritture continue sul disco
+  hls:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=64m,mode=1777"
   caddy_dati:
   caddy_config:

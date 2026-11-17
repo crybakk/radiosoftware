@@ -49,7 +49,8 @@ export const VOCI: Voce[] = [
   { chiave: 'DESCRIZIONE_RADIO', gruppo: 'Radio', etichetta: 'Descrizione della radio', tipo: 'testo', vuoto: true, predefinito: '', parti: ['pannello'], aiuto: 'Compare nel podcast e nelle pagine per gli ascoltatori.' },
   { chiave: 'ICECAST_BITRATE', gruppo: 'Radio', etichetta: 'Qualità MP3 (kbit/s)', tipo: 'scelta', opzioni: ['64', '96', '128', '160', '192', '256', '320'], predefinito: '128', parti: ['audio', 'pannello'], aiuto: 'Uguale per l\'Icecast principale e il secondario. Ogni ascoltatore usa questa banda in upload.' },
   { chiave: 'ICECAST_MAX_ASCOLTATORI', gruppo: 'Radio', etichetta: 'Ascoltatori al massimo', tipo: 'numero', min: 1, max: 100000, predefinito: '1000', parti: ['icecast'] },
-  { chiave: 'PROCESSORE_AUDIO', gruppo: 'Radio', etichetta: 'Processore audio', tipo: 'scelta', opzioni: ['spento', 'leggero', 'medio', 'forte'], predefinito: 'medio', parti: ['audio'] },
+  { chiave: 'PROCESSORE_AUDIO', gruppo: 'Radio', etichetta: 'Processore audio', tipo: 'scelta', opzioni: ['spento', 'leggero', 'medio', 'forte', 'stereotool'], predefinito: 'medio', parti: ['audio'], aiuto: 'stereotool = Stereo Tool di Thimeo, con il preset caricato qui sotto. Se non parte si usa "medio" e arriva un allarme.' },
+  { chiave: 'STEREOTOOL_CHIAVE', gruppo: 'Radio', etichetta: 'Stereo Tool: chiave di licenza', tipo: 'password', vuoto: true, predefinito: '', parti: ['audio'], aiuto: 'Facoltativa: senza licenza Stereo Tool aggiunge bip o una voce solo se il preset usa funzioni a pagamento.' },
   { chiave: 'SRT_BUFFER_SECONDS', gruppo: 'Radio', etichetta: 'Secondi di audio tenuti in memoria (contro i buchi del 4G)', tipo: 'numero', min: 1, max: 60, predefinito: '10', parti: ['audio'] },
   { chiave: 'RISERVA_ATTESA_SECONDI', gruppo: 'Radio', etichetta: 'Attesa prima della musica di emergenza (secondi)', tipo: 'numero', min: 1, max: 120, predefinito: '8', parti: ['audio'], aiuto: 'Se la regia o la diretta si interrompono per meno di così, non parte la musica di emergenza: si sente silenzio e poi si riprende.' },
   { chiave: 'DURATA_MASSIMA_MINUTI', gruppo: 'Radio', etichetta: 'Durata massima dei brani (minuti)', tipo: 'numero', min: 0, max: 600, predefinito: '10', parti: ['pannello'], aiuto: 'I brani più lunghi (premixati, mix) spariscono dalla libreria della regia, dalle rotazioni, dalla diretta autonoma e dalla musica di emergenza. Restano sul disco e ricompaiono se alzi il limite. 0 = nessun limite.' },
@@ -363,6 +364,24 @@ export class Impostazioni {
     out.inCorso = out.richiesta !== undefined || senzaEsito
     out.senzaRisposta = out.richiesta === undefined && senzaEsito && this.now() - ultima > ATTESA_MASSIMA_MS
     return out
+  }
+
+  /** Valore in uso di una voce (il predefinito se manca nel file). */
+  valore(chiave: string): string {
+    const voce = PER_CHIAVE.get(chiave)
+    if (!voce) throw new Error(`impostazione sconosciuta: ${chiave}`)
+    return valoreAttuale(this.leggi(), voce)
+  }
+
+  /**
+   * Scrive un valore interno, che il pannello non mostra (per esempio l'ora dell'ultimo preset di Stereo
+   * Tool caricato: cambiandola, "docker compose up -d" riavvia l'audio con il preset nuovo).
+   */
+  segnaInterno(chiave: string, valore: string): void {
+    if (PER_CHIAVE.has(chiave) || !/^[A-Z][A-Z0-9_]*$/.test(chiave) || !/^[A-Za-z0-9_.:-]*$/.test(valore)) {
+      throw new Error(`valore interno non valido: ${chiave}`)
+    }
+    writeFileSync(this.fileEnv, aggiornaEnv(readFileSync(this.fileEnv, 'utf8'), { [chiave]: valore }))
   }
 
   /** Toglie una richiesta rimasta appesa (per riprovare). */
