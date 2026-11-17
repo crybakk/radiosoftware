@@ -61,32 +61,46 @@ jobs:
           echo "Prossima versione: $versione"
           echo "versione=$versione" >> "$GITHUB_OUTPUT"
 
-  build:
+  # release in bozza (invisibile finché non è pubblicata): l'installer ci viene caricato direttamente
+  bozza:
     needs: controllo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Crea la release in bozza
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSIONE: ${{ needs.controllo.outputs.versione }}
+        run: |
+          # una bozza rimasta da un tentativo fallito con lo stesso numero si toglie
+          if gh release view "v$VERSIONE" --json isDraft -q .isDraft 2>/dev/null | grep -q true; then
+            gh release delete "v$VERSIONE" --yes
+          fi
+          # note della release = sezione della versione nel CHANGELOG; senza, GitHub elenca le PR unite
+          awk -v v="## v$VERSIONE" '$0 ~ "^## v" { dentro = (index($0, v) == 1); next } dentro' CHANGELOG.md > note.md
+          if [ -s note.md ]; then note="--notes-file note.md"; else note="--generate-notes"; fi
+          gh release create "v$VERSIONE" --draft --target "$GITHUB_SHA" --title "Radio Regia $VERSIONE" $note
+
+  build:
+    needs: [controllo, bozza]
     uses: ./.github/workflows/build.yml
     with:
       versione: ${{ needs.controllo.outputs.versione }}
-      salva_installer: true
+      release_bozza: v${{ needs.controllo.outputs.versione }}
 
   pubblica:
     needs: [controllo, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: RadioRegia-Setup-Windows
-          path: regia
-      - name: Prepara i file della release
+      - name: Prepara lo ZIP del server e le impronte
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSIONE: ${{ needs.controllo.outputs.versione }}
         run: |
           mkdir -p uscita
-          # installer della regia (già chiamato RadioRegia-Setup-<versione>.exe) e i file per l'aggiornamento:
-          # latest.yml dice alla regia qual è l'ultima versione, il .blockmap permette di scaricare solo le parti cambiate
-          test -f "regia/RadioRegia-Setup-$VERSIONE.exe" || { echo "::error::manca regia/RadioRegia-Setup-$VERSIONE.exe"; ls regia; exit 1; }
-          cp "regia/RadioRegia-Setup-$VERSIONE.exe" "regia/RadioRegia-Setup-$VERSIONE.exe.blockmap" regia/latest.yml uscita/
-          grep -q "RadioRegia-Setup-$VERSIONE.exe" uscita/latest.yml
+          # installer e latest.yml già caricati nella bozza dalla build Windows: servono per le impronte
+          gh release download "v$VERSIONE" -D uscita -p "RadioRegia-Setup-$VERSIONE.exe" -p "RadioRegia-Setup-$VERSIONE.exe.blockmap" -p latest.yml
           # ZIP del server: cartella ponte + guida con le immagini (le copia installa-server.sh)
           cartella="radio-ponte-$VERSIONE"
           mkdir -p "$cartella/docs"
@@ -97,21 +111,13 @@ jobs:
           cp -r docs/immagini "$cartella/docs/"
           zip -qr "uscita/RadioPonte-server-$VERSIONE.zip" "$cartella"
           (cd uscita && sha256sum * > SHA256SUMS.txt)
-          # note della release = sezione della versione nel CHANGELOG (vuote se non c'è: le scrive GitHub)
-          awk -v v="## v$VERSIONE" '$0 ~ "^## v" { dentro = (index($0, v) == 1); next } dentro' CHANGELOG.md > note.md
-          ls -l uscita; cat note.md
-      - name: Crea tag e release
+          ls -l uscita
+      - name: Pubblica la release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSIONE: ${{ needs.controllo.outputs.versione }}
           # le release automatiche sono anteprime finché la regia non è provata in onda
           ANTEPRIMA: ${{ github.event_name == 'push' || inputs.anteprima }}
         run: |
-          extra=""
-          if [ "$ANTEPRIMA" = "true" ]; then extra="--prerelease"; fi
-          # senza sezione nel CHANGELOG, GitHub elenca le PR unite dalla release precedente
-          if [ -s note.md ]; then note="--notes-file note.md"; else note="--generate-notes"; fi
-          gh release create "v$VERSIONE" uscita/* \
-            --target "$GITHUB_SHA" \
-            --title "Radio Regia $VERSIONE" \
-            $note $extra
+          gh release upload "v$VERSIONE" "uscita/RadioPonte-server-$VERSIONE.zip" uscita/SHA256SUMS.txt --clobber
+          gh release edit "v$VERSIONE" --draft=false --prerelease="$ANTEPRIMA"
