@@ -6,8 +6,7 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 16/11/2026, categorie ed etichette tue nella Libreria; le ricerche sui servizi
-riprovano da sole quando il servizio è occupato.
+**Ultimo aggiornamento:** 17/11/2026, filtro per categoria o etichetta tua nella ricerca dei brani della regia.
 
 ## Indice
 
@@ -87,7 +86,8 @@ Telefono (pannello) ───────▶                 └─▶ YouTube /
 5. **In coda**: i prossimi brani con l'orario previsto. Con le frecce li sposti, con la ✕ li togli, con 🎧 li
    ascolti in cuffia. **Svuota** toglie tutto.
 6. **Ricerca**: scrivi titolo o artista. **Prossimo** lo mette subito dopo, **+ Coda** in fondo, 🎧 lo ascolti in
-   cuffia (preascolto).
+   cuffia (preascolto). Con **Tutte le categorie** vedi solo i brani di una categoria o di una tua etichetta (★);
+   la ✕ accanto toglie il filtro.
 7. **Jingle istantanei**: un clic e il jingle parte sopra la musica (un secondo clic mentre suona non fa niente,
    così non si sovrappone). Con la matita ✎ scegli il jingle del tasto.
 
@@ -383,7 +383,9 @@ i generi dei file, quelli di MusicBrainz, Discogs e Last.fm, e le **etichette tu
 4. **Fine** quando hai finito.
 
 Le etichette tue si vedono e si correggono anche nella **Scheda** del brano (campo **Etichette tue**). Valgono
-come i generi: nelle regole di rotazione, nel **Brano casuale** e nelle rotazioni con l'AI.
+come i generi: nelle regole di rotazione, nel **Brano casuale** e nelle rotazioni con l'AI. Puoi usarle anche
+per filtrare la ricerca dei brani in **In onda**, nei **Jingle istantanei** e negli **Eventi** (menu **Tutte le
+categorie**, le tue etichette sono in cima con la ★).
 
 ## 10. Rotazioni con l'AI
 
@@ -960,4 +962,5 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 16/11/2026 | Indirizzi del server: `/` è il player pubblico per gli ascoltatori, il pannello si apre da `/dashboard`; pulsante **← Panoramica** in ogni sezione del pannello |
 | 16/11/2026 | Categorie della musica nella Libreria e etichette tue sui brani (anche su molti insieme); ricerche su MusicBrainz e servizi che dopo un 503 riprovano e vanno in pausa invece di fermarsi |
 | 16/11/2026 | Prima release (0.1.0, anteprima): installer della regia e ZIP del server si scaricano dalla pagina delle release |
+| 17/11/2026 | Ricerca dei brani della regia (In onda, jingle, eventi) con il filtro per categoria o etichetta tua |
 | 17/11/2026 | Player pubblico più semplice con le copertine dei brani (iTunes, Deezer); musica di riserva con titolo e artista, sempre da un brano nuovo e solo dopo 8 secondi senza programma |

@@ -28,11 +28,27 @@ export function TrackSearch({
   const [text, setText] = useState('')
   const [kindFilter, setKindFilter] = useState<TrackKind | ''>(kind ?? '')
   const [result, setResult] = useState<{ tracks: Track[]; total: number }>({ tracks: [], total: 0 })
+  // filtro per categoria o etichetta: solo se chi usa la ricerca non ne impone già una
+  const showCatFilter = category === undefined && (kind === undefined || kind === 'music')
+  const [catFilter, setCatFilter] = useState('')
+  const [cats, setCats] = useState<{ name: string; count: number; mine: boolean }[]>([])
+  const activeCategory = showCatFilter ? catFilter : category
+
+  useEffect(() => {
+    if (!showCatFilter) return
+    let cancelled = false
+    void window.radio.categories().then((c) => {
+      if (!cancelled) setCats(c)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [showCatFilter, refreshKey])
 
   useEffect(() => {
     let cancelled = false
     const t = setTimeout(async () => {
-      const r = await window.radio.search({ text, kind: kindFilter || undefined, limit, category: category || undefined })
+      const r = await window.radio.search({ text, kind: kindFilter || undefined, limit, category: activeCategory || undefined })
       if (!cancelled) {
         setResult(r)
         onResult?.(r)
@@ -43,7 +59,7 @@ export function TrackSearch({
       clearTimeout(t)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, kindFilter, limit, refreshKey, category])
+  }, [text, kindFilter, limit, refreshKey, activeCategory])
 
   return (
     <div className="search">
@@ -58,6 +74,44 @@ export function TrackSearch({
               </option>
             ))}
           </select>
+        )}
+        {showCatFilter && (
+          <select
+            className={catFilter ? 'on' : ''}
+            value={catFilter}
+            onChange={(e) => setCatFilter(e.target.value)}
+            title="Mostra solo i brani di una categoria o di una tua etichetta"
+          >
+            <option value="">Tutte le categorie</option>
+            {catFilter && !cats.some((c) => c.name === catFilter) && <option value={catFilter}>{catFilter}</option>}
+            {cats.some((c) => c.mine) && (
+              <optgroup label="★ Le tue etichette">
+                {cats
+                  .filter((c) => c.mine)
+                  .map((c) => (
+                    <option key={c.name} value={c.name}>
+                      ★ {c.name} ({c.count})
+                    </option>
+                  ))}
+              </optgroup>
+            )}
+            {cats.some((c) => !c.mine) && (
+              <optgroup label="Categorie">
+                {cats
+                  .filter((c) => !c.mine)
+                  .map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name} ({c.count})
+                    </option>
+                  ))}
+              </optgroup>
+            )}
+          </select>
+        )}
+        {showCatFilter && catFilter && (
+          <button className="small" onClick={() => setCatFilter('')} title="Togli il filtro categoria">
+            ✕
+          </button>
         )}
       </div>
       <div className="search-count">
