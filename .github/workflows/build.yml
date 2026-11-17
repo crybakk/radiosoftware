@@ -12,10 +12,10 @@ on:
         description: 'Numero di versione da scrivere nel programma (vuoto = quello di package.json)'
         type: string
         default: ''
-      salva_installer:
-        description: "Salva l'installer come artefatto (serve alla release)"
-        type: boolean
-        default: false
+      release_bozza:
+        description: "Tag della release in bozza in cui caricare l'installer (lo passa release.yml)"
+        type: string
+        default: ''
 
 jobs:
   test:
@@ -83,19 +83,28 @@ jobs:
       - run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      # L'installer (~200 MB) si salva solo quando serve davvero: avvio a mano ("Run workflow")
-      # o pubblicazione di una release (release.yml lo chiede con salva_installer).
-      # Sui push normali si controlla solo che l'installer si costruisca: salvarlo a ogni push
-      # riempiva lo spazio di GitHub Actions (0,5 GB gratuiti). Si cancella da solo dopo 1 giorno;
-      # le versioni pubblicate restano nelle Release, che non contano nello spazio.
+      # L'installer di prova (~200 MB) si salva come artefatto solo con l'avvio a mano ("Run workflow"):
+      # salvarlo a ogni push riempiva lo spazio di GitHub Actions (0,5 GB gratuiti). Si cancella dopo 1 giorno.
+      # latest.yml e .blockmap servono all'aggiornamento della regia dalle release.
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'workflow_dispatch' || inputs.salva_installer
+        if: github.event_name == 'workflow_dispatch' && inputs.release_bozza == ''
         with:
           name: RadioRegia-Setup-Windows
-          # latest.yml e .blockmap servono all'aggiornamento della regia dalle release
           path: |
             dist/*.exe
             dist/*.exe.blockmap
             dist/latest.yml
           retention-days: 1
           compression-level: 0
+      # per la release l'installer va direttamente nella release in bozza: le Release non contano nello spazio di Actions
+      - name: Carica l'installer nella release in bozza
+        if: inputs.release_bozza != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_bozza }}
+          VERSIONE: ${{ inputs.versione }}
+        run: |
+          test -f "dist/RadioRegia-Setup-$VERSIONE.exe" || { echo "::error::manca dist/RadioRegia-Setup-$VERSIONE.exe"; ls dist; exit 1; }
+          grep -q "RadioRegia-Setup-$VERSIONE.exe" dist/latest.yml
+          gh release upload "$TAG" "dist/RadioRegia-Setup-$VERSIONE.exe" "dist/RadioRegia-Setup-$VERSIONE.exe.blockmap" dist/latest.yml --clobber --repo "$GITHUB_REPOSITORY"
