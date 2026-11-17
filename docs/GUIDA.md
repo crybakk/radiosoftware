@@ -651,6 +651,10 @@ eventi, registro e impostazioni. Il server tiene gli ultimi 14.
    comunque".
 3. Al primo avvio la regia chiede la **chiave di attivazione** (inizia con `RADIO1.`): incollala e premi
    **Attiva**. Si inserisce una volta sola; è la stessa del server. Senza chiave la regia non parte.
+4. **Aggiornamenti:** quando esce una versione nuova, in alto compare "È disponibile Radio Regia …". Premi
+   **Aggiorna** e conferma: la regia si chiude, si aggiorna e riparte da sola (circa un minuto; se sei in onda, intanto
+   il server manda la musica di emergenza). Con **Più tardi** l'avviso sparisce fino al prossimo avvio. Non si
+   aggiorna mai da sola.
 
 Il programma si apre a schermo intero; può esserne aperta una sola copia alla volta. Poi:
 
@@ -716,9 +720,12 @@ Caddy ha bisogno delle porte 80 e 443.
 **Banda di casa:** ogni ascoltatore usa 0,128 Mbit/s in upload: con 20 Mbit/s ci stanno circa 150 ascoltatori, con
 500 Mbit/s quasi 4000. Il massimo si imposta in **Impostazioni server** → **Ascoltatori al massimo** (di base 1000).
 
-**Aggiornare il server:** scarica di nuovo lo ZIP, copialo nella VM come al punto 4 e rilancia
-`sudo bash installa-server.sh` dalla cartella `ponte`: le impostazioni restano come sono. Così si aggiorna anche
-la guida che si apre dal pannello.
+**Aggiornare il server:** quando esce una versione nuova, nel pannello (menu ☰ → **Impostazioni server**, riquadro
+**Versione del server**) compare **Aggiorna server**: premilo e conferma. Il server scarica la versione nuova e
+riparte da solo in qualche minuto (ascoltatori, regia e dirette si staccano e si ricollegano); le impostazioni
+restano come sono e si aggiorna anche la guida. Non si aggiorna mai da solo. A mano si fa ancora così: scarica di
+nuovo lo ZIP, copialo nella VM come al punto 4 e rilancia `sudo bash installa-server.sh` dalla cartella `ponte`
+(serve anche la prima volta, per installare il servizio di aggiornamento).
 
 ### Provare il server mentre AzuraCast è ancora acceso
 

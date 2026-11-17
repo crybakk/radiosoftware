@@ -91,6 +91,8 @@ jobs:
           cartella="radio-ponte-$VERSIONE"
           mkdir -p "$cartella/docs"
           cp -r ponte "$cartella/"
+          # numero di versione del server: installa-server.sh lo scrive nel .env, il pannello lo mostra
+          echo "$VERSIONE" > "$cartella/ponte/VERSIONE"
           cp docs/GUIDA.md "$cartella/docs/"
           cp -r docs/immagini "$cartella/docs/"
           zip -qr "uscita/RadioPonte-server-$VERSIONE.zip" "$cartella"

@@ -1,0 +1,10 @@
+[Unit]
+Description=Radio: aggiorna il server alla versione chiesta dal pannello
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/radio-ponte/sistema/aggiorna-server.sh
+TimeoutStartSec=60min

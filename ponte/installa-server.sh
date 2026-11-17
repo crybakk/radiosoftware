@@ -22,7 +22,7 @@ timedatectl set-timezone Europe/Rome
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get upgrade -y -q
-apt-get install -y -q qemu-guest-agent curl openssl rsync unattended-upgrades
+apt-get install -y -q qemu-guest-agent curl openssl rsync unzip unattended-upgrades
 systemctl enable --now qemu-guest-agent || true
 
 passo "Docker"
@@ -80,6 +80,16 @@ else
   grep -q '^DOMINIO=' .env || errore "nel file .env manca DOMINIO=… (la versione nuova non usa più AzuraCast: vedi .env.esempio)"
 fi
 
+# versione installata (file VERSIONE dello ZIP della release): il pannello la usa per gli aggiornamenti
+if [[ -f VERSIONE ]]; then
+  versione=$(tr -dc '0-9.' < VERSIONE)
+  if grep -q '^VERSIONE_SERVER=' .env; then
+    sed -i "s|^VERSIONE_SERVER=.*|VERSIONE_SERVER=$versione|" .env
+  else
+    echo "VERSIONE_SERVER=$versione" >> .env
+  fi
+fi
+
 passo "Avvio"
 ./riavvia.sh
 
@@ -88,6 +98,12 @@ chmod +x sistema/applica-impostazioni.sh
 cp sistema/radio-ponte-impostazioni.path sistema/radio-ponte-impostazioni.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now radio-ponte-impostazioni.path
+
+passo "Servizio che aggiorna il server quando lo chiedi dal pannello"
+chmod +x sistema/aggiorna-server.sh
+cp sistema/radio-ponte-aggiorna.path sistema/radio-ponte-aggiorna.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now radio-ponte-aggiorna.path
 
 leggi() { grep -E "^$1=" .env | head -1 | cut -d= -f2-; }
 IP_LOCALE="$(hostname -I | awk '{print $1}')"
