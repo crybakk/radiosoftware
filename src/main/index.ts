@@ -25,6 +25,8 @@ import { serveFile } from './media'
 import { dentroCartella, paginaRegia } from '../core/finestraSicura'
 import { applyPendingRestore, PonteService, type StudioReport } from './ponte'
 import { ServerLibrarySync } from './serverSync'
+import { controllaAttivazione } from './attivazione'
+import { Aggiornamenti } from './aggiornamenti'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 
 protocol.registerSchemesAsPrivileged([
@@ -94,7 +96,12 @@ function localDay(d: Date): string {
 }
 
 // solo la prima istanza apre database, ponte e finestra
-if (primary) app.whenReady().then(() => {
+if (primary) app.whenReady().then(async () => {
+  // senza chiave di attivazione valida la regia installata non parte
+  if (!(await controllaAttivazione(app.getPath('userData')))) {
+    app.quit()
+    return
+  }
   let restoredFrom: string | null = null
   try {
     restoredFrom = applyPendingRestore(app.getPath('userData'))
@@ -423,6 +430,12 @@ if (primary) app.whenReady().then(() => {
     return db.listEvents()
   })
   handle('mbRetry', () => mb.retry())
+
+  // aggiornamento della regia (solo quando si preme "Aggiorna")
+  const aggiornamenti = new Aggiornamenti((st) => win?.webContents.send('aggiornamento', st))
+  aggiornamenti.avvia()
+  handle('aggiornamentoStato', () => aggiornamenti.get())
+  handle('aggiornamentoInstalla', () => aggiornamenti.installa())
 
   // ponte
   handle('ponteStatus', () => ponte.getStatus())

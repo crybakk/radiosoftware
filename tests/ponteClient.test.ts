@@ -10,7 +10,7 @@ const port = 30000 + Math.floor(Math.random() * 10000)
 let server: ChildProcess
 
 beforeAll(async () => {
-  server = spawn(process.execPath, ['--experimental-strip-types', '--no-warnings', 'ponte/controllo/src/server.ts'], {
+  server = spawn(process.execPath, ['--experimental-strip-types', '--no-warnings', '--import', './ponte/controllo/prove/chiave-prove.mjs', 'ponte/controllo/src/server.ts'], {
     env: {
       ...process.env,
       CONTROLLO_TOKEN: TOKEN,

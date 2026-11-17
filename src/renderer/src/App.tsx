@@ -10,6 +10,7 @@ import { OnAirView } from './OnAirView'
 import { SettingsView } from './SettingsView'
 import { StatsView } from './StatsView'
 import { useRadio } from './useRadio'
+import type { AggiornamentoStato } from '../../shared/api'
 
 type Tab = 'onair' | 'library' | 'events' | 'log' | 'stats' | 'link' | 'settings' | 'guide'
 
@@ -72,6 +73,7 @@ export function App() {
       </header>
       {radio.audioError && <div className="banner error">{radio.audioError}</div>}
       <RestoredBanner />
+      <UpdateBanner />
       {radio.snapshot.lastError && <div className="banner warn">{radio.snapshot.lastError}</div>}
       <main>
         {/* sotto useRadio: un errore in una scheda non smonta App e non ferma la messa in onda */}
@@ -115,6 +117,53 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
       </div>
     )
   }
+}
+
+/** Versione nuova disponibile: si installa solo premendo "Aggiorna" (la regia si chiude e riparte). */
+function UpdateBanner() {
+  const [st, setSt] = useState<AggiornamentoStato | null>(null)
+  const [nascosto, setNascosto] = useState<string | null>(null)
+  const [conferma, setConferma] = useState(false)
+  useEffect(() => {
+    void window.radio.aggiornamentoStato().then(setSt)
+    return window.radio.onAggiornamento(setSt)
+  }, [])
+  if (!st || st.stato === 'nessuno' || (st.stato !== 'scarico' && nascosto === st.versione)) return null
+  if (st.stato === 'scarico') return <div className="banner ok inline-banner">Scarico la versione nuova… {st.percentuale ?? 0}%</div>
+  if (st.stato === 'errore')
+    return (
+      <div className="banner error inline-banner">
+        Aggiornamento non riuscito: {st.errore}{' '}
+        <button className="small" onClick={() => void window.radio.aggiornamentoInstalla().catch(() => undefined)}>
+          Riprova
+        </button>
+      </div>
+    )
+  return (
+    <div className="banner ok inline-banner">
+      È disponibile Radio Regia {st.versione} (ora hai la {st.attuale}).{' '}
+      {conferma ? (
+        <>
+          La regia si chiude e riparte da sola (circa un minuto): se sei in onda, intanto il server manda la musica di emergenza.{' '}
+          <button className="small" onClick={() => void window.radio.aggiornamentoInstalla().catch(() => undefined)}>
+            Aggiorna adesso
+          </button>{' '}
+          <button className="small" onClick={() => setConferma(false)}>
+            Annulla
+          </button>
+        </>
+      ) : (
+        <>
+          <button className="small" onClick={() => setConferma(true)}>
+            Aggiorna
+          </button>{' '}
+          <button className="small" onClick={() => setNascosto(st.versione ?? null)}>
+            Più tardi
+          </button>
+        </>
+      )}
+    </div>
+  )
 }
 
 function RestoredBanner() {

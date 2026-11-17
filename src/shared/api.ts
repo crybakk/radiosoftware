@@ -36,6 +36,17 @@ export interface AnnounceCtx {
   radio?: string
 }
 
+/** Aggiornamento della regia dalle release (si installa solo premendo "Aggiorna"). */
+export interface AggiornamentoStato {
+  stato: 'nessuno' | 'disponibile' | 'scarico' | 'pronto' | 'errore'
+  /** versione installata */
+  attuale: string
+  /** versione nuova */
+  versione?: string
+  percentuale?: number
+  errore?: string
+}
+
 export interface RadioApi {
   // libreria
   listFolders(): Promise<LibraryFolder[]>
@@ -132,6 +143,10 @@ export interface RadioApi {
   /** Eventi con un comando esterno spenti dopo il ripristino. */
   restoredEventsOff(): Promise<string[]>
   onPonteStatus(cb: (s: PonteStatus) => void): () => void
+  // aggiornamento della regia
+  aggiornamentoStato(): Promise<AggiornamentoStato>
+  aggiornamentoInstalla(): Promise<void>
+  onAggiornamento(cb: (s: AggiornamentoStato) => void): () => void
   // libreria del server (diretta autonoma)
   serverSyncStatus(): Promise<ServerSyncStatus>
   serverSyncList(filter: 'esclusi' | 'tutti', q: string): Promise<ServerTrackRow[]>

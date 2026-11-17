@@ -67,7 +67,20 @@ Scarica **RadioRegia-Setup-<versione>.exe** dall'ultima [release](https://github
 
 Per provare una modifica non ancora pubblicata: scheda **Actions** → "Test e build Windows" → **Run workflow** sul ramo da provare; a fine esecuzione scarica l'artefatto **RadioRegia-Setup-Windows** (resta disponibile per un giorno, così lo spazio gratuito di GitHub Actions non si riempie).
 
-Per pubblicare una nuova versione: aggiorna `version` in `package.json` e aggiungi la sezione `## v<versione>` in `CHANGELOG.md`, poi **Actions** → **Pubblica release** → **Run workflow** con lo stesso numero.
+Le release si pubblicano da sole a ogni merge su `main`: l'ultima cifra della versione aumenta (0.1.1, 0.1.2, ...) e le note elencano le PR unite. Per un salto di versione (es. 0.2.0) scrivilo in `version` di `package.json` e, se vuoi note scritte a mano, aggiungi la sezione `## v<versione>` in `CHANGELOG.md`. Si può ancora pubblicare a mano: **Actions** → **Pubblica release** → **Run workflow** con il numero di `package.json`.
+
+## Chiave di attivazione
+
+Regia e server partono solo con una chiave di attivazione (la stessa per entrambi). Le chiavi si creano con la
+chiave segreta, che sta **solo** sul PC di chi distribuisce il programma (mai nel repository):
+
+```bash
+node scripts/crea-chiave.mjs chiave-segreta-radio.pem "Nome della radio"
+```
+
+Stampa una riga che inizia con `RADIO1.`: va incollata nella regia al primo avvio e nel pannello del server (oppure
+in `CHIAVE_ATTIVAZIONE` nel file `.env`). Con il codice sorgente il controllo si può togliere: serve a impedire
+l'installazione facile, non è una protezione assoluta. Avviata dal codice (`npm run dev`) la regia non la chiede.
 
 ## Sviluppo
 

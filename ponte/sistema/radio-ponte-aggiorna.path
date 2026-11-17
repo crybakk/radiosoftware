@@ -1,0 +1,10 @@
+# Guarda la cartella delle richieste del pannello: quando compare "aggiorna", aggiorna il server.
+[Unit]
+Description=Radio: aggiornamento chiesto dal pannello
+
+[Path]
+PathExists=/opt/radio-ponte/richieste/aggiorna
+Unit=radio-ponte-aggiorna.service
+
+[Install]
+WantedBy=multi-user.target

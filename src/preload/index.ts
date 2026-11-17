@@ -5,7 +5,7 @@ import type { MbStatus } from '../main/musicbrainz'
 import type { TagStatus } from '../main/tagServices'
 import type { AiStatus } from '../main/ai'
 import type { RemoteCommand, RemoteState } from '../core/remote'
-import type { LibraryStatus, RadioApi } from '../shared/api'
+import type { AggiornamentoStato, LibraryStatus, RadioApi } from '../shared/api'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const call = (channel: string): any => (...args: unknown[]) => ipcRenderer.invoke(channel, ...args)
@@ -126,6 +126,13 @@ const api: RadioApi = {
     const listener = (_e: unknown, s: PonteStatus): void => cb(s)
     ipcRenderer.on('ponteStatus', listener)
     return () => ipcRenderer.removeListener('ponteStatus', listener)
+  },
+  aggiornamentoStato: call('aggiornamentoStato'),
+  aggiornamentoInstalla: call('aggiornamentoInstalla'),
+  onAggiornamento: (cb: (s: AggiornamentoStato) => void) => {
+    const listener = (_e: unknown, s: AggiornamentoStato): void => cb(s)
+    ipcRenderer.on('aggiornamento', listener)
+    return () => ipcRenderer.removeListener('aggiornamento', listener)
   }
 }
 

@@ -2,10 +2,20 @@ name: Test e build Windows
 
 on:
   push:
-    branches: ['**']
+    # su main la build la fa già la pubblicazione automatica della release (release.yml)
+    branches-ignore: [main]
   workflow_dispatch:
   # usato anche dalla pubblicazione delle release (release.yml)
   workflow_call:
+    inputs:
+      versione:
+        description: 'Numero di versione da scrivere nel programma (vuoto = quello di package.json)'
+        type: string
+        default: ''
+      salva_installer:
+        description: "Salva l'installer come artefatto (serve alla release)"
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -26,8 +36,17 @@ jobs:
       # prova rapida dell'immagine: parte, scrive nel volume dati e serve il pannello
       - name: Prova del contenitore di controllo
         run: |
+          # prima senza chiave di attivazione: solo la pagina per incollarla
+          docker run -d --name senzachiave -p 9081:9080 -e CONTROLLO_TOKEN=token-di-prova-abbastanza-lungo radio-ponte-controllo
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:9081/health && break; sleep 1; done
+          curl -fs http://127.0.0.1:9081/dashboard | grep -q "Attiva il server"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9081/api/nowplaying)" = 403
+          docker rm -f senzachiave
+          # poi con una chiave di prova (coppia di chiavi creata al momento da prove/chiave-prove.mjs)
           docker run -d --name ctl -p 9080:9080 -e CONTROLLO_TOKEN=token-di-prova-abbastanza-lungo \
-            -e PANNELLO_ADMIN_PASSWORD=password-admin -v ctldati:/data radio-ponte-controllo
+            -e PANNELLO_ADMIN_PASSWORD=password-admin -v ctldati:/data \
+            -v "$PWD/ponte/controllo/prove/chiave-prove.mjs:/prove/chiave-prove.mjs:ro" -e NODE_OPTIONS=--import=/prove/chiave-prove.mjs \
+            radio-ponte-controllo
           for i in $(seq 1 20); do curl -fs http://127.0.0.1:9080/health && break; sleep 1; done
           head -c 4096 /dev/urandom > b.db
           curl -fs -X PUT -H "Authorization: Bearer token-di-prova-abbastanza-lungo" --data-binary @b.db http://127.0.0.1:9080/api/backup
@@ -56,18 +75,27 @@ jobs:
           Expand-Archive fpcalc.zip -DestinationPath fpcalc-tmp
           New-Item -ItemType Directory -Force build-resources/fpcalc | Out-Null
           Copy-Item fpcalc-tmp/*/fpcalc.exe build-resources/fpcalc/
+      - name: Versione della release
+        if: inputs.versione != ''
+        env:
+          VERSIONE: ${{ inputs.versione }}
+        run: npm version "$env:VERSIONE" --no-git-tag-version --allow-same-version
       - run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       # L'installer (~200 MB) si salva solo quando serve davvero: avvio a mano ("Run workflow")
-      # o pubblicazione di una release (release.yml è avviata a mano, quindi l'evento è lo stesso).
+      # o pubblicazione di una release (release.yml lo chiede con salva_installer).
       # Sui push normali si controlla solo che l'installer si costruisca: salvarlo a ogni push
       # riempiva lo spazio di GitHub Actions (0,5 GB gratuiti). Si cancella da solo dopo 1 giorno;
       # le versioni pubblicate restano nelle Release, che non contano nello spazio.
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || inputs.salva_installer
         with:
           name: RadioRegia-Setup-Windows
-          path: dist/*.exe
+          # latest.yml e .blockmap servono all'aggiornamento della regia dalle release
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
           retention-days: 1
           compression-level: 0

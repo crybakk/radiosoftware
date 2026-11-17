@@ -17,6 +17,7 @@ $('imp-close').addEventListener('click', () => {
 
 async function loadImp() {
   $('imp-msg').textContent = ''
+  loadAgg()
   try {
     drawImp(await api('/api/impostazioni'))
   } catch (e) {
@@ -216,5 +217,66 @@ function drawImpState(st) {
         drawImpState(st)
       }
     }, 3000)
+  }
+}
+
+// ---- aggiornamento del server (si installa solo premendo il pulsante) ----
+let aggPoll = null
+
+async function loadAgg() {
+  try {
+    drawAgg(await api('/api/impostazioni/aggiornamento'))
+  } catch {
+    $('imp-agg').hidden = true
+  }
+}
+
+function drawAgg(st) {
+  clearTimeout(aggPoll)
+  const box = $('imp-agg')
+  box.hidden = false
+  box.replaceChildren(el('div', 'section-title', 'Versione del server'))
+  const riga = (t, cls) => box.append(el('p', cls, t))
+  riga(st.attuale ? `Installata: ${st.attuale}` : 'Versione installata sconosciuta (server installato prima degli aggiornamenti dal pannello).', 'hint')
+  if (st.inCorso) {
+    riga(
+      st.servizioAssente
+        ? 'Aggiornamento chiesto, ma il servizio di aggiornamento sul server non risponde: rilancia una volta installa-server.sh.'
+        : 'Aggiornamento in corso: il server scarica la versione nuova e riparte (qualche minuto). Il pannello può non rispondere per un po\'.',
+      `banner ${st.servizioAssente ? 'error' : 'info'}`
+    )
+    if (st.servizioAssente) {
+      box.append(button('Annulla la richiesta', '', async () => drawAgg(await api('/api/impostazioni/aggiornamento', { method: 'POST', body: JSON.stringify({ annulla: true }) })), 'small'))
+    }
+  } else if (st.disponibile) {
+    riga(`È disponibile la versione ${st.ultima}.`, 'banner info')
+    const conferma = el('span')
+    box.append(
+      button('Aggiorna server', '', () => {
+        conferma.replaceChildren(
+          ' Il server si ferma per qualche minuto: ascoltatori, regia e dirette si staccano e poi si ricollegano da soli. ',
+          button('Aggiorna adesso', '', async () => {
+            try {
+              drawAgg(await api('/api/impostazioni/aggiornamento', { method: 'POST', body: JSON.stringify({ versione: st.ultima }) }))
+            } catch (e) {
+              conferma.replaceChildren(` ${e.message}`)
+            }
+          }, 'small primary')
+        )
+      }, 'small primary'),
+      conferma
+    )
+  } else if (st.ultima) {
+    riga('È l\'ultima versione.', 'hint')
+  }
+  if (st.esito && !st.inCorso) riga(`${st.esito.ok ? '✓' : '✗'} ${st.esito.messaggio} (${impTime(st.esito.quando)})`, `banner ${st.esito.ok ? 'info' : 'error'}`)
+  if (st.inCorso && !$('imp').hidden) {
+    aggPoll = setTimeout(async () => {
+      try {
+        drawAgg(await api('/api/impostazioni/aggiornamento'))
+      } catch {
+        drawAgg(st)
+      }
+    }, 5000)
   }
 }
