@@ -107,14 +107,17 @@ function drawImp(r) {
   $('imp-groups').replaceChildren(
     ...[...groups].map(([name, voci]) => {
       const card = el('div', 'card prog-form')
-      card.append(el('div', 'section-title', name), ...voci.map(impField))
+      card.append(el('div', 'section-title', name))
+      // Stereo Tool: stato, libreria e preset nello stesso riquadro della chiave di licenza
+      if (name === 'Stereo Tool') {
+        const st = el('div')
+        st.id = 'imp-st'
+        card.append(st)
+      }
+      card.append(...voci.map(impField))
       return card
     })
   )
-  // Stereo Tool: subito dopo il gruppo "Radio", dove si sceglie il processore audio
-  const st = el('div', 'card prog-form')
-  st.id = 'imp-st'
-  $('imp-groups').insertBefore(st, $('imp-groups').children[1] ?? null)
   loadStereoTool()
   $('imp-adv').checked = false
   $('imp-adv-fields').replaceChildren(...r.voci.filter((v) => v.avanzato).map(impField))
@@ -233,14 +236,14 @@ async function loadStereoTool() {
   try {
     drawStereoTool(await api('/api/impostazioni/stereotool'))
   } catch (e) {
-    box.replaceChildren(el('div', 'section-title', 'Stereo Tool'), el('p', 'hint', e.message))
+    box.replaceChildren(el('p', 'hint', e.message))
   }
 }
 
 function drawStereoTool(r) {
   const box = $('imp-st')
   if (!box) return
-  box.replaceChildren(el('div', 'section-title', 'Stereo Tool'))
+  box.replaceChildren()
   const riga = (t, cls = 'hint') => box.append(el('p', cls, t))
   if (!r.disponibile) return riga('Per usare Stereo Tool aggiorna il server (la cartella di Stereo Tool non è ancora collegata).')
   riga(r.libreria ? 'Libreria di Stereo Tool per Linux: presente sul server.' : 'Libreria di Stereo Tool per Linux: non ancora scaricata (il server la scarica da solo al prossimo aggiornamento).', r.libreria ? 'hint' : 'banner error')
