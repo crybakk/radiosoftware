@@ -63,6 +63,37 @@ describe('annunci a orario del server', () => {
   })
 })
 
+describe('annunci a orario: anticipo per l\'HLS', () => {
+  it('parte 30 secondi prima e dice l\'ora prevista', async () => {
+    const store = new AnnounceStore(join(mkdtempSync(join(tmpdir(), 'ann-')), 'annunci.json'))
+    await store.save({ radio: '', items: [item({ text: 'Sono le {ora}.' })] })
+    let now = new Date(2026, 10, 15, 22, 59, 25)
+    const spoken: string[] = []
+    const s = new AnnounceScheduler({
+      store,
+      speak: async (text) => {
+        spoken.push(text)
+        return { file: `/musica/.annunci/a-${spoken.length}.mp3`, seconds: 2 }
+      },
+      onAir: async () => true,
+      context: () => ({}),
+      stationName: 'Radio Prova',
+      folder: '.annunci',
+      now: () => now,
+      log: () => {},
+      anticipoSecondi: 30
+    })
+    await s.tick()
+    expect(spoken).toEqual([]) // 22:59:55 per chi ascolta: ancora presto
+    now = new Date(2026, 10, 15, 22, 59, 31)
+    await s.tick()
+    expect(spoken).toEqual(['Sono le 23 in punto.'])
+    now = new Date(2026, 10, 15, 23, 0, 5)
+    await s.tick()
+    expect(spoken).toHaveLength(1) // non si ripete all'ora vera
+  })
+})
+
 describe('annunci a orario: ora legale', () => {
   it('quando finisce l\'ora legale un orario fisso va una volta sola, "ogni ora" va ogni ora vera', async () => {
     const tz = process.env.TZ

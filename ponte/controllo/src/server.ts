@@ -30,6 +30,7 @@
  * Titolo in onda come AzuraCast (senza accesso): GET /api/nowplaying, /api/nowplaying/<stazione>,
  *   /api/nowplaying_static/<stazione>.json, /api/station/<stazione>/playlist.m3u|pls, GET /api/logo,
  *   GET /api/copertina/<chiave>.jpg (copertine dei brani, vedi copertine.ts)
+ * Player pubblico: GET /api/player (ritardo dei titoli quando si ascolta in HLS).
  * Flusso HLS come AzuraCast: GET /hls/<stazione>/live.m3u8 e le playlist delle tre qualità (i pezzi .ts li
  *   manda Caddy); chi rilegge la playlist di una qualità conta come ascoltatore (vedi hls.ts).
  * Stereo Tool (amministratori): GET /api/impostazioni/stereotool, PUT /api/impostazioni/stereotool?nome=<file.sts>
@@ -501,7 +502,8 @@ const announcer = new AnnounceScheduler({
   onAir: serverOnAir,
   context: announceContext,
   stationName: env('NOME_RADIO', 'Radio'),
-  folder: '.annunci'
+  folder: '.annunci',
+  anticipoSecondi: num('ANNUNCI_ANTICIPO_SECONDI', 30)
 })
 auto.interject = () => announcer.take()
 announcer.start()
@@ -1022,6 +1024,10 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         return void res.end(PAGINA_ATTIVAZIONE)
       }
       return json(res, 403, { error: 'server non attivato: apri il pannello e incolla la chiave di attivazione' })
+    }
+    // impostazioni del player pubblico (fuori dall'API di AzuraCast, che resta identica)
+    if (req.method === 'GET' && url.pathname === '/api/player') {
+      return json(res, 200, { hls_ritardo_titoli: HLS_ATTIVO ? num('HLS_RITARDO_TITOLI', 30) : 0 }, { 'Cache-Control': 'no-cache' })
     }
     // flusso HLS (pubblico, come AzuraCast)
     if (await handleHls(req, res, url)) return
