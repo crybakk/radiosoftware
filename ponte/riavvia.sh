@@ -27,17 +27,33 @@ chmod 755 stereotool
 if [[ ! -s stereotool/libStereoTool.so ]]; then
   echo "Scarico la libreria di Stereo Tool (Thimeo)…"
   st_tmp=$(mktemp -d)
-  if curl -fsSL --retry 3 -m 600 -o "$st_tmp/st.zip" https://download.thimeo.com/Stereo_Tool_Generic_plugin.zip \
-    && unzip -q "$st_tmp/st.zip" -d "$st_tmp/x"; then
-    # nello ZIP ci sono le librerie per tutti i sistemi: serve quella per Linux, Intel/AMD a 64 bit
-    st_libs=$(find "$st_tmp/x" -type f -iname 'libStereoTool*.so' | grep -iv -e arm -e aarch -e pi2 || true)
-    st_lib=$(echo "$st_libs" | grep -i linux | grep -e 64 | head -n 1 || true)
-    [[ -n "$st_lib" ]] || st_lib=$(echo "$st_libs" | grep -i -e intel64 -e x86_64 -e amd64 | head -n 1 || true)
-    if [[ -n "$st_lib" ]]; then
-      install -m 644 "$st_lib" stereotool/libStereoTool.so
-      echo "Libreria di Stereo Tool installata ($(basename "$st_lib"))."
+  # ZIP generico di Thimeo (circa 360 MB) con le librerie per tutti i sistemi. È fatto su Windows (percorsi con
+  # la barra rovesciata, unzip esce con un errore): il file giusto lo estrae python. Serve la libreria per Linux
+  # Intel/AMD a 64 bit senza X11, non quella della cartella Kantar.
+  if curl -fsSL --retry 3 -m 1800 -o "$st_tmp/st.zip" https://download.thimeo.com/Stereo_Tool_Generic_plugin.zip; then
+    if python3 - "$st_tmp/st.zip" stereotool/libStereoTool.so <<'PY'
+import shutil, sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as z:
+    scelti = []
+    for info in z.infolist():
+        nome = info.filename.replace('\\', '/')
+        parti = [p.lower() for p in nome.split('/')]
+        if parti[-1] == 'libstereotool_intel64.so' and 'linux' in parti and 'kantar' not in parti:
+            scelti.append((len(parti), info))
+    if not scelti:
+        sys.exit('nello ZIP non trovo libStereoTool_intel64.so per Linux')
+    info = sorted(scelti, key=lambda x: x[0])[0][1]
+    with z.open(info) as src, open(sys.argv[2] + '.nuovo', 'wb') as dst:
+        shutil.copyfileobj(src, dst)
+    print('Libreria di Stereo Tool installata (' + info.filename + ').')
+PY
+    then
+      chmod 644 stereotool/libStereoTool.so.nuovo
+      chown 1000:1000 stereotool/libStereoTool.so.nuovo 2>/dev/null || true
+      mv -f stereotool/libStereoTool.so.nuovo stereotool/libStereoTool.so
     else
-      echo "Attenzione: nello ZIP di Stereo Tool non trovo la libreria per Linux 64 bit." >&2
+      rm -f stereotool/libStereoTool.so.nuovo
+      echo "Attenzione: non riesco a estrarre Stereo Tool dallo ZIP (riprovo al prossimo riavvio)." >&2
     fi
   else
     echo "Attenzione: non riesco a scaricare Stereo Tool (riprovo al prossimo riavvio)." >&2
