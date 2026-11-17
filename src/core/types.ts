@@ -98,6 +98,11 @@ export interface Settings {
   /** Chiave dell'applicazione AcoustID. */
   acoustidKey: string
   /**
+   * Durata massima della musica in minuti (0 = nessun limite): i brani più lunghi (premixati, mix)
+   * spariscono dalla libreria, dalle rotazioni e dal server. Si cambia dal pannello del server.
+   */
+  maxTrackMinutes: number
+  /**
    * Modalità della regia (AUTOMATICO / MANUALE), salvata a ogni cambio: dopo un riavvio
    * o un blackout la regia riparte com'era (in automatico riprende a suonare da sola).
    */
@@ -184,6 +189,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastfmKey: '',
   mbContact: '',
   acoustidKey: '',
+  maxTrackMinutes: 10,
   playoutMode: 'manual'
 }
 

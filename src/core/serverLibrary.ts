@@ -6,6 +6,8 @@
  *     nel titolo, nella cartella o nel genere;
  *   - si escludono i file sotto i 192 kbps (soglia modificabile);
  *   - ogni brano si può includere o escludere a mano, e la scelta a mano vince.
+ * 17/11/2026: la musica più lunga della durata massima (premixati) è nascosta ovunque e non va mai
+ * sul server, neanche scelta a mano.
  */
 import type { LibraryFolder, Track } from './types'
 
@@ -41,12 +43,18 @@ function liveTitle(title: string): boolean {
   return /\blive\s*$/i.test(title) && !/^\s*live\s*$/i.test(title)
 }
 
+/** Musica più lunga della durata massima in minuti (0 = nessun limite; durata 0 = sconosciuta, non conta). */
+export function tooLong(t: Pick<Track, 'kind'> & { duration?: number }, maxMinutes: number): boolean {
+  return t.kind === 'music' && maxMinutes > 0 && (t.duration ?? 0) > maxMinutes * 60
+}
+
 export function onServer(
-  t: Pick<Track, 'kind' | 'title' | 'genre' | 'path' | 'bitrate' | 'enabled'>,
+  t: Pick<Track, 'kind' | 'title' | 'genre' | 'path' | 'bitrate' | 'enabled'> & { duration?: number },
   choice: ServerChoice,
-  minKbps: number
+  minKbps: number,
+  maxMinutes = 0
 ): boolean {
-  if (t.kind !== 'music' || !t.enabled) return false
+  if (t.kind !== 'music' || !t.enabled || tooLong(t, maxMinutes)) return false
   if (choice !== null) return choice
   return exclusionReason(t, minKbps) === null
 }

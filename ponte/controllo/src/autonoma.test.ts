@@ -47,6 +47,16 @@ describe('libreria del server', () => {
     expect(lib.pickRandom(lib.all().map((t) => t.id), [], () => 0)).not.toBeNull()
   })
 
+  it('i brani più lunghi della durata massima (premixati) non si cercano e non vanno in onda', () => {
+    const lib = new Library(dir, join(dir, '.indice.json'))
+    // durata massima 1 minuto: i tre brani da 70 s spariscono, resta solo quello di durata sconosciuta
+    lib.maxSeconds = 60
+    expect(lib.search('vasco')).toEqual([])
+    for (let i = 0; i < 10; i++) expect(lib.pickRandom([], [])?.id).toBe('Nomade - Io vagabondo.mp3')
+    lib.maxSeconds = 0
+    expect(lib.search('vasco')).toHaveLength(2)
+  })
+
   it('un brano caricato durante la scansione resta nell\'indice', async () => {
     const d = mkdtempSync(join(tmpdir(), 'lib-'))
     copyFileSync(join(dir, 'regia/c.mp3'), join(d, 'a.mp3'))

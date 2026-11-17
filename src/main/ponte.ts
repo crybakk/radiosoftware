@@ -191,12 +191,16 @@ export class PonteService {
     }
     try {
       const up = this.uplink.getStatus()
-      const alarms = await c.heartbeat({
+      const { alarms, maxTrackMinutes } = await c.heartbeat({
         ...this.report,
         uplink: up.state,
         uplinkMessage: up.message,
         reconnects: up.reconnects
       })
+      // durata massima dei brani (premixati): si sceglie nel pannello del server, la regia la segue
+      if (maxTrackMinutes !== null && maxTrackMinutes !== this.db.getSettings().maxTrackMinutes) {
+        this.db.saveSettings({ maxTrackMinutes })
+      }
       this.status = { ...this.status, controlOk: true, controlError: null, alarms }
     } catch (e) {
       this.status = { ...this.status, controlOk: false, controlError: e instanceof Error ? e.message : String(e) }

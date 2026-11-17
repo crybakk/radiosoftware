@@ -80,6 +80,13 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
                 .map(([k, n]) => `${KIND_LABEL[k] ?? k}: ${n}`)
                 .join(' · ')}
             </div>
+            {status.hiddenLong > 0 && (
+              <div>
+                {status.hiddenLong} brani più lunghi di {status.maxTrackMinutes} minuti (premixati) nascosti: non compaiono
+                qui, nelle rotazioni e sul server. Il limite si cambia dal pannello del server (☰ → Impostazioni server →
+                Radio).
+              </div>
+            )}
             {status.scanning && (
               <div>
                 Scansione: {status.scanning.seen} file letti, {status.scanning.added} nuovi, {status.scanning.updated}{' '}

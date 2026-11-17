@@ -18,6 +18,10 @@ export interface LibraryStatus {
   total: number
   byKind: Record<string, number>
   pendingAnalysis: number
+  /** Musica nascosta perché più lunga della durata massima (premixati). */
+  hiddenLong: number
+  /** Durata massima in minuti (0 = nessun limite), impostata dal pannello del server. */
+  maxTrackMinutes: number
   scanning: ScanProgress | null
   analyzing: boolean
   /** Impronte audio calcolate sulla musica (riconoscimento nelle esterne). */

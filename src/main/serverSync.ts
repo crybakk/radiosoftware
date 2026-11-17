@@ -18,6 +18,7 @@ import type { RadioDb } from '../core/db'
 import { PonteError, type LibraryMeta, type PonteClient, type UploadedTrack } from '../core/ponteClient'
 import {
   exclusionReason,
+  tooLong,
   folderPrefix,
   gainFor,
   MAX_REMOVE_UNCONFIRMED,
@@ -133,7 +134,7 @@ export class ServerLibrarySync {
     const seen = new Set<string>()
     for (const { track, size, choice } of this.db.musicForServer()) {
       if (!track.enabled) continue
-      const id = onServer(track, choice, s.ponte.libraryMinKbps) ? serverId(track.path, folders) : null
+      const id = onServer(track, choice, s.ponte.libraryMinKbps, s.maxTrackMinutes) ? serverId(track.path, folders) : null
       if (id && !seen.has(id)) {
         seen.add(id)
         items.push({ id, size, track })
@@ -148,7 +149,8 @@ export class ServerLibrarySync {
    * spento). Si tolgono solo i brani esclusi (regola o scelta a mano) o tolti davvero dalla libreria.
    */
   async keepOnServer(): Promise<(id: string) => boolean> {
-    const min = this.db.getSettings().ponte.libraryMinKbps
+    const { ponte, maxTrackMinutes } = this.db.getSettings()
+    const min = ponte.libraryMinKbps
     const folders = this.db.listFolders()
     const keep = new Set<string>()
     for (const row of this.db.musicForServer()) {
@@ -157,7 +159,7 @@ export class ServerLibrarySync {
       // "missing" distingue il file sparito (disabilitato dalla scansione) dal brano disabilitato a mano;
       // se il database non lo dice, nel dubbio si tiene
       const missing = (row as { missing?: boolean }).missing ?? true
-      if (!missing || !onServer({ ...track, enabled: true }, choice, min)) continue
+      if (!missing || !onServer({ ...track, enabled: true }, choice, min, maxTrackMinutes)) continue
       const id = serverId(track.path, folders)
       if (id) keep.add(id)
     }
@@ -189,14 +191,16 @@ export class ServerLibrarySync {
 
   /** Elenco per scegliere a mano: esclusi (con il motivo) o tutti, filtrati per testo. */
   list(filter: 'esclusi' | 'tutti', q: string, limit = 300): ServerTrackRow[] {
-    const min = this.db.getSettings().ponte.libraryMinKbps
+    const { ponte, maxTrackMinutes } = this.db.getSettings()
+    const min = ponte.libraryMinKbps
     const words = q.toLowerCase().split(/\s+/).filter(Boolean)
     const out: ServerTrackRow[] = []
     for (const { track, choice } of this.db.musicForServer()) {
-      if (!track.enabled) continue
+      // i brani troppo lunghi (premixati) sono nascosti: non si possono neanche scegliere a mano
+      if (!track.enabled || tooLong(track, maxTrackMinutes)) continue
       if (words.length && !words.every((w) => `${track.artist} ${track.title}`.toLowerCase().includes(w))) continue
       const reason = exclusionReason(track, min)
-      const selected = onServer(track, choice, min)
+      const selected = onServer(track, choice, min, maxTrackMinutes)
       // tra gli "esclusi" restano visibili anche quelli scelti a mano, per poterli rimettere com'erano
       if (filter === 'esclusi' && selected && choice === null) continue
       out.push({ id: track.id, title: track.title, artist: track.artist, bitrate: track.bitrate, reason, choice, selected })

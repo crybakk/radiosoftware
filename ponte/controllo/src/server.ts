@@ -238,6 +238,9 @@ function needSpace(dir: string): void {
   if (full) throw new HttpError(507, full)
 }
 const library = new Library(MUSIC_DIR, join(DATA_DIR, 'libreria.json'))
+// durata massima dei brani (premixati): la usa anche la regia, che la riceve a ogni battito
+const MAX_TRACK_MINUTES = Math.max(0, num('DURATA_MASSIMA_MINUTI', 10))
+library.maxSeconds = MAX_TRACK_MINUTES * 60
 
 async function lqPost(path: string, body: unknown = {}): Promise<boolean> {
   const r = await fetch(`${LIQUIDSOAP}${path}`, {
@@ -1251,7 +1254,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       lastStudio = { ...(await readJson(req)), receivedAt: new Date().toISOString() }
       alarms.onHeartbeat()
       relay.setAlarms(alarms.status().alarms)
-      return json(res, 200, { ok: true, alarms: alarms.status().alarms })
+      return json(res, 200, { ok: true, alarms: alarms.status().alarms, maxTrackMinutes: MAX_TRACK_MINUTES })
     }
     if (req.method === 'POST' && url.pathname === '/api/metadata') {
       const body = await readJson(req)
