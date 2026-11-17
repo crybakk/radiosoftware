@@ -42,6 +42,7 @@ describe('aggiornamento del server', () => {
     await a.controlla()
     rete = false
     await a.controlla()
-    expect(a.stato()).toMatchObject({ ultima: '0.1.3', disponibile: true })
+    expect(a.stato()).toMatchObject({ ultima: '0.1.3', disponibile: true, erroreControllo: 'giù' })
+    expect(a.stato().controllato).toBeTruthy()
   })
 })

@@ -1234,6 +1234,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         if (req.method === 'POST') {
           const body = await readJson(req)
           if (body.annulla === true) aggiornamento.annulla()
+          else if (body.controlla === true) await aggiornamento.controlla()
           else {
             try {
               aggiornamento.chiedi(String(body.versione ?? ''))

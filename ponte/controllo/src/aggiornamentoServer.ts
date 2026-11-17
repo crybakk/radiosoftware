@@ -45,11 +45,14 @@ export interface StatoAggiornamento {
   servizioAssente: boolean
   esito?: { quando: string; ok: boolean; messaggio: string }
   controllato?: string
+  /** errore dell'ultimo controllo con GitHub, se non è riuscito */
+  erroreControllo?: string
 }
 
 export class AggiornamentoServer {
   private ultima: string | null = null
   private controllato?: string
+  private erroreControllo?: string
   private readonly attuale: string
   private readonly cartella: string
   private readonly scarica: (url: string) => Promise<unknown>
@@ -72,10 +75,12 @@ export class AggiornamentoServer {
   async controlla(): Promise<void> {
     try {
       this.ultima = ultimaVersione(await this.scarica(`https://api.github.com/repos/${REPO}/releases?per_page=30`))
-      this.controllato = new Date(this.now()).toISOString()
+      this.erroreControllo = undefined
     } catch (e) {
+      this.erroreControllo = (e as Error).message
       console.log(`controllo aggiornamenti non riuscito: ${(e as Error).message}`)
     }
+    this.controllato = new Date(this.now()).toISOString()
   }
 
   avvia(): void {
@@ -100,7 +105,8 @@ export class AggiornamentoServer {
       // il servizio sul server toglie subito la richiesta: se resta più di un minuto, il servizio non c'è
       servizioAssente: existsSync(richiesta) && this.now() - statSync(richiesta).mtimeMs > 60_000,
       esito,
-      controllato: this.controllato
+      controllato: this.controllato,
+      erroreControllo: this.erroreControllo
     }
   }
 

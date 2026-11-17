@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Settings, Track } from '../../core/types'
 import type { NewsSource } from '../../core/news'
+import type { AggiornamentoStato } from '../../shared/api'
 import { listOutputDevices } from './audio'
 import { mmss } from './format'
 import { VoiceSection } from './VoiceSection'
@@ -131,6 +132,48 @@ function NewsRow({ n, onChange, onRemove, radio }: { n: NewsSource; onChange: (n
   )
 }
 
+/** Versione installata e controllo degli aggiornamenti a richiesta (si installa solo dalla barra in alto). */
+function UpdateSection() {
+  const [st, setSt] = useState<AggiornamentoStato | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    void window.radio.aggiornamentoStato().then(setSt)
+    return window.radio.onAggiornamento(setSt)
+  }, [])
+  const quando = st?.controllato ? new Date(st.controllato).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null
+  let esito = ''
+  if (st?.controllo === 'non installato') esito = 'Avviata dal codice: gli aggiornamenti funzionano solo nel programma installato.'
+  else if (st?.controllo?.startsWith('non riuscito')) esito = `Controllo ${st.controllo}`
+  else if (st?.stato === 'disponibile' || st?.stato === 'pronto') esito = `È disponibile la versione ${st.versione}: premi "Aggiorna" nella barra in alto.`
+  else if (st?.controllo === 'ok') esito = 'È l\'ultima versione.'
+  return (
+    <section className="panel">
+      <div className="section-title">Aggiornamenti</div>
+      <p className="hint">
+        Versione installata: <b>{st?.attuale ?? '…'}</b>. La regia controlla da sola all'avvio e ogni 6 ore, ma non si
+        aggiorna mai senza che tu lo chieda.
+      </p>
+      <div className="row">
+        <button
+          disabled={busy || st?.controllo === 'in corso'}
+          onClick={async () => {
+            setBusy(true)
+            try {
+              setSt(await window.radio.aggiornamentoControlla())
+            } finally {
+              setBusy(false)
+            }
+          }}
+        >
+          {busy || st?.controllo === 'in corso' ? 'Controllo…' : 'Controlla aggiornamenti'}
+        </button>
+        {esito && <span className="hint">{esito}</span>}
+        {quando && <span className="hint">Ultimo controllo: {quando}</span>}
+      </div>
+    </section>
+  )
+}
+
 export function SettingsView({ radio }: { radio: Radio }) {
   const [devices, setDevices] = useState<{ deviceId: string; label: string }[]>([])
   const [draft, setDraft] = useState<Settings>(radio.settings)
@@ -148,6 +191,7 @@ export function SettingsView({ radio }: { radio: Radio }) {
 
   return (
     <div className="settings-view">
+      <UpdateSection />
       <section className="panel">
         <div className="section-title">Schede audio</div>
         <p className="hint">

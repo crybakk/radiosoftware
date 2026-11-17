@@ -49,6 +49,10 @@ export interface AggiornamentoStato {
   versione?: string
   percentuale?: number
   errore?: string
+  /** esito dell'ultimo controllo: 'in corso', 'ok', 'non riuscito: …', 'non installato' */
+  controllo?: string
+  /** quando è stato fatto l'ultimo controllo (ISO) */
+  controllato?: string
 }
 
 export interface RadioApi {
@@ -150,6 +154,7 @@ export interface RadioApi {
   // aggiornamento della regia
   aggiornamentoStato(): Promise<AggiornamentoStato>
   aggiornamentoInstalla(): Promise<void>
+  aggiornamentoControlla(): Promise<AggiornamentoStato>
   onAggiornamento(cb: (s: AggiornamentoStato) => void): () => void
   // libreria del server (diretta autonoma)
   serverSyncStatus(): Promise<ServerSyncStatus>

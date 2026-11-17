@@ -129,6 +129,7 @@ const api: RadioApi = {
   },
   aggiornamentoStato: call('aggiornamentoStato'),
   aggiornamentoInstalla: call('aggiornamentoInstalla'),
+  aggiornamentoControlla: call('aggiornamentoControlla'),
   onAggiornamento: (cb: (s: AggiornamentoStato) => void) => {
     const listener = (_e: unknown, s: AggiornamentoStato): void => cb(s)
     ipcRenderer.on('aggiornamento', listener)

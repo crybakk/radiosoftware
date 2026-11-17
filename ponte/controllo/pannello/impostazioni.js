@@ -320,6 +320,24 @@ function drawAgg(st) {
   } else if (st.ultima) {
     riga('È l\'ultima versione.', 'hint')
   }
+  if (st.erroreControllo) riga(`Controllo con GitHub non riuscito: ${st.erroreControllo}`, 'banner error')
+  if (!st.inCorso) {
+    const quando = st.controllato ? ` (ultimo controllo: ${impTime(st.controllato)})` : ''
+    const btn = button('Controlla aggiornamenti', '', async () => {
+      btn.disabled = true
+      btn.textContent = 'Controllo…'
+      try {
+        drawAgg(await api('/api/impostazioni/aggiornamento', { method: 'POST', body: JSON.stringify({ controlla: true }) }))
+      } catch (e) {
+        btn.disabled = false
+        btn.textContent = 'Controlla aggiornamenti'
+        $('imp-msg').textContent = e.message
+      }
+    }, 'small')
+    const p = el('p', 'hint')
+    p.append(btn, quando)
+    box.append(p)
+  }
   if (st.esito && !st.inCorso) riga(`${st.esito.ok ? '✓' : '✗'} ${st.esito.messaggio} (${impTime(st.esito.quando)})`, `banner ${st.esito.ok ? 'info' : 'error'}`)
   if (st.inCorso && !$('imp').hidden) {
     aggPoll = setTimeout(async () => {

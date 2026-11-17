@@ -436,6 +436,7 @@ if (primary) app.whenReady().then(async () => {
   aggiornamenti.avvia()
   handle('aggiornamentoStato', () => aggiornamenti.get())
   handle('aggiornamentoInstalla', () => aggiornamenti.installa())
+  handle('aggiornamentoControlla', () => aggiornamenti.controlla())
 
   // ponte
   handle('ponteStatus', () => ponte.getStatus())
