@@ -118,8 +118,10 @@ main { flex: 1; overflow: hidden; }
 .t-actions { display: flex; gap: 4px; }
 
 .search { display: flex; flex-direction: column; min-height: 0; flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
-.search-bar { display: flex; gap: 8px; }
-.search-bar input { flex: 1; font-size: 17px; }
+.search-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+.search-bar input { flex: 1; font-size: 17px; min-width: 160px; }
+.search-bar select { max-width: 220px; }
+.search-bar select.on { border-color: var(--accent); }
 .search-count { color: var(--muted); font-size: 12px; margin: 6px 0; }
 
 .cartwall { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
