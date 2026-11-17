@@ -367,6 +367,17 @@ export class RadioDb {
     this.db.close()
   }
 
+  /**
+   * Condizione SQL che nasconde la musica più lunga della durata massima (premixati, mix):
+   * niente libreria, rotazioni, categorie, ricerche online, impronte, server. Durata 0 = sconosciuta: resta.
+   * I brani restano nel database e ricompaiono se si alza il limite.
+   */
+  private short(alias = ''): string {
+    const min = Number(this.getSettings().maxTrackMinutes)
+    if (!Number.isFinite(min) || min <= 0) return '1'
+    return `(${alias}kind != 'music' OR ${alias}duration <= ${Math.round(min * 60)})`
+  }
+
   // ---------- impostazioni ----------
 
   getSettings(): Settings {
@@ -577,13 +588,13 @@ export class RadioDb {
   pendingAnalysis(limit = 50): Track[] {
     return (
       this.db
-        .prepare('SELECT * FROM tracks WHERE analyzed_at IS NULL AND enabled = 1 ORDER BY id LIMIT ?')
+        .prepare(`SELECT * FROM tracks WHERE analyzed_at IS NULL AND enabled = 1 AND ${this.short()} ORDER BY id LIMIT ?`)
         .all(limit) as Row[]
     ).map(rowToTrack)
   }
 
   countPendingAnalysis(): number {
-    const r = this.db.prepare('SELECT COUNT(*) AS n FROM tracks WHERE analyzed_at IS NULL AND enabled = 1').get() as Row
+    const r = this.db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE analyzed_at IS NULL AND enabled = 1 AND ${this.short()}`).get() as Row
     return Number(r.n)
   }
 
@@ -637,7 +648,7 @@ export class RadioDb {
   }
 
   searchTracks(q: TrackSearch): { tracks: Track[]; total: number } {
-    const where: string[] = ['enabled = 1']
+    const where: string[] = ['enabled = 1', this.short()]
     const params: (string | number)[] = []
     if (q.kind) {
       where.push('kind = ?')
@@ -684,12 +695,12 @@ export class RadioDb {
 
   /** Brani candidati per la rotazione automatica. */
   rotationCandidates(kind: TrackKind): Track[] {
-    return (this.db.prepare('SELECT * FROM tracks WHERE kind = ? AND enabled = 1').all(kind) as Row[]).map(rowToTrack)
+    return (this.db.prepare(`SELECT * FROM tracks WHERE kind = ? AND enabled = 1 AND ${this.short()}`).all(kind) as Row[]).map(rowToTrack)
   }
 
-  libraryStats(): { total: number; byKind: Record<string, number>; pendingAnalysis: number } {
+  libraryStats(): { total: number; byKind: Record<string, number>; pendingAnalysis: number; hiddenLong: number; maxTrackMinutes: number } {
     const rows = this.db
-      .prepare('SELECT kind, COUNT(*) AS n FROM tracks WHERE enabled = 1 GROUP BY kind')
+      .prepare(`SELECT kind, COUNT(*) AS n FROM tracks WHERE enabled = 1 AND ${this.short()} GROUP BY kind`)
       .all() as Row[]
     const byKind: Record<string, number> = {}
     let total = 0
@@ -697,7 +708,15 @@ export class RadioDb {
       byKind[String(r.kind)] = Number(r.n)
       total += Number(r.n)
     }
-    return { total, byKind, pendingAnalysis: this.countPendingAnalysis() }
+    const ok = this.short()
+    const hidden = ok === '1' ? 0 : Number((this.db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE enabled = 1 AND NOT ${ok}`).get() as Row).n)
+    return {
+      total,
+      byKind,
+      pendingAnalysis: this.countPendingAnalysis(),
+      hiddenLong: hidden,
+      maxTrackMinutes: this.getSettings().maxTrackMinutes
+    }
   }
 
   // ---------- eventi ----------
@@ -790,7 +809,7 @@ export class RadioDb {
 
   /** Brano casuale che rispetta i filtri, evitando quelli andati in onda di recente se possibile. */
   randomTrack(f: { kind?: TrackKind | ''; folder?: string; genre?: string }, avoidSince?: Date): Track | null {
-    const where = ['enabled = 1']
+    const where = ['enabled = 1', this.short()]
     const params: (string | number)[] = []
     if (f.kind) {
       where.push('kind = ?')
@@ -832,11 +851,12 @@ export class RadioDb {
 
   /** Generi presenti nella libreria (per i menu delle regole di rotazione). */
   listGenres(): string[] {
+    const ok = this.short()
     const rows = this.db
       .prepare(
-        "SELECT genre AS g FROM tracks WHERE enabled = 1 AND genre != '' UNION SELECT mb_genres FROM tracks WHERE enabled = 1 AND mb_genres != '' " +
-          "UNION SELECT dc_genres FROM tracks WHERE enabled = 1 AND dc_genres != '' UNION SELECT lfm_tags FROM tracks WHERE enabled = 1 AND lfm_tags != '' " +
-          "UNION SELECT user_tags FROM tracks WHERE enabled = 1 AND user_tags != ''"
+        `SELECT genre AS g FROM tracks WHERE enabled = 1 AND ${ok} AND genre != '' UNION SELECT mb_genres FROM tracks WHERE enabled = 1 AND ${ok} AND mb_genres != '' ` +
+          `UNION SELECT dc_genres FROM tracks WHERE enabled = 1 AND ${ok} AND dc_genres != '' UNION SELECT lfm_tags FROM tracks WHERE enabled = 1 AND ${ok} AND lfm_tags != '' ` +
+          `UNION SELECT user_tags FROM tracks WHERE enabled = 1 AND ${ok} AND user_tags != ''`
       )
       .all() as Row[]
     // senza distinguere maiuscole: "Pop" del file e "pop" di MusicBrainz sono lo stesso genere
@@ -957,7 +977,7 @@ export class RadioDb {
   pendingFingerprint(limit = 20): Track[] {
     return (
       this.db
-        .prepare("SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND fp_at IS NULL ORDER BY id LIMIT ?")
+        .prepare(`SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()} AND fp_at IS NULL ORDER BY id LIMIT ?`)
         .all(limit) as Row[]
     ).map(rowToTrack)
   }
@@ -965,7 +985,7 @@ export class RadioDb {
   fingerprintStats(): { done: number; total: number } {
     const r = this.db
       .prepare(
-        "SELECT COUNT(*) AS total, SUM(CASE WHEN fp_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1"
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN fp_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()}`
       )
       .get() as Row
     return { done: Number(r.done ?? 0), total: Number(r.total ?? 0) }
@@ -984,7 +1004,7 @@ export class RadioDb {
       this.db
         .prepare(
           `SELECT t.*, length(f.fp) AS fp_bytes FROM tracks t JOIN fingerprints f ON f.track_id = t.id
-           WHERE t.kind = 'music' AND t.enabled = 1 AND t.fp_at IS NOT NULL`
+           WHERE t.kind = 'music' AND t.enabled = 1 AND ${this.short('t.')} AND t.fp_at IS NOT NULL`
         )
         .all() as Row[]
     ).map((r) => ({ track: rowToTrack(r), bytes: Number(r.fp_bytes) }))
@@ -1000,7 +1020,7 @@ export class RadioDb {
   /** Categorie della musica attiva con il numero di brani; mine = c'è almeno un brano con l'etichetta scritta a mano. */
   categories(): { name: string; count: number; mine: boolean }[] {
     const rows = this.db
-      .prepare("SELECT genre, mb_genres, dc_genres, lfm_tags, user_tags FROM tracks WHERE kind = 'music' AND enabled = 1")
+      .prepare(`SELECT genre, mb_genres, dc_genres, lfm_tags, user_tags FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()}`)
       .all() as Row[]
     const map = new Map<string, { name: string; count: number; mine: boolean }>()
     for (const r of rows) {
@@ -1053,7 +1073,7 @@ export class RadioDb {
   mbPending(limit = 20, acoustId = false): MbTrack[] {
     // con AcoustID tornano in coda anche i brani cercati per titolo senza trovarli e mai provati dall'audio
     const where = acoustId ? `(${MB_PENDING}) OR (${MB_ACOUSTID})` : MB_PENDING
-    return (this.db.prepare(`SELECT * FROM tracks WHERE ${where} ORDER BY id LIMIT ?`).all(limit) as Row[]).map(rowToMbTrack)
+    return (this.db.prepare(`SELECT * FROM tracks WHERE (${where}) AND ${this.short()} ORDER BY id LIMIT ?`).all(limit) as Row[]).map(rowToMbTrack)
   }
 
   /** Un brano con lo stato della ricerca su MusicBrainz (registrazione già trovata, già cercato...). */
@@ -1070,7 +1090,7 @@ export class RadioDb {
            SUM(CASE WHEN ${pending} THEN 1 ELSE 0 END) AS todo,
            SUM(CASE WHEN mb_checked_at IS NOT NULL THEN 1 ELSE 0 END) AS checked,
            SUM(CASE WHEN mb_recording_id != '' THEN 1 ELSE 0 END) AS found
-         FROM tracks WHERE kind = 'music' AND enabled = 1`
+         FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()}`
       )
       .get() as Row
     return { todo: Number(r.todo ?? 0), checked: Number(r.checked ?? 0), found: Number(r.found ?? 0) }
@@ -1103,7 +1123,7 @@ export class RadioDb {
     const col = service === 'dc' ? 'dc_at' : 'lfm_at'
     return (
       this.db
-        .prepare(`SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${col} IS NULL ORDER BY id LIMIT ?`)
+        .prepare(`SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()} AND ${col} IS NULL ORDER BY id LIMIT ?`)
         .all(limit) as Row[]
     ).map(rowToTrack)
   }
@@ -1115,7 +1135,7 @@ export class RadioDb {
         `SELECT SUM(CASE WHEN ${at} IS NULL THEN 1 ELSE 0 END) AS todo,
                 SUM(CASE WHEN ${at} IS NOT NULL THEN 1 ELSE 0 END) AS checked,
                 SUM(CASE WHEN ${val} != '' THEN 1 ELSE 0 END) AS found
-         FROM tracks WHERE kind = 'music' AND enabled = 1`
+         FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()}`
       )
       .get() as Row
     return { todo: Number(r.todo ?? 0), checked: Number(r.checked ?? 0), found: Number(r.found ?? 0) }
@@ -1174,7 +1194,7 @@ export class RadioDb {
 
   /** Musica attiva con dati mancanti per il report SIAE. */
   incompleteMusic(limit = 500): { tracks: Track[]; total: number } {
-    const where = `kind = 'music' AND enabled = 1 AND (composer = '' OR publisher = '' OR (siae_code = '' AND iswc = '' AND isrc = ''))`
+    const where = `kind = 'music' AND enabled = 1 AND ${this.short()} AND (composer = '' OR publisher = '' OR (siae_code = '' AND iswc = '' AND isrc = ''))`
     const total = Number((this.db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE ${where}`).get() as Row).n)
     const tracks = (
       this.db

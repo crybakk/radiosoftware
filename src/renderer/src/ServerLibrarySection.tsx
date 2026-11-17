@@ -60,7 +60,7 @@ export function ServerLibrarySection({
     <section className="panel">
       <div className="section-title">Libreria sul server (diretta autonoma)</div>
       <p className="hint">
-        Sul server va solo una selezione: niente live, interviste e file sotto i {draft.libraryMinKbps} kbps. Puoi includere o
+        Sul server va solo una selezione: niente live, interviste, file sotto i {draft.libraryMinKbps} kbps e brani più lunghi della durata massima (premixati). Puoi includere o
         escludere a mano qualsiasi brano. La prima volta copia la selezione su un disco USB e portala sul server (vedi la guida);
         dopo, la regia invia da sola solo i brani nuovi o cambiati.
       </p>

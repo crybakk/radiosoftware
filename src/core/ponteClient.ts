@@ -125,10 +125,12 @@ export class PonteClient {
     return r
   }
 
-  async heartbeat(payload: Record<string, unknown>): Promise<PonteAlarm[]> {
+  /** Segnale di vita: risponde con gli allarmi e la durata massima dei brani scelta nel pannello (se il server la conosce). */
+  async heartbeat(payload: Record<string, unknown>): Promise<{ alarms: PonteAlarm[]; maxTrackMinutes: number | null }> {
     const r = await this.request('POST', '/api/heartbeat', JSON.stringify(payload), 'application/json')
-    const j = (await r.json()) as { alarms?: PonteAlarm[] }
-    return j.alarms ?? []
+    const j = (await r.json()) as { alarms?: PonteAlarm[]; maxTrackMinutes?: unknown }
+    const max = Number(j.maxTrackMinutes)
+    return { alarms: j.alarms ?? [], maxTrackMinutes: j.maxTrackMinutes != null && Number.isFinite(max) && max >= 0 ? max : null }
   }
 
   async metadata(artist: string, title: string, duration = 0): Promise<void> {

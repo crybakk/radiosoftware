@@ -60,6 +60,11 @@ export class Library {
   private scanning: Promise<number> | null = null
   readonly root: string
   private readonly indexFile: string
+  /**
+   * Durata massima in secondi (0 = nessun limite): i brani più lunghi (premixati, mix) restano sul disco
+   * ma non si cercano e non li suonano né la diretta autonoma né la musica di emergenza.
+   */
+  maxSeconds = 0
 
   constructor(root: string, indexFile: string) {
     this.root = root
@@ -170,12 +175,18 @@ export class Library {
     renameSync(tmp, this.indexFile)
   }
 
+  /** Brano da usare: non più lungo della durata massima (durata 0 = sconosciuta, si usa). */
+  usable(t: ServerTrack): boolean {
+    return !(this.maxSeconds > 0 && t.duration > this.maxSeconds)
+  }
+
   search(q: string, limit = 50): ServerTrack[] {
     // ricerca limitata: una richiesta enorme (anche da un utente di sola lettura) non deve
     // bloccare il servizio per secondi. Bastano 200 caratteri e 8 parole diverse.
     const words = [...new Set(norm(String(q).slice(0, 200)).split(/\s+/).filter(Boolean))].slice(0, 8)
     const out: ServerTrack[] = []
     for (const t of this.tracks.values()) {
+      if (!this.usable(t)) continue
       const hay = norm(`${t.artist} ${t.title}`)
       if (words.every((w) => hay.includes(w))) out.push(t)
       if (out.length >= limit) break
@@ -188,7 +199,7 @@ export class Library {
    * Se la libreria è piccola, le regole si allentano invece di fermare la musica.
    */
   pickRandom(recentIds: string[], recentArtists: string[], rnd: () => number = Math.random): ServerTrack | null {
-    const all = this.all().filter((t) => t.duration === 0 || t.duration > 60)
+    const all = this.all().filter((t) => (t.duration === 0 || t.duration > 60) && this.usable(t))
     if (!all.length) return null
     const ids = new Set(recentIds)
     const artists = new Set(recentArtists.map(norm).filter(Boolean))

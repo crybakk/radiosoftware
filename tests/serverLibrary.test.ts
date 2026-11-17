@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 import ffmpegStatic from 'ffmpeg-static'
 import { afterAll, describe, expect, it } from 'vitest'
 import { RadioDb } from '../src/core/db'
-import { exclusionReason, gainFor, onServer, planSync, serverId } from '../src/core/serverLibrary'
+import { exclusionReason, gainFor, onServer, planSync, serverId, tooLong } from '../src/core/serverLibrary'
 import { inWindow, ServerLibrarySync } from '../src/main/serverSync'
 import type { LibraryMeta, PonteClient } from '../src/core/ponteClient'
 
@@ -35,6 +35,17 @@ describe('selezione per il server', () => {
     expect(onServer({ ...base, title: 'Albachiara (Live)' }, true, 192)).toBe(true)
     expect(onServer({ ...base, title: 'Brano' }, false, 192)).toBe(false)
     expect(onServer({ ...base, kind: 'jingle', title: 'Brano' }, true, 192)).toBe(false)
+  })
+
+  it('i brani più lunghi della durata massima (premixati) non vanno mai sul server, neanche scelti a mano', () => {
+    expect(tooLong({ kind: 'music', duration: 601 }, 10)).toBe(true)
+    expect(tooLong({ kind: 'music', duration: 600 }, 10)).toBe(false)
+    expect(tooLong({ kind: 'music', duration: 0 }, 10)).toBe(false)
+    expect(tooLong({ kind: 'music', duration: 3600 }, 0)).toBe(false)
+    expect(tooLong({ kind: 'news', duration: 3600 }, 10)).toBe(false)
+    expect(onServer({ ...base, title: 'Mix estate', duration: 3600 }, true, 192, 10)).toBe(false)
+    expect(onServer({ ...base, title: 'Mix estate', duration: 3600 }, null, 192, 0)).toBe(true)
+    expect(onServer({ ...base, title: 'Brano', duration: 240 }, null, 192, 10)).toBe(true)
   })
 
   it('percorso sul server dalla cartella della libreria', () => {

@@ -6,8 +6,8 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 16/11/2026, categorie ed etichette tue nella Libreria; le ricerche sui servizi
-riprovano da sole quando il servizio è occupato.
+**Ultimo aggiornamento:** 17/11/2026, durata massima dei brani: i premixati (oltre 10 minuti) spariscono
+dalla libreria, dalle rotazioni e dalla musica del server.
 
 ## Indice
 
@@ -316,6 +316,16 @@ Sotto c'è l'elenco dei brani. **Scheda** apre la scheda del brano, dove puoi:
 - scrivere **autori/compositori**, **editore** e **codice opera SIAE** (servono per il report SIAE);
 - spostare inizio, fine e punto di mix se l'analisi automatica non ti convince;
 - togliere **Attivo** per escludere un brano da rotazione e ricerca senza cancellarlo.
+
+### Brani troppo lunghi (premixati)
+
+La musica più lunga di **10 minuti** (premixati, mix) è **nascosta**: non compare nella libreria e nelle ricerche,
+non va in rotazione, nelle rotazioni con l'AI, negli eventi, sul server, nella diretta autonoma e nella musica di
+emergenza. I file restano dove sono: se alzi il limite ricompaiono da soli. Sopra l'elenco la regia ti dice quanti
+brani sono nascosti. Jingle, notiziari e programmi non hanno limite.
+
+Il limite si cambia dal pannello: menu **☰** → **Impostazioni server** → **Radio** → **Durata massima dei brani
+(minuti)** (0 = nessun limite). La regia lo riceve dal server in pochi secondi.
 
 Se rinomini un file cambiando solo maiuscole e minuscole (per esempio `canzone.mp3` → `Canzone.mp3`), su Windows
 resta lo stesso brano, con correzioni e storico.
@@ -812,7 +822,9 @@ di riserva. Nella regia: scheda **Collegamento** → **Libreria sul server**.
 - i **live** ("live" o "dal vivo" nel genere, nella cartella o nel titolo come "(Live)", "- Live at…"; titoli come
   "Live Forever" restano dentro);
 - le **interviste** ("intervista" nel titolo, nel genere o nella cartella);
-- i file sotto i **192 kbps** (modificabile).
+- i file sotto i **192 kbps** (modificabile);
+- i brani più lunghi della [durata massima](#brani-troppo-lunghi-premixati) (premixati): questi non vanno sul
+  server neanche scelti a mano.
 
 Con **Scegli a mano** vedi gli esclusi con il motivo e puoi premere **Includi comunque**; con "Tutta la musica"
 cerchi un brano e lo puoi **Escludere**. **Lascia decidere alla regola** annulla la scelta a mano. I brani sotto i
@@ -961,3 +973,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 16/11/2026 | Categorie della musica nella Libreria e etichette tue sui brani (anche su molti insieme); ricerche su MusicBrainz e servizi che dopo un 503 riprovano e vanno in pausa invece di fermarsi |
 | 16/11/2026 | Prima release (0.1.0, anteprima): installer della regia e ZIP del server si scaricano dalla pagina delle release |
 | 17/11/2026 | Player pubblico più semplice con le copertine dei brani (iTunes, Deezer); musica di riserva con titolo e artista, sempre da un brano nuovo e solo dopo 8 secondi senza programma |
+| 17/11/2026 | Durata massima dei brani (10 minuti, dal pannello): i premixati spariscono da libreria, rotazioni, eventi, server, diretta autonoma e musica di emergenza |
