@@ -42,7 +42,7 @@ fi
 
 passo "Ponte: copio i file in $CARTELLA_PONTE"
 mkdir -p "$CARTELLA_PONTE"
-rsync -a --exclude .env --exclude proxmox --exclude musica --exclude richieste "$QUI/" "$CARTELLA_PONTE/"
+rsync -a --exclude .env --exclude proxmox --exclude musica --exclude richieste --exclude stereotool "$QUI/" "$CARTELLA_PONTE/"
 # guida d'uso con gli screenshot (si apre dal menu del pannello)
 if [[ -f "$QUI/../docs/GUIDA.md" ]]; then
   mkdir -p "$CARTELLA_PONTE/guida/immagini"

@@ -10,6 +10,17 @@
 			flush_interval -1
 		}
 	}
+	# flusso HLS (indirizzi come AzuraCast: /hls/<stazione>/live.m3u8): i pezzi audio li manda Caddy
+	# direttamente dalla memoria; le playlist passano dal controllo, che conta gli ascoltatori
+	@hls_pezzo path_regexp hls_pezzo ^/hls/[A-Za-z0-9_.-]+/([A-Za-z0-9_]+\.ts)$
+	handle @hls_pezzo {
+		root * /hls
+		rewrite * /{re.hls_pezzo.1}
+		header Content-Type video/mp2t
+		header Access-Control-Allow-Origin *
+		header Cache-Control "public, max-age=60"
+		file_server
+	}
 	# tutto il resto: player pubblico (/), pannello remoto (/dashboard), regia, ospiti
 	handle {
 		reverse_proxy controllo:9080

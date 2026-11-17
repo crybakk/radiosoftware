@@ -111,6 +111,11 @@ function drawImp(r) {
       return card
     })
   )
+  // Stereo Tool: subito dopo il gruppo "Radio", dove si sceglie il processore audio
+  const st = el('div', 'card prog-form')
+  st.id = 'imp-st'
+  $('imp-groups').insertBefore(st, $('imp-groups').children[1] ?? null)
+  loadStereoTool()
   $('imp-adv').checked = false
   $('imp-adv-fields').replaceChildren(...r.voci.filter((v) => v.avanzato).map(impField))
   setAdvanced(false)
@@ -218,6 +223,52 @@ function drawImpState(st) {
       }
     }, 3000)
   }
+}
+
+// ---- Stereo Tool: preset caricato dal pannello ----
+
+async function loadStereoTool() {
+  const box = $('imp-st')
+  if (!box) return
+  try {
+    drawStereoTool(await api('/api/impostazioni/stereotool'))
+  } catch (e) {
+    box.replaceChildren(el('div', 'section-title', 'Stereo Tool'), el('p', 'hint', e.message))
+  }
+}
+
+function drawStereoTool(r) {
+  const box = $('imp-st')
+  if (!box) return
+  box.replaceChildren(el('div', 'section-title', 'Stereo Tool'))
+  const riga = (t, cls = 'hint') => box.append(el('p', cls, t))
+  if (!r.disponibile) return riga('Per usare Stereo Tool aggiorna il server (la cartella di Stereo Tool non è ancora collegata).')
+  riga(r.libreria ? 'Libreria di Stereo Tool per Linux: presente sul server.' : 'Libreria di Stereo Tool per Linux: non ancora scaricata (il server la scarica da solo al prossimo aggiornamento).', r.libreria ? 'hint' : 'banner error')
+  riga(r.preset ? `Preset: ${r.preset.nome}, caricato il ${impTime(r.preset.quando)}.` : 'Preset: nessuno. Regolalo sul PC con Stereo Tool, salvalo come file .sts e caricalo qui.')
+  if (r.inUso === 'attivo') riga('✓ In onda adesso con Stereo Tool.', 'banner info')
+  else if (r.inUso && r.inUso !== 'spento') riga(`✗ Stereo Tool non è partito (${r.inUso}): in onda c'è il processore "medio".`, 'banner error')
+  const file = el('input')
+  file.type = 'file'
+  file.accept = '.sts'
+  file.hidden = true
+  file.addEventListener('change', async () => {
+    const f = file.files[0]
+    file.value = ''
+    if (!f) return
+    try {
+      const res = await fetch(`/api/impostazioni/stereotool?nome=${encodeURIComponent(f.name)}`, { method: 'PUT', credentials: 'same-origin', body: f })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error || `errore ${res.status}`)
+      drawStereoTool(body)
+      $('imp-msg').textContent = body.riavvio ? 'Preset caricato: l\'audio riparte per qualche secondo con il preset nuovo.' : 'Preset caricato: si userà quando scegli "stereotool" come processore audio.'
+      if (body.stato) drawImpState(body.stato)
+    } catch (e) {
+      $('imp-msg').textContent = e.message
+    }
+  })
+  const carica = button(r.preset ? 'Carica un altro preset (.sts)' : 'Carica il preset (.sts)', '', () => file.click(), 'small')
+  carica.type = 'button'
+  box.append(file, carica)
 }
 
 // ---- aggiornamento del server (si installa solo premendo il pulsante) ----

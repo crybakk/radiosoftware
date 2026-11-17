@@ -118,6 +118,9 @@ Con **Invia notifica di prova** controlli che Telegram o l'email arrivino.
 
 - `https://<dominio>/radio.mp3`: lo stream per siti, app e lettori (MP3, `ICECAST_BITRATE` kbit/s).
 - `http://<dominio>:8000/radio.mp3`: lo stesso senza https.
+- `https://<dominio>/hls/<stazione>/live.m3u8`: flusso HLS come AzuraCast, tre qualità AAC (64, 128, 192 kbit/s),
+  pezzi da 6 secondi in memoria (volume tmpfs `hls`). Caddy manda i pezzi `.ts`, il controllo le playlist e conta
+  gli ascoltatori (sommati a quelli dell'Icecast principale). `HLS=no` nel `.env` lo spegne.
 - `https://<dominio>/status-json.xsl`: titolo in onda e numero di ascoltatori (JSON di Icecast).
 - `https://<dominio>/admin/`: amministrazione di Icecast (utente `admin`, `ICECAST_PASSWORD_ADMIN`), solo in
   HTTPS. Sulla porta 8000 (in chiaro) l'ascolto funziona come prima, ma `/admin` è bloccato: la porta la

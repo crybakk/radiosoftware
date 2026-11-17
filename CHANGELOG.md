@@ -1,5 +1,17 @@
 # Novità
 
+## Prossima versione
+
+### Server (ponte)
+
+- Flusso HLS con tre qualità AAC (64, 128 e 192 kbit/s) scelte dal lettore in base alla rete, all'indirizzo di
+  AzuraCast `/hls/<stazione>/live.m3u8`; anche `/api/nowplaying` lo indica come AzuraCast (`hls_url`). Gli
+  ascoltatori HLS contano nel totale.
+- Player pubblico sull'HLS, con l'MP3 come riserva; mentre carica il pulsante ▶ gira.
+- Predisposizione per Stereo Tool: quinta scelta del processore audio, preset `.sts` caricato dal pannello, chiave
+  di licenza facoltativa; se non parte si usa il processore "medio" e arriva un allarme.
+- Il processore audio ora si applica una volta sola, dopo la scelta tra programma e musica di emergenza.
+
 ## v0.1.0 — 16 novembre 2026 (anteprima)
 
 Prima versione pubblicata. È un'**anteprima**: tutto è provato in automatico, ma la regia non è ancora stata
