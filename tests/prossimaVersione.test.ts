@@ -10,7 +10,10 @@ describe('prossima versione della release automatica', () => {
   it("altrimenti aumenta l'ultima cifra dalla più alta pubblicata", () => {
     expect(prossimaVersione('0.1.0', ['0.1.0'])).toBe('0.1.1')
     expect(prossimaVersione('0.1.0', ['0.1.0', '0.1.3', '0.1.10', '0.1.2'])).toBe('0.1.11')
-    expect(prossimaVersione('0.2.0', ['0.2.0', '0.1.9', '1.2.5'])).toBe('0.2.1')
+    expect(prossimaVersione('0.2.0', ['0.2.0', '0.1.9'])).toBe('0.2.1')
+  })
+  it('non riusa il numero di una release vecchia cancellata', () => {
+    expect(prossimaVersione('0.1.0', ['0.1.1', '0.1.2'])).toBe('0.1.3')
   })
   it('ignora i tag non numerici', () => {
     expect(prossimaVersione('0.1.0', ['0.1.0', '0.1.5-prova', 'abc'])).toBe('0.1.1')
