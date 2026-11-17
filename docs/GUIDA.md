@@ -667,7 +667,8 @@ eventi, registro e impostazioni. Il server tiene gli ultimi 14.
 4. **Aggiornamenti:** quando esce una versione nuova, in alto compare "È disponibile Radio Regia …". Premi
    **Aggiorna** e conferma: la regia si chiude, si aggiorna e riparte da sola (circa un minuto; se sei in onda, intanto
    il server manda la musica di emergenza). Con **Più tardi** l'avviso sparisce fino al prossimo avvio. Non si
-   aggiorna mai da sola.
+   aggiorna mai da sola. Per controllare subito: scheda **Impostazioni** → **Aggiornamenti** → **Controlla
+   aggiornamenti** (lì vedi anche la versione installata).
 
 Il programma si apre a schermo intero; può esserne aperta una sola copia alla volta. Poi:
 
@@ -734,7 +735,8 @@ Caddy ha bisogno delle porte 80 e 443.
 500 Mbit/s quasi 4000. Il massimo si imposta in **Impostazioni server** → **Ascoltatori al massimo** (di base 1000).
 
 **Aggiornare il server:** quando esce una versione nuova, nel pannello (menu ☰ → **Impostazioni server**, riquadro
-**Versione del server**) compare **Aggiorna server**: premilo e conferma. Il server scarica la versione nuova e
+**Versione del server**) compare **Aggiorna server** (per controllare subito premi **Controlla aggiornamenti**):
+premilo e conferma. Il server scarica la versione nuova e
 riparte da solo in qualche minuto (ascoltatori, regia e dirette si staccano e si ricollegano); le impostazioni
 restano come sono e si aggiorna anche la guida. Non si aggiorna mai da solo. A mano si fa ancora così: scarica di
 nuovo lo ZIP, copialo nella VM come al punto 4 e rilancia `sudo bash installa-server.sh` dalla cartella `ponte`

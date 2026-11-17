@@ -32,14 +32,29 @@ export class Aggiornamenti {
       // senza rete o senza release: si riprova al prossimo controllo, senza disturbare
       if (this.stato.stato === 'scarico') this.cambia({ stato: 'errore', errore: e instanceof Error ? e.message : String(e) })
     })
+    autoUpdater.on('checking-for-update', () => this.cambia({ controllo: 'in corso' }))
   }
 
   /** Avvia i controlli periodici (solo nel programma installato). */
   avvia(): void {
     if (!app.isPackaged) return
-    const controlla = (): void => void autoUpdater.checkForUpdates().catch(() => undefined)
-    setTimeout(controlla, 30_000)
-    setInterval(controlla, OGNI)
+    setTimeout(() => void this.controlla(), 30_000)
+    setInterval(() => void this.controlla(), OGNI)
+  }
+
+  /** Controlla subito se c'è una versione nuova (anche dal pulsante in Impostazioni). */
+  async controlla(): Promise<AggiornamentoStato> {
+    if (!app.isPackaged) {
+      this.cambia({ controllo: 'non installato' })
+      return this.stato
+    }
+    try {
+      await autoUpdater.checkForUpdates()
+      this.cambia({ controllo: 'ok', controllato: new Date().toISOString() })
+    } catch (e) {
+      this.cambia({ controllo: `non riuscito: ${e instanceof Error ? e.message : String(e)}`, controllato: new Date().toISOString() })
+    }
+    return this.stato
   }
 
   get(): AggiornamentoStato {
@@ -59,7 +74,15 @@ export class Aggiornamenti {
 
   private cambia(s: Partial<AggiornamentoStato>): void {
     const versione = s.versione ?? (s.stato === 'nessuno' ? undefined : this.stato.versione)
-    this.stato = { attuale: app.getVersion(), stato: s.stato ?? this.stato.stato, versione, percentuale: s.percentuale, errore: s.errore }
+    this.stato = {
+      attuale: app.getVersion(),
+      stato: s.stato ?? this.stato.stato,
+      versione,
+      percentuale: s.percentuale,
+      errore: s.errore,
+      controllo: s.controllo ?? this.stato.controllo,
+      controllato: s.controllato ?? this.stato.controllato
+    }
     this.avvisa(this.stato)
   }
 }
