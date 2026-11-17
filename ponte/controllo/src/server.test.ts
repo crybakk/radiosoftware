@@ -12,6 +12,8 @@ import { coverKey } from './copertine.ts'
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123'
 const SERVER = join(dirname(fileURLToPath(import.meta.url)), 'server.ts')
+// chiave di attivazione di prova (coppia di chiavi creata al momento)
+const CHIAVE_PROVE = join(dirname(fileURLToPath(import.meta.url)), '..', 'prove', 'chiave-prove.mjs')
 let procs: ChildProcess[] = []
 let portBase = 21000 + Math.floor(Math.random() * 20000)
 
@@ -21,7 +23,7 @@ async function startServer(
   const port = portBase++
   const internal = portBase++
   const music = mkdtempSync(join(tmpdir(), 'ponte-musica-'))
-  const proc = spawn(process.execPath, [SERVER], {
+  const proc = spawn(process.execPath, ['--import', CHIAVE_PROVE, SERVER], {
     env: {
       ...process.env,
       CONTROLLO_TOKEN: TOKEN,
@@ -114,6 +116,23 @@ async function regia(port: number): Promise<{ ws: WebSocket; cmds: any[] }> {
 const HANDSHAKE =
   'GET /ws/pannello HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
   'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n'
+
+describe('server senza chiave di attivazione', () => {
+  it('mostra solo la pagina di attivazione e rifiuta le API', async () => {
+    const { port } = await startServer({ CHIAVE_ATTIVAZIONE: '' })
+    const pagina = await fetch(`http://127.0.0.1:${port}/dashboard`)
+    expect(pagina.status).toBe(200)
+    expect(await pagina.text()).toContain('Attiva il server')
+    const api = await fetch(`http://127.0.0.1:${port}/api/nowplaying`)
+    expect(api.status).toBe(403)
+    const login = await fetch(`http://127.0.0.1:${port}/api/login`, { method: 'POST', body: JSON.stringify({ name: 'admin', password: 'adminadmin' }) })
+    expect(login.status).toBe(403)
+    const sbagliata = await fetch(`http://127.0.0.1:${port}/api/attivazione`, { method: 'POST', body: JSON.stringify({ chiave: 'RADIO1.abc.def' }) })
+    expect(sbagliata.status).toBe(400)
+    expect((await sbagliata.json()).error).toMatch(/non valida/)
+    expect((await fetch(`http://127.0.0.1:${port}/health`)).status).toBe(200)
+  })
+})
 
 describe('il ponte non cade per richieste anonime malformate', () => {
   it('GET "//" riceve una risposta e il processo resta vivo', async () => {

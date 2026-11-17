@@ -75,6 +75,7 @@ import { fixInterrupted, Recorder } from './puntate.ts'
 import { DEFAULT_MIN_FREE_MB, DiskGuard } from './disco.ts'
 import { handleProgramApi } from './programmiApi.ts'
 import { Impostazioni, NOMI_PARTI } from './impostazioni.ts'
+import { Attivazione, PAGINA_ATTIVAZIONE } from './attivazione.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -96,6 +97,9 @@ const LISTEN_URL = env('ASCOLTO_URL') || (env('DOMINIO') ? `https://${env('DOMIN
 // impostazioni del server modificabili dal pannello: il file .env montato e la cartella delle richieste
 // di riavvio, che un servizio sul server (installato da installa-server.sh) controlla
 const impostazioni = new Impostazioni(env('IMPOSTAZIONI_FILE', '/impostazioni/.env'), env('IMPOSTAZIONI_RICHIESTE', '/richieste'))
+// chiave di attivazione: senza, il server risponde solo con la pagina per incollarla
+const attivazione = new Attivazione(process.env.CHIAVE_ATTIVAZIONE, env('IMPOSTAZIONI_FILE', '/impostazioni/.env'))
+if (!attivazione.attivo()) console.log('Server non attivato: apri il pannello e incolla la chiave di attivazione')
 const PANEL_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'pannello')
 // guida d'uso (docs/GUIDA.md e immagini), aperta dal menu del pannello
 const GUIDE_DIR = findGuideDir(join(dirname(fileURLToPath(import.meta.url)), '..'), env('CARTELLA_GUIDA'))
@@ -963,6 +967,23 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
   try {
     const url = new URL(req.url ?? '/', 'http://x')
     if (url.pathname === '/health') return json(res, 200, { ok: true })
+    if (!attivazione.attivo()) {
+      if (req.method === 'POST' && url.pathname === '/api/attivazione') {
+        if (!sameOrigin(req)) return json(res, 403, { error: 'origine non permessa' })
+        // un tentativo sbagliato alla volta per indirizzo, come per l'accesso
+        const cancel = reserveAttempt(clientIp(req))
+        if (!cancel) return json(res, 429, { error: 'Troppi tentativi: riprova tra un minuto' })
+        const esito = attivazione.attiva(String((await readJson(req)).chiave ?? ''))
+        if (!esito.ok) return json(res, 400, { error: esito.errore })
+        cancel()
+        return json(res, 200, { ok: true, radio: esito.radio })
+      }
+      if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+        return void res.end(PAGINA_ATTIVAZIONE)
+      }
+      return json(res, 403, { error: 'server non attivato: apri il pannello e incolla la chiave di attivazione' })
+    }
     if (req.method === 'GET' && (url.pathname === '/guida' || url.pathname.startsWith('/guida/'))) return await serveGuide(req, res, url.pathname)
     if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
       if (await serveStatic(res, url.pathname)) return

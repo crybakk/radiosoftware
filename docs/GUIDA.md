@@ -649,6 +649,8 @@ eventi, registro e impostazioni. Il server tiene gli ultimi 14.
    **RadioRegia-Setup-Windows**, che resta disponibile per un giorno.)
 2. Avvia l'installer. Se Windows avvisa che il programma non è firmato: "Ulteriori informazioni" → "Esegui
    comunque".
+3. Al primo avvio la regia chiede la **chiave di attivazione** (inizia con `RADIO1.`): incollala e premi
+   **Attiva**. Si inserisce una volta sola; è la stessa del server. Senza chiave la regia non parte.
 
 Il programma si apre a schermo intero; può esserne aperta una sola copia alla volta. Poi:
 
@@ -695,6 +697,8 @@ automatico).
 5. **Installa**: `sudo DOMINIO=radio.esempio.it bash installa-server.sh` (con il tuo dominio). Alla fine stampa i
    valori per la regia, la password del pannello, i dati delle dirette esterne e le porte da aprire. **Tienili da
    parte**: le password poi non si vedono più nel pannello.
+   Al primo accesso il pannello chiede la **chiave di attivazione** (la stessa della regia): incollala e premi
+   **Attiva**. Finché il server non è attivato pannello, player e collegamento della regia non funzionano.
 6. **Router di casa**: inoltra verso la VM
     - TCP 80 e 443 (pannello, regia, ascolto in https)
     - TCP 8000 (ascolto senza https, facoltativo)

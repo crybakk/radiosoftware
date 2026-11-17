@@ -36,8 +36,17 @@ jobs:
       # prova rapida dell'immagine: parte, scrive nel volume dati e serve il pannello
       - name: Prova del contenitore di controllo
         run: |
+          # prima senza chiave di attivazione: solo la pagina per incollarla
+          docker run -d --name senzachiave -p 9081:9080 -e CONTROLLO_TOKEN=token-di-prova-abbastanza-lungo radio-ponte-controllo
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:9081/health && break; sleep 1; done
+          curl -fs http://127.0.0.1:9081/dashboard | grep -q "Attiva il server"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9081/api/nowplaying)" = 403
+          docker rm -f senzachiave
+          # poi con una chiave di prova (coppia di chiavi creata al momento da prove/chiave-prove.mjs)
           docker run -d --name ctl -p 9080:9080 -e CONTROLLO_TOKEN=token-di-prova-abbastanza-lungo \
-            -e PANNELLO_ADMIN_PASSWORD=password-admin -v ctldati:/data radio-ponte-controllo
+            -e PANNELLO_ADMIN_PASSWORD=password-admin -v ctldati:/data \
+            -v "$PWD/ponte/controllo/prove/chiave-prove.mjs:/prove/chiave-prove.mjs:ro" -e NODE_OPTIONS=--import=/prove/chiave-prove.mjs \
+            radio-ponte-controllo
           for i in $(seq 1 20); do curl -fs http://127.0.0.1:9080/health && break; sleep 1; done
           head -c 4096 /dev/urandom > b.db
           curl -fs -X PUT -H "Authorization: Bearer token-di-prova-abbastanza-lungo" --data-binary @b.db http://127.0.0.1:9080/api/backup
