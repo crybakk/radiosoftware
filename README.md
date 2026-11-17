@@ -67,7 +67,7 @@ Scarica **RadioRegia-Setup-<versione>.exe** dall'ultima [release](https://github
 
 Per provare una modifica non ancora pubblicata: scheda **Actions** → "Test e build Windows" → **Run workflow** sul ramo da provare; a fine esecuzione scarica l'artefatto **RadioRegia-Setup-Windows** (resta disponibile per un giorno, così lo spazio gratuito di GitHub Actions non si riempie).
 
-Per pubblicare una nuova versione: aggiorna `version` in `package.json` e aggiungi la sezione `## v<versione>` in `CHANGELOG.md`, poi **Actions** → **Pubblica release** → **Run workflow** con lo stesso numero.
+Le release si pubblicano da sole a ogni merge su `main`: l'ultima cifra della versione aumenta (0.1.1, 0.1.2, ...) e le note elencano le PR unite. Per un salto di versione (es. 0.2.0) scrivilo in `version` di `package.json` e, se vuoi note scritte a mano, aggiungi la sezione `## v<versione>` in `CHANGELOG.md`. Si può ancora pubblicare a mano: **Actions** → **Pubblica release** → **Run workflow** con il numero di `package.json`.
 
 ## Sviluppo
 
