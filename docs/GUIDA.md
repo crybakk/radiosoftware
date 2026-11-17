@@ -67,7 +67,10 @@ Telefono (pannello) ───────▶                 └─▶ YouTube /
     2. la **diretta autonoma** (la musica del server, avviata dal pannello);
     3. la **regia**;
     4. se non c'è nessuno, la **musica di riserva**: il server suona da solo brani a caso della sua libreria,
-       senza ripetere di seguito lo stesso artista. Quando la regia torna, riprende lei da sola.
+       senza ripetere di seguito lo stesso artista, ogni volta da un brano nuovo dall'inizio, con titolo e
+       artista per i lettori degli ascoltatori. Parte solo dopo **8 secondi** senza programma (si cambia in
+       **Impostazioni server** → **Attesa prima della musica di emergenza**): un salto breve del collegamento
+       si sente come un attimo di silenzio, non fa partire la riserva. Quando la regia torna, riprende lei da sola.
 - Il **pannello** è una pagina web: dal telefono comandi la regia, parli in diretta, fai entrare gli ospiti e
   cambi le impostazioni del server.
 
@@ -521,8 +524,9 @@ si cambia in **Impostazioni server** → **Qualità delle puntate registrate**).
 elimini.
 
 **Per gli ascoltatori:** `https://<indirizzo della radio>/` è il player della radio, come la pagina pubblica di
-AzuraCast: titolo e copertina in onda, **▶** per ascoltare, volume, brani trasmessi di recente e link per i lettori
-(M3U, PLS). `https://<indirizzo della radio>/podcast.html` mostra programmi e puntate. Il vecchio indirizzo
+AzuraCast: titolo, artista e copertina del brano in onda, **▶** per ascoltare e volume. Le copertine le cerca
+il server da solo su iTunes e Deezer (servizi gratuiti, gli passa solo artista e titolo); se non le trova si vede
+la copertina del programma o il logo. `https://<indirizzo della radio>/podcast.html` mostra programmi e puntate. Il vecchio indirizzo
 `/ascolta.html` porta al player. Le puntate si possono **solo
 ascoltare**, non scaricare (la licenza SIAE permette lo streaming, non il download).
 
@@ -944,3 +948,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 16/11/2026 | Indirizzi del server: `/` è il player pubblico per gli ascoltatori, il pannello si apre da `/dashboard`; pulsante **← Panoramica** in ogni sezione del pannello |
 | 16/11/2026 | Categorie della musica nella Libreria e etichette tue sui brani (anche su molti insieme); ricerche su MusicBrainz e servizi che dopo un 503 riprovano e vanno in pausa invece di fermarsi |
 | 16/11/2026 | Prima release (0.1.0, anteprima): installer della regia e ZIP del server si scaricano dalla pagina delle release |
+| 17/11/2026 | Player pubblico più semplice con le copertine dei brani (iTunes, Deezer); musica di riserva con titolo e artista, sempre da un brano nuovo e solo dopo 8 secondi senza programma |

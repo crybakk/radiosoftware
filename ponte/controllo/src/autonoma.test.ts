@@ -111,7 +111,7 @@ describe('diretta autonoma', () => {
     await p.run({ type: 'enqueue', id: 'regia/Rock/a.mp3', where: 'end' })
     await p.run({ type: 'enqueue', id: 'regia/c.mp3', where: 'end' })
     await p.run({ type: 'start' }, 'cristian')
-    expect(calls).toEqual([`push ${dir}/regia/Rock/a.mp3`, 'attiva true'])
+    expect(calls).toEqual([`push annotate:title="Albachiara",artist="Vasco":${dir}/regia/Rock/a.mp3`, 'attiva true'])
     expect(p.state()).toMatchObject({ active: true, prepared: { id: 'regia/Rock/a.mp3' } })
     p.onTrackStart(lib.path(lib.get('regia/Rock/a.mp3')!))
     expect(p.state().onAir?.id).toBe('regia/Rock/a.mp3')
@@ -121,7 +121,7 @@ describe('diretta autonoma', () => {
     await vi.advanceTimersByTimeAsync(45_000)
     expect(calls).toHaveLength(2)
     await vi.advanceTimersByTimeAsync(10_000)
-    expect(calls[2]).toBe(`push ${dir}/regia/Rock/b.mp3`)
+    expect(calls[2]).toBe(`push annotate:title="Sally",artist="Vasco":${dir}/regia/Rock/b.mp3`)
     expect(p.state().queue.map((t) => t.id)).toEqual(['regia/c.mp3'])
     await p.run({ type: 'stop' }, 'cristian')
     expect(calls.at(-1)).toBe('attiva false')
@@ -133,6 +133,11 @@ describe('diretta autonoma', () => {
   it('volume corretto, errori del mixer, coda vuota = brano a caso', async () => {
     expect(annotate('/musica/x.mp3', -3.25)).toBe('annotate:liq_amplify="-3.3 dB":/musica/x.mp3')
     expect(annotate('/musica/x.mp3', 0)).toBe('/musica/x.mp3')
+    // titolo e artista per Icecast (riserva e diretta autonoma), con virgolette e barre protette
+    expect(annotate('/musica/x.mp3', -3, { title: 'Ciao, "mondo"', artist: 'A\\B\nC' })).toBe(
+      'annotate:liq_amplify="-3.0 dB",title="Ciao, \\"mondo\\"",artist="A\\\\B C":/musica/x.mp3'
+    )
+    expect(annotate('/musica/x.mp3', 0, { title: 'T', artist: '' })).toBe('annotate:title="T":/musica/x.mp3')
     const t = setup()
     await t.p.run({ type: 'start' })
     expect(t.calls[0]).toMatch(/^push /)

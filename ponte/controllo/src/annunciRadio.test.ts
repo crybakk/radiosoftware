@@ -131,7 +131,7 @@ describe('annuncio nella diretta autonoma e nella riserva', () => {
     // riserva
     next = { id: '.annunci/annuncio-y.mp3', title: 'Ciao', seconds: 2 }
     expect(p.nextReserve()).toBe('/musica/.annunci/annuncio-y.mp3')
-    expect(p.nextReserve()).toBe('/musica/a/uno.mp3')
+    expect(p.nextReserve()).toBe('annotate:title="Uno",artist="A":/musica/a/uno.mp3')
     await p.run({ type: 'stop' })
   })
 })

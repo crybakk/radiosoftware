@@ -76,6 +76,8 @@ export interface NowPlayingInfo {
   live: { isLive: boolean; streamer: string; since: number | null }
   /** Immagine per i brani (copertina del programma in corso o logo); '' se non c'è. */
   art: string
+  /** Copertina del singolo brano, se trovata ('' = si usa art). */
+  songArt?: (s: Song) => string
   now: number
 }
 
@@ -105,7 +107,7 @@ function history(s: Song, n: number, info: NowPlayingInfo): Record<string, unkno
     playlist: s.source,
     streamer: '',
     is_request: false,
-    song: apiSong(s, info.art)
+    song: apiSong(s, info.songArt?.(s) || info.art)
   }
 }
 

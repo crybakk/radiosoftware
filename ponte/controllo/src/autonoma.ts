@@ -21,9 +21,20 @@ const RECENT_ARTISTS = 6
 
 const pub = (t: ServerTrack): AutoTrack => ({ id: t.id, title: t.title, artist: t.artist, duration: t.duration })
 
-/** URI per Liquidsoap, con la correzione di volume. */
-export function annotate(path: string, gainDb: number): string {
-  return gainDb ? `annotate:liq_amplify="${gainDb.toFixed(1)} dB":${path}` : path
+/** Valore tra virgolette per "annotate:" di Liquidsoap (virgolette e barre protette, niente a capo). */
+const annotateValue = (v: string): string =>
+  v.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 300).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+
+/**
+ * URI per Liquidsoap, con la correzione di volume e, se ci sono, titolo e artista
+ * (metadati che arrivano a Icecast e ai lettori degli ascoltatori).
+ */
+export function annotate(path: string, gainDb: number, meta?: { title?: string; artist?: string }): string {
+  const parts: string[] = []
+  if (gainDb) parts.push(`liq_amplify="${gainDb.toFixed(1)} dB"`)
+  if (meta?.title) parts.push(`title="${annotateValue(meta.title)}"`)
+  if (meta?.artist) parts.push(`artist="${annotateValue(meta.artist)}"`)
+  return parts.length ? `annotate:${parts.join(',')}:${path}` : path
 }
 
 export class AutonomousPlayer {
@@ -180,7 +191,7 @@ export class AutonomousPlayer {
         this.history.slice(-RECENT_ARTISTS).map((t) => t.artist)
       )
     if (!next) throw new Error('nessun brano disponibile sul server')
-    if (!(await this.lq.push(annotate(this.lib.path(next), next.gainDb)))) {
+    if (!(await this.lq.push(annotate(this.lib.path(next), next.gainDb, announce ? undefined : next)))) {
       if ('uid' in next) this.queue.unshift(next as ServerTrack & { uid: string })
       throw new Error('il mixer del ponte non risponde')
     }
@@ -203,7 +214,7 @@ export class AutonomousPlayer {
     if (!t) return null
     this.history.push(t)
     if (this.history.length > RECENT_TRACKS) this.history.shift()
-    return annotate(this.lib.path(t), t.gainDb)
+    return annotate(this.lib.path(t), t.gainDb, t)
   }
 
   private clearTimer(): void {

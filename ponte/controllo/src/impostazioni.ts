@@ -51,6 +51,7 @@ export const VOCI: Voce[] = [
   { chiave: 'ICECAST_MAX_ASCOLTATORI', gruppo: 'Radio', etichetta: 'Ascoltatori al massimo', tipo: 'numero', min: 1, max: 100000, predefinito: '1000', parti: ['icecast'] },
   { chiave: 'PROCESSORE_AUDIO', gruppo: 'Radio', etichetta: 'Processore audio', tipo: 'scelta', opzioni: ['spento', 'leggero', 'medio', 'forte'], predefinito: 'medio', parti: ['audio'] },
   { chiave: 'SRT_BUFFER_SECONDS', gruppo: 'Radio', etichetta: 'Secondi di audio tenuti in memoria (contro i buchi del 4G)', tipo: 'numero', min: 1, max: 60, predefinito: '10', parti: ['audio'] },
+  { chiave: 'RISERVA_ATTESA_SECONDI', gruppo: 'Radio', etichetta: 'Attesa prima della musica di emergenza (secondi)', tipo: 'numero', min: 1, max: 120, predefinito: '8', parti: ['audio'], aiuto: 'Se la regia o la diretta si interrompono per meno di così, non parte la musica di emergenza: si sente silenzio e poi si riprende.' },
   { chiave: 'BACKUP_DA_TENERE', gruppo: 'Radio', etichetta: 'Copie di backup della regia da tenere', tipo: 'numero', min: 1, max: 365, predefinito: '14', parti: ['pannello'] },
 
   // --- Dirette esterne ---

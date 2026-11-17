@@ -20,7 +20,9 @@ Regia ──HTTPS + token──▶ Caddy ──▶ controllo (allarmi, titoli, b
 
 **Cosa va in onda**, in ordine di precedenza: diretta esterna, diretta autonoma dal pannello, regia.
 Se non c'è nessuno, il ponte suona da solo la **musica di riserva**: brani a caso della libreria del server,
-senza ripetere di seguito lo stesso artista. Tutte le uscite hanno sempre lo stesso segnale.
+senza ripetere di seguito lo stesso artista, sempre da un brano nuovo dall'inizio e con titolo e artista nei
+metadati. Parte solo dopo `RISERVA_ATTESA_SECONDI` (di base 8) senza programma, così un salto breve del
+collegamento non la fa partire. Tutte le uscite hanno sempre lo stesso segnale.
 
 ## Installazione rapida su Proxmox (VM nuova)
 
@@ -121,12 +123,15 @@ Con **Invia notifica di prova** controlli che Telegram o l'email arrivino.
   HTTPS. Sulla porta 8000 (in chiaro) l'ascolto funziona come prima, ma `/admin` è bloccato: la porta la
   pubblica Caddy, che passa a Icecast tutto il resto, così la password non viaggia mai leggibile in rete.
 
-Titolo e artista arrivano dalla regia (o dal file, per la diretta autonoma e la musica di riserva).
+Titolo e artista arrivano dalla regia (o dalla libreria del server, per la diretta autonoma e la musica di riserva).
 
 Pagine per gli ascoltatori (servite dal controllo, dietro Caddy):
 
-- `https://<dominio>/`: il player della radio (diretta, titolo e copertina in onda, brani recenti), come la
-  pagina pubblica di AzuraCast; il vecchio `/ascolta.html` porta qui;
+- `https://<dominio>/`: il player della radio (diretta, titolo, artista e copertina in onda), come la
+  pagina pubblica di AzuraCast; il vecchio `/ascolta.html` porta qui. Le copertine dei brani le cerca il
+  controllo su iTunes e poi su Deezer (senza chiavi; esce solo artista e titolo), le salva in
+  `copertine/` nella cartella dati e le serve da `/api/copertina/<chiave>.jpg`, anche nell'`/api/nowplaying`
+  per l'app;
 - `https://<dominio>/podcast.html`: programmi e puntate on demand (solo ascolto in streaming).
 
 ## Programmi e puntate on demand
