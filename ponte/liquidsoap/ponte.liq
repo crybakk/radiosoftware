@@ -270,7 +270,13 @@ uscita =
 # Va in onda quando non c'è né regia né diretta autonoma né esterna. Tutte le uscite del ponte
 # (Icecast principale, Icecast secondario, dirette video) hanno lo stesso segnale: se cade il server
 # di streaming principale gli ascoltatori passano al secondario e sentono la stessa cosa.
-# Il controllo sceglie il brano (niente artisti ripetuti) e lo passa già con il volume corretto.
+# Il controllo sceglie il brano (niente artisti ripetuti) e lo passa già con il volume corretto,
+# il titolo e l'artista (metadati per Icecast e per i lettori degli ascoltatori).
+# Scelte di cristian (17/11/2026):
+# - la riserva parte solo dopo RISERVA_ATTESA_SECONDI senza programma (di base 8): un salto breve
+#   del collegamento non la fa partire (nel frattempo silenzio);
+# - ogni volta che parte, la riserva comincia da un brano nuovo, dall'inizio (mai a metà).
+riserva_attesa = float_of_string(default=8., env("RISERVA_ATTESA_SECONDI", "8"))
 def prossimo_riserva() =
   try
     r = http.get(timeout=5., "#{controllo}/internal/riserva")
@@ -280,15 +286,45 @@ def prossimo_riserva() =
     null()
   end
 end
-riserva = amplify(1., override="liq_amplify", request.dynamic(id="riserva", retry_delay=10., prossimo_riserva))
+riserva_brani = request.dynamic(id="riserva", retry_delay=10., prossimo_riserva)
+riserva = amplify(1., override="liq_amplify", riserva_brani)
 # per il registro dei brani suonati dal server (report SIAE)
 riserva.on_track(fun (m) -> if m["filename"] != "" then notify("riserva_brano", m["filename"]) end)
+
+# ultimo istante in cui c'era un programma da mandare in onda
+ultimo_programma = ref(time())
+def programma_pronto() =
+  if source.is_ready(uscita) then
+    ultimo_programma := time()
+    true
+  else
+    false
+  end
+end
+riserva_in_onda = ref(false)
+def verso_riserva(a, b) =
+  riserva_in_onda := true
+  dissolvenza(a, b)
+end
+def verso_programma(a, b) =
+  riserva_in_onda := false
+  # finita la dissolvenza si scarta il brano lasciato a metà: la prossima volta la riserva
+  # riparte da un brano nuovo
+  thread.run(
+    delay=2.,
+    fun () -> if not riserva_in_onda() then riserva_brani.skip() end
+  )
+  dissolvenza(a, b)
+end
 segnale =
-  fallback(
+  switch(
     id="segnale",
     track_sensitive=false,
-    transitions=[dissolvenza, dissolvenza],
-    [uscita, processa(riserva)]
+    transitions=[verso_programma, verso_riserva],
+    [
+      (programma_pronto, uscita),
+      ({time() - ultimo_programma() >= riserva_attesa}, processa(riserva))
+    ]
   )
 # se anche la libreria è vuota va silenzio, così le uscite restano collegate
 segnale_sicuro = mksafe(segnale)

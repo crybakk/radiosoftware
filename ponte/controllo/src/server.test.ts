@@ -7,6 +7,8 @@ import { dirname, join } from 'node:path'
 import { connect } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import WebSocket from 'ws'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { coverKey } from './copertine.ts'
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123'
 const SERVER = join(dirname(fileURLToPath(import.meta.url)), 'server.ts')
@@ -183,6 +185,27 @@ describe('pagine: player pubblico su / e pannello su /dashboard', () => {
     expect(g.headers.get('location')).toBe('/dashboard')
     for (const f of ['/player.js', '/pubblico.css', '/podcast.html', '/pannello.css', '/ospite.html']) expect((await fetch(base + f)).status).toBe(200)
     expect((await fetch(`${base}/dashboard/altro`)).status).toBe(404)
+  })
+})
+
+describe('copertine dei brani in onda', () => {
+  it('copertina già trovata: nel titolo in onda e servita da /api/copertina', async () => {
+    const dati = mkdtempSync(join(tmpdir(), 'ponte-'))
+    const key = coverKey('Vasco Rossi', 'Albachiara')
+    mkdirSync(join(dati, 'copertine'))
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(50)])
+    writeFileSync(join(dati, 'copertine', `${key}.jpg`), jpeg)
+    const { port } = await startServer({ CARTELLA_DATI: dati })
+    const base = `http://127.0.0.1:${port}`
+    await fetch(`${base}/api/metadata`, { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ artist: 'Vasco Rossi', title: 'Albachiara' }) })
+    const np = (await (await fetch(`${base}/api/nowplaying`)).json()) as { now_playing: { song: { art: string } } }[]
+    expect(np[0].now_playing.song.art).toBe(`${base}/api/copertina/${key}.jpg`)
+    const img = await fetch(`${base}/api/copertina/${key}.jpg`)
+    expect(img.status).toBe(200)
+    expect(img.headers.get('content-type')).toBe('image/jpeg')
+    expect(Buffer.from(await img.arrayBuffer()).equals(jpeg)).toBe(true)
+    expect((await fetch(`${base}/api/copertina/${'0'.repeat(32)}.jpg`)).status).toBe(404)
+    expect((await fetch(`${base}/api/copertina/abc.jpg`)).status).not.toBe(200)
   })
 })
 

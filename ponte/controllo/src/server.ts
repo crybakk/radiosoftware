@@ -28,7 +28,8 @@
  *
  * Statistiche degli ascoltatori: GET /api/ascoltatori?periodo=giorno|settimana&data=AAAA-MM-GG (pannello o token)
  * Titolo in onda come AzuraCast (senza accesso): GET /api/nowplaying, /api/nowplaying/<stazione>,
- *   /api/nowplaying_static/<stazione>.json, /api/station/<stazione>/playlist.m3u|pls, GET /api/logo
+ *   /api/nowplaying_static/<stazione>.json, /api/station/<stazione>/playlist.m3u|pls, GET /api/logo,
+ *   GET /api/copertina/<chiave>.jpg (copertine dei brani, vedi copertine.ts)
  * Programmi e puntate on demand: vedi programmiApi.ts (API pubbliche come quelle dei podcast di AzuraCast,
  *   player pubblico su / e podcast.html, gestione dal pannello, ultime puntate per le repliche della regia).
  *
@@ -67,7 +68,8 @@ import { findGuideDir, guideImageName, guidePage } from './guida.ts'
 import { AnnounceScheduler, AnnounceStore } from './annunciRadio.ts'
 import { programContext, Synth } from './sintesi.ts'
 import { activeSlot, Programs } from './programmi.ts'
-import { apiNowPlaying, icecastListeners, NowPlaying } from './nowplaying.ts'
+import { apiNowPlaying, icecastListeners, NowPlaying, type Song } from './nowplaying.ts'
+import { CoverArt, isImage } from './copertine.ts'
 import { ListenerLog, period, readSecondary, report, type SecondaryConfig } from './ascoltatori.ts'
 import { fixInterrupted, Recorder } from './puntate.ts'
 import { DEFAULT_MIN_FREE_MB, DiskGuard } from './disco.ts'
@@ -271,7 +273,14 @@ const logPlay = (source: PlaySource, file: string): void => {
 }
 // titolo in onda per le app (formato AzuraCast): ogni brano del registro, più i metadati della regia
 const nowPlaying = new NowPlaying()
-playLog.onAdd = (e) => nowPlaying.set({ artist: e.artist, title: e.title, duration: e.duration, at: Date.parse(e.at), source: e.source })
+// copertine dei brani in onda (player pubblico e app): si cercano appena un brano va in onda
+const covers = new CoverArt(join(DATA_DIR, 'copertine'))
+const setNowPlaying = (s: Song): void => {
+  nowPlaying.set(s)
+  const cur = nowPlaying.current()
+  if (cur) void covers.lookup(cur.artist, cur.title)
+}
+playLog.onAdd = (e) => setNowPlaying({ artist: e.artist, title: e.title, duration: e.duration, at: Date.parse(e.at), source: e.source })
 let esternaSince: number | null = null
 // gli annunci non vanno nel registro, ma chiudono il brano di prima
 auto.onPlay = (t) => void (t.id.startsWith('.annunci/') ? playLog.end() : playLog.begin({ source: 'autonoma', id: t.id, title: t.title, artist: t.artist, duration: t.duration }))
@@ -550,9 +559,16 @@ async function handleNowPlaying(req: IncomingMessage, res: ServerResponse, url: 
   const p = url.pathname
   const st = programs.settings().station
   const isStation = (s: string): boolean => s === st || s === '1'
-  const m = /^\/api\/(?:nowplaying(?:\/([^/]+))?|nowplaying_static\/([^/]+)\.json|station\/([^/]+)\/playlist\.(m3u|pls)|logo)$/.exec(p)
+  const m = /^\/api\/(?:nowplaying(?:\/([^/]+))?|nowplaying_static\/([^/]+)\.json|station\/([^/]+)\/playlist\.(m3u|pls)|logo|copertina\/([0-9a-f]{32})\.jpg)$/.exec(p)
   if (!m || (req.method !== 'GET' && req.method !== 'HEAD')) return false
   const cors = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-cache' }
+  if (m[5]) {
+    const img = await readFile(covers.file(m[5])).catch(() => null)
+    if (!img || !isImage(img)) return json(res, 404, { error: 'nessuna copertina' }, cors), true
+    res.writeHead(200, { ...cors, 'Content-Type': img[0] === 0xff ? 'image/jpeg' : 'image/png', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' })
+    res.end(img)
+    return true
+  }
   if (p === '/api/logo') {
     const f = logoFile()
     if (!f) return json(res, 404, { error: 'nessun logo' }), true
@@ -587,6 +603,10 @@ async function handleNowPlaying(req: IncomingMessage, res: ServerResponse, url: 
     online: ice.online,
     live: { isLive: esternaSince !== null, streamer: esternaSince !== null ? (prog?.title ?? 'Diretta esterna') : '', since: esternaSince },
     art: progArt || (logoFile() ? `${base}/api/logo` : ''),
+    songArt: (s) => {
+      const key = covers.ready(s.artist, s.title)
+      return key ? `${base}/api/copertina/${key}.jpg` : ''
+    },
     now
   })
   json(res, 200, p === '/api/nowplaying' ? [data] : data, cors)
@@ -1199,7 +1219,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       lastMetadata = { artist, title, at: new Date().toISOString() }
       // con la diretta esterna o la autonoma in onda la regia non si sente: il suo brano non è "in onda"
       if (esternaSince === null && !auto.state().active) {
-        nowPlaying.set({ artist, title, duration: Number(body.duration) || 0, at: Date.now(), source: 'regia' })
+        setNowPlaying({ artist, title, duration: Number(body.duration) || 0, at: Date.now(), source: 'regia' })
       }
       const r = await fetch(`${LIQUIDSOAP}/metadata`, {
         method: 'POST',
