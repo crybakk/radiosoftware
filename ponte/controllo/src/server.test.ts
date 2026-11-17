@@ -15,7 +15,8 @@ const SERVER = join(dirname(fileURLToPath(import.meta.url)), 'server.ts')
 // chiave di attivazione di prova (coppia di chiavi creata al momento)
 const CHIAVE_PROVE = join(dirname(fileURLToPath(import.meta.url)), '..', 'prove', 'chiave-prove.mjs')
 let procs: ChildProcess[] = []
-let portBase = 21000 + Math.floor(Math.random() * 20000)
+// sotto 32768: da lì in su Linux dà le porte ai collegamenti in uscita, che potrebbero occupare quella scelta
+let portBase = 21000 + Math.floor(Math.random() * 10000)
 
 async function startServer(
   extra: Record<string, string> = {}
