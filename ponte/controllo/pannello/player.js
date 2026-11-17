@@ -11,36 +11,71 @@ function setArt(img, url) {
   img.hidden = !url
 }
 
+// L'HLS arriva in ritardo rispetto alla diretta (scelta di cristian, 17/11/2026): mentre si ascolta in HLS
+// titolo e copertina cambiano dopo gli stessi secondi (impostazione del server, di base 30); con l'MP3 subito.
+let viaHls = false
+let storico = []
+let ritardoHls = 30
+
+async function leggiRitardo() {
+  try {
+    const r = await fetch('/api/player', { cache: 'no-store' })
+    const n = Number((await r.json()).hls_ritardo_titoli)
+    if (r.ok && Number.isFinite(n) && n >= 0) ritardoHls = n
+  } catch {
+    // server vecchio: resta il valore di base
+  }
+}
+
+function ritardoTitoli() {
+  return viaHls ? ritardoHls * 1000 : 0
+}
+
 async function refresh() {
   try {
     const r = await fetch('/api/nowplaying', { cache: 'no-store' })
     if (!r.ok) throw new Error(String(r.status))
-    const data = (await r.json())[0]
-    info = data
-    const st = data.station
-    $('name').textContent = st.name
-    document.title = `${st.name} - in diretta`
-    $('desc').textContent = st.description || ''
-    $('desc').hidden = !st.description
-    const np = data.now_playing
-    const song = np?.song
-    $('title').textContent = song?.title || st.name
-    $('artist').textContent = song?.artist || ''
-    $('onair').textContent = data.live?.is_live ? `IN DIRETTA · ${data.live.streamer_name}` : 'IN DIRETTA'
-    setArt($('art'), song?.art || '')
-    $('noart').hidden = !!song?.art
-    if (!$('play').classList.contains('loading')) {
-      $('msg').textContent = st.listen_url || st.hls_url ? (data.is_online === false ? 'La radio in questo momento non trasmette.' : '') : 'Indirizzo d\'ascolto non configurato sul server.'
-    }
-    mediaSession(song, st.name)
+    info = (await r.json())[0]
+    const ora = Date.now()
+    storico.push({ t: ora, data: info })
+    // si tengono le letture degli ultimi minuti: bastano per qualsiasi ritardo
+    storico = storico.filter((x) => ora - x.t < 180_000)
   } catch {
     // riprova al prossimo giro
   }
+  draw()
+}
+
+/** Mostra la lettura di "ritardo" secondi fa (la più vecchia disponibile, se ascolta da meno). */
+function draw() {
+  if (!info) return
+  const limite = Date.now() - ritardoTitoli()
+  const vista = [...storico].reverse().find((x) => x.t <= limite)?.data ?? storico[0]?.data ?? info
+  const st = info.station
+  $('name').textContent = st.name
+  document.title = `${st.name} - in diretta`
+  $('desc').textContent = st.description || ''
+  $('desc').hidden = !st.description
+  const song = vista.now_playing?.song
+  $('title').textContent = song?.title || st.name
+  $('artist').textContent = song?.artist || ''
+  $('onair').textContent = vista.live?.is_live ? `IN DIRETTA · ${vista.live.streamer_name}` : 'IN DIRETTA'
+  setArt($('art'), song?.art || '')
+  $('noart').hidden = !!song?.art
+  if (!$('play').classList.contains('loading')) {
+    $('msg').textContent = st.listen_url || st.hls_url ? (info.is_online === false ? 'La radio in questo momento non trasmette.' : '') : 'Indirizzo d\'ascolto non configurato sul server.'
+  }
+  mediaSession(song, st.name)
 }
 
 /** Titolo e copertina anche nella schermata di blocco del telefono. */
+let ultimoMedia = ''
 function mediaSession(song, name) {
   if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return
+  // solo quando cambia: la schermata di blocco non deve ridisegnarsi ogni secondo
+  const chiave = `${song?.title}|${song?.artist}|${song?.art}|${name}`
+  if (chiave === ultimoMedia) return
+  ultimoMedia = chiave
   navigator.mediaSession.metadata = new MediaMetadata({
     title: song?.title || name,
     artist: song?.artist || '',
@@ -82,6 +117,7 @@ function stop() {
   tentativo++
   cleanup()
   playing = false
+  viaHls = false
   setButton('stopped')
 }
 
@@ -109,6 +145,7 @@ function startMp3(mio) {
   if (!url) return fail()
   cleanup()
   playing = false
+  viaHls = false
   setButton('loading')
   const a = $('audio')
   a.src = fresh(url)
@@ -116,6 +153,7 @@ function startMp3(mio) {
 }
 
 async function startHls(mio, url) {
+  viaHls = true
   const a = $('audio')
   if (a.canPlayType('application/vnd.apple.mpegurl')) {
     a.src = url
@@ -166,6 +204,7 @@ function fail(text = 'Il browser non riesce a far partire l\'audio.') {
   tentativo++
   cleanup()
   playing = false
+  viaHls = false
   setButton('stopped')
   $('msg').textContent = text
 }
@@ -217,5 +256,9 @@ if ('mediaSession' in navigator) {
   navigator.mediaSession.setActionHandler?.('stop', stop)
 }
 
+leggiRitardo()
+setInterval(leggiRitardo, 300_000)
 refresh()
-setInterval(refresh, 15_000)
+// ogni 5 secondi: il ritardo dei titoli in HLS resta preciso
+setInterval(refresh, 5_000)
+setInterval(draw, 1_000)

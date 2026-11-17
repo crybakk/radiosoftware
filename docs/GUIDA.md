@@ -769,6 +769,9 @@ definitivo come **Dominio** e svuota l'**Indirizzo di ascolto per gli ospiti**.
   secondi dopo la diretta. Il player pubblico usa l'HLS e, se non parte, passa da solo all'MP3; quando premi ▶
   il pulsante gira finché l'audio non parte. Gli ascoltatori HLS sono contati insieme a quelli dell'Icecast
   principale nelle statistiche. Per spegnerlo: `HLS=no` nel file `.env` del server.
+- Siccome l'HLS arriva in ritardo, mentre si ascolta in HLS il player pubblico cambia titolo e copertina dopo 30
+  secondi; con l'MP3 subito. Gli **annunci a orario del server** partono 30 secondi prima, così in HLS arrivano
+  puntuali, e la voce dice l'ora prevista. I due valori si cambiano in **Impostazioni server** → **Radio**.
 - **Icecast secondario**: se hai un Icecast su un altro server, scrivi i suoi dati in **Impostazioni server** →
   **Icecast secondario** (indirizzo, porta, mount, utente, password) e premi **Salva e applica**. Riceve sempre lo
   stesso segnale del principale: se il server di casa non è raggiungibile, gli ascoltatori passano al secondario e

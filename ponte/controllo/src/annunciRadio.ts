@@ -97,6 +97,11 @@ export interface SchedulerDeps {
   folder: string
   now?: () => Date
   log?: (s: string) => void
+  /**
+   * Secondi di anticipo (scelta di cristian, 17/11/2026): l'annuncio si prepara prima dell'orario, così chi
+   * ascolta in HLS (in ritardo sulla diretta) lo sente in orario. Il testo usa l'ora prevista, non quella reale.
+   */
+  anticipoSecondi?: number
 }
 
 export class AnnounceScheduler {
@@ -125,14 +130,15 @@ export class AnnounceScheduler {
   }
 
   /** Testo pronto per la voce, con le parti riempite. */
-  fill(text: string, radio?: string): { text: string; missing: string[] } {
+  fill(text: string, radio?: string, at: Date = this.now()): { text: string; missing: string[] } {
     const cfg = this.d.store.get()
-    return fillTemplate(text, { now: this.now(), radio: radio?.trim() || cfg.radio || this.d.stationName, ...this.d.context() })
+    return fillTemplate(text, { now: at, radio: radio?.trim() || cfg.radio || this.d.stationName, ...this.d.context() })
   }
 
   /** Controlla se in questo minuto c'è un annuncio da fare (una volta sola per minuto). */
   async tick(): Promise<void> {
-    const now = this.now()
+    // si ragiona sull'orario che sentiranno gli ascoltatori: adesso più l'anticipo
+    const now = new Date(this.now().getTime() + Math.max(0, this.d.anticipoSecondi ?? 0) * 1000)
     // minuto vero (non l'ora del giorno): con il ritorno all'ora solare le 2:xx vengono due volte
     const key = String(Math.floor(now.getTime() / 60_000))
     if (key === this.lastMinute) return
@@ -147,10 +153,10 @@ export class AnnounceScheduler {
     if (!(await this.d.onAir().catch(() => false))) return
     for (const a of due) {
       try {
-        const f = this.fill(a.text)
+        const f = this.fill(a.text, undefined, now)
         if (!f.text.replace(/[\s.,;:!?]/g, '')) continue
         const r = await this.d.speak(f.text, this.d.store.get().voice)
-        this.pending.push({ id: `${this.d.folder}/${basename(r.file)}`, title: f.text, seconds: r.seconds, expires: now.getTime() + 10 * 60_000 })
+        this.pending.push({ id: `${this.d.folder}/${basename(r.file)}`, title: f.text, seconds: r.seconds, expires: this.now().getTime() + 10 * 60_000 })
         this.log(`pronto: "${f.text}"${f.missing.length ? ` (senza ${f.missing.join(', ')})` : ''}`)
       } catch (e) {
         this.log(`annuncio non preparato: ${e instanceof Error ? e.message : String(e)}`)
