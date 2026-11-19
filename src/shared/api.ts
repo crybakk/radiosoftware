@@ -53,6 +53,23 @@ export interface AggiornamentoStato {
   controllo?: string
   /** quando è stato fatto l'ultimo controllo (ISO) */
   controllato?: string
+  /** cosa cambia nella regia con l'aggiornamento (dalla versione più recente) */
+  novita?: NovitaVersione[]
+  /** c'è questa versione più nuova, ma cambia solo il server: la regia non ha bisogno di aggiornarsi */
+  soloServer?: string
+}
+
+/** Novità di una versione (dalle note della release). */
+export interface NovitaVersione {
+  versione: string
+  novita: string[]
+}
+
+/** Novità dell'aggiornamento appena installato, da mostrare alla prima apertura. */
+export interface NovitaInstallate {
+  da: string
+  a: string
+  novita: NovitaVersione[]
 }
 
 export interface RadioApi {
@@ -156,6 +173,9 @@ export interface RadioApi {
   aggiornamentoInstalla(): Promise<void>
   aggiornamentoControlla(): Promise<AggiornamentoStato>
   onAggiornamento(cb: (s: AggiornamentoStato) => void): () => void
+  /** novità dell'aggiornamento appena installato (null se non c'è niente da mostrare) */
+  novitaInstallate(): Promise<NovitaInstallate | null>
+  novitaLette(): Promise<void>
   // libreria del server (diretta autonoma)
   serverSyncStatus(): Promise<ServerSyncStatus>
   serverSyncList(filter: 'esclusi' | 'tutti', q: string): Promise<ServerTrackRow[]>

@@ -145,6 +145,7 @@ function UpdateSection() {
   if (st?.controllo === 'non installato') esito = 'Avviata dal codice: gli aggiornamenti funzionano solo nel programma installato.'
   else if (st?.controllo?.startsWith('non riuscito')) esito = `Controllo ${st.controllo}`
   else if (st?.stato === 'disponibile' || st?.stato === 'pronto') esito = `È disponibile la versione ${st.versione}: premi "Aggiorna" nella barra in alto.`
+  else if (st?.soloServer) esito = `La versione ${st.soloServer} cambia solo il server: la regia non ha bisogno di aggiornarsi.`
   else if (st?.controllo === 'ok') esito = 'È l\'ultima versione.'
   return (
     <section className="panel">
