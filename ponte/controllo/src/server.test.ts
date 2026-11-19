@@ -195,6 +195,12 @@ describe('pagine: player pubblico su / e pannello su /dashboard', () => {
       expect(html).toContain('login-form')
       expect(html).toContain('/navigazione.js')
     }
+    // HEAD (anteprime dei link, monitor di disponibilità): 200 senza corpo, non 404
+    for (const p of ['/', '/dashboard']) {
+      const h = await fetch(base + p, { method: 'HEAD' })
+      expect(h.status).toBe(200)
+      expect(h.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+    }
     for (const [from, to] of [['/index.html', '/dashboard'], ['/ascolta.html', '/'], ['/player.html', '/']]) {
       const r = await fetch(base + from, { redirect: 'manual' })
       expect(r.status).toBe(302)

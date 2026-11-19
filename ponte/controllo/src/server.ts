@@ -1036,7 +1036,8 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     // flusso HLS (pubblico, come AzuraCast)
     if (await handleHls(req, res, url)) return
     if (req.method === 'GET' && (url.pathname === '/guida' || url.pathname.startsWith('/guida/'))) return await serveGuide(req, res, url.pathname)
-    if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
+    // anche HEAD (anteprime dei link, controlli di disponibilità): Node non manda il corpo
+    if ((req.method === 'GET' || req.method === 'HEAD') && !url.pathname.startsWith('/api/')) {
       if (await serveStatic(res, url.pathname)) return
       return json(res, 404, { error: 'non trovato' })
     }
