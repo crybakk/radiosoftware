@@ -228,3 +228,9 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding:
 .wel-dots span.on { background: var(--accent); }
 .wel-buttons { display: flex; gap: 8px; justify-content: space-between; }
 .wel-buttons .primary { margin-left: auto; min-width: 120px; }
+
+/* novità degli aggiornamenti del server */
+.novita { margin: 6px 0 10px; }
+.novita summary { cursor: pointer; font-weight: 600; margin-top: 4px; }
+.novita ul { margin: 4px 0 4px 18px; padding: 0; }
+.novita li { margin: 3px 0; }

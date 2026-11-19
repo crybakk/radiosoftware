@@ -45,4 +45,26 @@ describe('aggiornamento del server', () => {
     expect(a.stato()).toMatchObject({ ultima: '0.1.3', disponibile: true, erroreControllo: 'giù' })
     expect(a.stato().controllato).toBeTruthy()
   })
+  it('non propone versioni che cambiano solo la regia; dopo l’aggiornamento mostra le novità finché non si leggono', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agg-'))
+    const note = (regia: boolean, server: boolean, testo: string) => `<!-- componenti: ${JSON.stringify({ regia, server })} -->\n${testo}`
+    const release = [
+      { ...rel('0.1.12'), body: note(true, false, '### Regia\n- Solo regia') },
+      { ...rel('0.1.11'), body: note(true, true, '### Server\n- Novità del server') }
+    ]
+    const prima = new AggiornamentoServer({ attuale: '0.1.11', cartellaRichieste: dir, scarica: async () => release })
+    await prima.controlla()
+    expect(prima.stato()).toMatchObject({ ultima: '0.1.12', disponibile: false, soloRegia: true, novita: [] })
+
+    const vecchio = new AggiornamentoServer({ attuale: '0.1.10', cartellaRichieste: dir, scarica: async () => release })
+    await vecchio.controlla()
+    expect(vecchio.stato()).toMatchObject({ disponibile: true, soloRegia: false, novita: [{ versione: '0.1.11', novita: ['Novità del server'] }] })
+    vecchio.chiedi('0.1.12')
+    // finché il server non riparte con la versione nuova non si mostra niente
+    expect(vecchio.stato().novitaInstallate).toBeUndefined()
+    const dopo = new AggiornamentoServer({ attuale: '0.1.12', cartellaRichieste: dir, scarica: async () => release })
+    expect(dopo.stato().novitaInstallate).toEqual({ da: '0.1.10', a: '0.1.12', novita: [{ versione: '0.1.11', novita: ['Novità del server'] }] })
+    dopo.novitaLette()
+    expect(dopo.stato().novitaInstallate).toBeUndefined()
+  })
 })

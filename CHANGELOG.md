@@ -1,6 +1,9 @@
 # Novità
 
-## Prossima versione
+Dopo la v0.1.10 le novità di ogni versione sono nei file della cartella [`novita/`](novita/LEGGIMI.md) e nella
+descrizione di ogni release su GitHub; regia e pannello le mostrano quando si aggiorna.
+
+## Dalla v0.1.1 alla v0.1.10
 
 ### Server (ponte)
 
