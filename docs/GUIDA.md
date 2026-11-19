@@ -6,8 +6,8 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 19/11/2026, nuovi utenti del pannello invitati con un link: la password la sceglie
-chi riceve il link.
+**Ultimo aggiornamento:** 19/11/2026, schede di benvenuto al primo accesso nel pannello; nuovi utenti invitati
+con un link: la password la sceglie chi riceve il link.
 
 ## Indice
 
@@ -180,13 +180,19 @@ prove: `https://player.radioattivainformazione.it:9443/dashboard`). L'indirizzo 
 player per gli ascoltatori ([sezione 13](#13-programmi-puntate-e-repliche)). Entra con il tuo nome e la tua password (la prima volta
 `admin` e la password stampata dall'installazione).
 
+La **prima volta** che entri compaiono alcune schede di benvenuto, diverse secondo il ruolo: cosa va in onda,
+come si comanda, dove si trova il menu. Passi con **Avanti →**, chiudi con **Salta** o **Inizia**. Non
+ricompaiono più da sole; per rivederle: menu **☰ → 👋 Benvenuto**.
+
+![Schede di benvenuto al primo accesso](immagini/pannello-benvenuto.png)
+
 ![Pannello dal telefono](immagini/pannello-principale.png)
 
 1. Spia **IN ONDA / FERMO** della regia.
 2. **REGIA OK** se la regia è collegata, **REGIA SCOLLEGATA** se è spenta o senza internet.
 3. **AUTOMATICO / MANUALE**, come in regia.
 4. Menu **☰**: **Programmi**, **Ascoltatori**, **Annunci vocali**, **Utenti**, **Impostazioni server**,
-   **📖 Guida**, **📻 Player pubblico** ed **Esci** (alcune voci solo per gli amministratori). Da ogni sezione
+   **📖 Guida**, **👋 Benvenuto**, **📻 Player pubblico** ed **Esci** (alcune voci solo per gli amministratori). Da ogni sezione
    torni alla schermata principale con **← Panoramica** (in alto a sinistra) o con il tasto indietro del telefono.
 
    ![Menu del pannello](immagini/pannello-menu.png)
@@ -1024,3 +1030,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 17/11/2026 | Player pubblico più semplice con le copertine dei brani (iTunes, Deezer); musica di riserva con titolo e artista, sempre da un brano nuovo e solo dopo 8 secondi senza programma |
 | 17/11/2026 | Durata massima dei brani (10 minuti, dal pannello): i premixati spariscono da libreria, rotazioni, eventi, server, diretta autonoma e musica di emergenza |
 | 19/11/2026 | Utenti del pannello invitati con un link (7 giorni, una volta sola): la password la sceglie chi lo riceve |
+| 19/11/2026 | Schede di benvenuto al primo accesso nel pannello, adatte al ruolo; si rivedono dal menu ☰ → 👋 Benvenuto |

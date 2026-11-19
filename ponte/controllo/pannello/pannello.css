@@ -217,3 +217,14 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding:
 .imp-form .hint { font-size: 13px; }
 .imp-save { position: sticky; bottom: 0; z-index: 1; }
 .imp-field { display: flex; flex-direction: column; gap: 2px; }
+/* benvenuto al primo accesso */
+.welcome { position: fixed; inset: 0; z-index: 50; background: rgba(8, 10, 14, 0.82); display: grid; place-items: center; padding: 16px; }
+.welcome-card { width: min(440px, 100%); text-align: center; display: flex; flex-direction: column; gap: 10px; padding: 22px 18px; }
+.wel-icon { font-size: 44px; line-height: 1; }
+.welcome-card h2 { margin: 0; font-size: 21px; }
+.welcome-card p { margin: 0; color: var(--text); line-height: 1.5; text-align: left; min-height: 7.5em; }
+.wel-dots { display: flex; justify-content: center; gap: 6px; }
+.wel-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.wel-dots span.on { background: var(--accent); }
+.wel-buttons { display: flex; gap: 8px; justify-content: space-between; }
+.wel-buttons .primary { margin-left: auto; min-width: 120px; }

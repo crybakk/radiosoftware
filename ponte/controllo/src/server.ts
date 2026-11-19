@@ -18,7 +18,7 @@
  * Pannello remoto (accesso con nome e password, sessione in un cookie):
  *   GET  /                pagine del pannello
  *   GET  /guida, /guida/immagini/<nome>   guida d'uso con gli screenshot (dopo l'accesso)
- *   POST /api/login, POST /api/logout, GET /api/io
+ *   POST /api/login, POST /api/logout, GET /api/io, POST /api/io/benvenuto (benvenuto del primo accesso visto)
  *   GET/POST /api/utenti, DELETE /api/utenti/<nome>   (solo amministratori)
  *   POST /api/utenti/inviti, DELETE /api/utenti/inviti/<link>   inviti per nuovi utenti (solo amministratori)
  *   GET /invito.html#t=<link>, GET/POST /api/invito   chi è invitato sceglie la sua password
@@ -1314,10 +1314,16 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       return json(res, 404, { error: 'non trovato' })
     }
 
-    if (url.pathname === '/api/io' || url.pathname.startsWith('/api/utenti')) {
+    if (url.pathname === '/api/io' || url.pathname === '/api/io/benvenuto' || url.pathname.startsWith('/api/utenti')) {
       const me = sessionUser(req)
       if (!me) return json(res, 401, { error: 'accesso richiesto' })
-      if (url.pathname === '/api/io') return json(res, 200, { user: me })
+      if (url.pathname === '/api/io') return json(res, 200, { user: me, benvenuto: users.isNew(me.name), station: env('NOME_RADIO', 'Radio') })
+      // benvenuto del primo accesso visto o saltato
+      if (req.method === 'POST' && url.pathname === '/api/io/benvenuto') {
+        if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+        users.welcomed(me.name)
+        return json(res, 200, { ok: true })
+      }
       if (!can(me.role, 'utenti')) return json(res, 403, { error: 'solo gli amministratori gestiscono gli utenti' })
       if (req.method !== 'GET' && !sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
       if (req.method === 'GET' && url.pathname === '/api/utenti') {

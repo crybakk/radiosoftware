@@ -108,4 +108,19 @@ describe('utenti del pannello', () => {
     expect(sameSecret('abc', 'abd')).toBe(false)
     expect(sameSecret('abc', 'abcd')).toBe(false)
   })
+
+  it('benvenuto: solo per gli utenti nuovi, finché non lo vedono; resta dopo un riavvio', () => {
+    const d = mkdtempSync(join(tmpdir(), 'utenti-'))
+    const users = new Users(join(d, 'u.json'), join(d, 's.json'))
+    users.save('anna', 'conduttore', 'password-anna')
+    expect(users.isNew('ANNA')).toBe(true)
+    users.save('anna', 'ospite') // cambio di ruolo: resta nuova
+    expect(users.isNew('anna')).toBe(true)
+    users.welcomed('anna')
+    expect(users.isNew('anna')).toBe(false)
+    expect(new Users(join(d, 'u.json'), join(d, 's.json')).isNew('anna')).toBe(false)
+    // utenti creati prima del benvenuto (senza il campo): non lo vedono
+    writeFileSync(join(d, 'v.json'), JSON.stringify([{ name: 'vecchio', role: 'conduttore', hash: 'x', salt: 'y' }]))
+    expect(new Users(join(d, 'v.json'), join(d, 's.json')).isNew('vecchio')).toBe(false)
+  })
 })
