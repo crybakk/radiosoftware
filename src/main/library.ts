@@ -1,5 +1,6 @@
 import { ANALYSIS_TIMEOUT_MS, analyzeFile } from '../core/analyzer'
 import { fingerprintFile } from '../core/fingerprintFile'
+import { DjAnalyzer, decodeMono } from './djAnalyzer'
 import type { RadioDb } from '../core/db'
 import { scanLibrary, type ScanProgress } from '../core/scanner'
 import type { LibraryStatus } from '../shared/api'
@@ -12,14 +13,19 @@ export class LibraryService {
   private scanning: ScanProgress | null = null
   private analyzing = false
   private fingerprinting = false
+  private djRunning = false
+  private dj: DjAnalyzer | null
   private stopRequested = false
   private abort: AbortController | null = null
   private listeners = new Set<(s: LibraryStatus) => void>()
 
   constructor(
     private db: RadioDb,
-    private ffmpegPath: string | null
-  ) {}
+    private ffmpegPath: string | null,
+    djWorkerUrl?: URL
+  ) {
+    this.dj = djWorkerUrl ? new DjAnalyzer(djWorkerUrl) : null
+  }
 
   onStatus(cb: (s: LibraryStatus) => void): void {
     this.listeners.add(cb)
@@ -33,7 +39,8 @@ export class LibraryService {
       analyzing: this.analyzing,
       fingerprints: fp.done,
       fingerprintTotal: fp.total,
-      fingerprinting: this.fingerprinting
+      fingerprinting: this.fingerprinting,
+      ...this.djStatus()
     }
   }
 
@@ -139,6 +146,51 @@ export class LibraryService {
       }
     } finally {
       this.fingerprinting = false
+      this.emit()
+    }
+    await this.djAll()
+  }
+
+  private djStatus(): { djDone: number; djTotal: number; djAnalyzing: boolean } {
+    const s = this.db.djStats()
+    return { djDone: s.done, djTotal: s.total, djAnalyzing: this.djRunning }
+  }
+
+  /**
+   * Analisi "da DJ" della musica (BPM, battiti, tonalità, energia, intro/outro), dopo le impronte.
+   * Qualche secondo a brano, un brano alla volta, in un thread separato.
+   */
+  async djAll(): Promise<void> {
+    if (!this.dj || this.djRunning || this.analyzing || this.fingerprinting || !this.ffmpegPath) return
+    this.djRunning = true
+    this.stopRequested = false
+    const abort = (this.abort = new AbortController())
+    this.emit()
+    let lastEmit = 0
+    try {
+      for (;;) {
+        const batch = this.db.pendingDj(20)
+        if (!batch.length || this.stopRequested) break
+        for (const t of batch) {
+          if (this.stopRequested) break
+          try {
+            const pcm = await decodeMono(this.ffmpegPath, t.path, abort.signal)
+            this.db.saveDj(t.id, await this.dj.analyze(pcm, t.cueIn, t.cueOut))
+          } catch {
+            if (abort.signal.aborted) break
+            // file illeggibile o analisi fallita: niente Mix DJ per questo brano finché il file non cambia
+            this.db.saveDj(t.id, null)
+          }
+          if (Date.now() - lastEmit > 1000) {
+            lastEmit = Date.now()
+            this.emit()
+          }
+        }
+      }
+    } finally {
+      if (this.abort === abort) this.abort = null
+      this.djRunning = false
+      this.dj.close()
       this.emit()
     }
   }

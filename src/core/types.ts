@@ -1,3 +1,4 @@
+import type { DjAnalysis } from './djAnalysis'
 /** Tipo di elemento audio: decide come viene usato in rotazione e nella cartwall. */
 import type { NewsSource } from './news'
 import { DEFAULT_VOICE, type VoiceSettings } from '../../ponte/controllo/src/annunci.ts'
@@ -50,6 +51,8 @@ export interface Track {
   enabled: boolean
   analyzedAt: string | null
   addedAt: string
+  /** Analisi "da DJ" (BPM, battiti, tonalità, energia, intro/outro). null o assente = non ancora fatta. */
+  dj?: DjAnalysis | null
 }
 
 export interface LibraryFolder {

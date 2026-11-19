@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
-    build: { rollupOptions: { input: { index: resolve('src/main/index.ts') } } }
+    build: { rollupOptions: { input: { index: resolve('src/main/index.ts'), djWorker: resolve('src/main/djWorker.ts') } } }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],

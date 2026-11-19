@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import type { DjAnalysis } from './djAnalysis'
 import { resolve } from 'node:path'
 import {
   DEFAULT_PONTE,
@@ -172,7 +173,20 @@ function rowToTrack(r: Row): Track {
     mixPoint: Number(r.mix_point),
     enabled: Number(r.enabled) === 1,
     analyzedAt: r.analyzed_at == null ? null : String(r.analyzed_at),
-    addedAt: String(r.added_at)
+    addedAt: String(r.added_at),
+    dj: r.dj_at == null ? null : rowToDj(r)
+  }
+}
+
+function rowToDj(r: Row): DjAnalysis {
+  return {
+    bpm: Number(r.bpm ?? 0),
+    firstDownbeat: Number(r.dj_downbeat ?? 0),
+    gridConfidence: Number(r.dj_grid ?? 0),
+    key: String(r.music_key ?? ''),
+    energy: Number(r.energy ?? 0),
+    introEnd: Number(r.intro_end ?? 0),
+    outroStart: Number(r.outro_start ?? 0)
   }
 }
 
@@ -336,6 +350,19 @@ export class RadioDb {
     // v0.10: campi corretti a mano (titolo, artista, ..., punti di mix); nei database esistenti nessuno è segnato
     if (!cols.includes('manual_fields')) this.db.exec('ALTER TABLE tracks ADD COLUMN manual_fields INTEGER NOT NULL DEFAULT 0')
     if (!cols.includes('fp_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN fp_at TEXT')
+    // analisi "da DJ" (Mix DJ, rotazione per energia): una colonna per dato, così si può cercare per BPM o energia
+    for (const [col, def] of [
+      ['bpm', 'REAL NOT NULL DEFAULT 0'],
+      ['dj_downbeat', 'REAL NOT NULL DEFAULT 0'],
+      ['dj_grid', 'REAL NOT NULL DEFAULT 0'],
+      ['music_key', "TEXT NOT NULL DEFAULT ''"],
+      ['energy', 'INTEGER NOT NULL DEFAULT 0'],
+      ['intro_end', 'REAL NOT NULL DEFAULT 0'],
+      ['outro_start', 'REAL NOT NULL DEFAULT 0'],
+      ['dj_at', 'TEXT']
+    ] as const) {
+      if (!cols.includes(col)) this.db.exec(`ALTER TABLE tracks ADD COLUMN ${col} ${def}`)
+    }
     this.db.exec(
       'CREATE TABLE IF NOT EXISTS fingerprints (track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE, fp BLOB NOT NULL)'
     )
@@ -505,7 +532,7 @@ export class RadioDb {
              composer=CASE WHEN composer='' THEN ? ELSE composer END,
              publisher=CASE WHEN publisher='' THEN ? ELSE publisher END,
              isrc=CASE WHEN isrc='' THEN ? ELSE isrc END,
-             duration=?, bitrate=?, sample_rate=?, file_size=?, file_mtime=?, analyzed_at=NULL, fp_at=NULL
+             duration=?, bitrate=?, sample_rate=?, file_size=?, file_mtime=?, analyzed_at=NULL, fp_at=NULL, dj_at=NULL
            WHERE id=?`
         )
         .run(
@@ -591,6 +618,36 @@ export class RadioDb {
         .prepare(`SELECT * FROM tracks WHERE analyzed_at IS NULL AND enabled = 1 AND ${this.short()} ORDER BY id LIMIT ?`)
         .all(limit) as Row[]
     ).map(rowToTrack)
+  }
+
+  /** Musica analizzata (inizio/fine) ma non ancora con l'analisi "da DJ". */
+  pendingDj(limit = 20): Track[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()} AND analyzed_at IS NOT NULL AND dj_at IS NULL ORDER BY id LIMIT ?`
+        )
+        .all(limit) as Row[]
+    ).map(rowToTrack)
+  }
+
+  djStats(): { done: number; total: number } {
+    const r = this.db
+      .prepare(
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN dj_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()}`
+      )
+      .get() as Row
+    return { done: Number(r.done ?? 0), total: Number(r.total ?? 0) }
+  }
+
+  /** null = file non analizzabile: segnato come fatto (senza griglia) per non riprovarlo finché il file non cambia. */
+  saveDj(id: number, a: DjAnalysis | null): void {
+    const d = a ?? { bpm: 0, firstDownbeat: 0, gridConfidence: 0, key: '', energy: 0, introEnd: 0, outroStart: 0 }
+    this.db
+      .prepare(
+        `UPDATE tracks SET bpm=?, dj_downbeat=?, dj_grid=?, music_key=?, energy=?, intro_end=?, outro_start=?, dj_at=datetime('now') WHERE id=?`
+      )
+      .run(d.bpm, d.firstDownbeat, d.gridConfidence, d.key, d.energy, d.introEnd, d.outroStart, id)
   }
 
   countPendingAnalysis(): number {

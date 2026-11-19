@@ -114,6 +114,15 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
                 </div>
               </div>
             )}
+            {status.djTotal > 0 && (
+              <div>
+                Analisi per il Mix DJ (BPM, battiti, tonalità, energia, intro e outro): {status.djDone} di {status.djTotal}
+                {status.djAnalyzing ? ' (in corso, qualche secondo a brano)' : ''}
+                <div className="progress thin">
+                  <div className="progress-fill" style={{ width: `${(status.djDone / Math.max(1, status.djTotal)) * 100}%` }} />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -292,6 +301,7 @@ export function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose
           Durata {mmss(track.duration)} · {track.bitrate ? `${track.bitrate} kbps` : 'bitrate sconosciuto'} ·{' '}
           {track.loudness != null ? `${track.loudness.toFixed(1)} LUFS` : 'non ancora analizzato'}
         </div>
+        <div className="info-line">{djLine(track)}</div>
         <div className="row end">
           <button onClick={onClose}>Annulla</button>
           <button
@@ -308,4 +318,22 @@ export function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose
       </div>
     </div>
   )
+}
+
+/** Riassunto dell'analisi "da DJ" di un brano, in parole semplici. */
+function djLine(t: Track): string {
+  const d = t.dj
+  if (!d) return t.kind === 'music' ? 'Mix DJ: analisi non ancora fatta' : ''
+  if (!(d.bpm > 0)) return `Mix DJ: ritmo non regolare, si usa la dissolvenza normale${d.energy ? ` · energia ${d.energy}/10` : ''}`
+  const intro = Math.max(0, d.introEnd - d.firstDownbeat)
+  const outro = Math.max(0, t.cueOut - d.outroStart)
+  return [
+    `${d.bpm.toFixed(1)} BPM`,
+    d.key ? `tonalità ${d.key}` : '',
+    d.energy ? `energia ${d.energy}/10` : '',
+    `intro ${Math.round(intro)} s`,
+    `outro ${Math.round(outro)} s`
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
