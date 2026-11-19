@@ -6,8 +6,8 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 17/11/2026, durata massima dei brani: i premixati (oltre 10 minuti) spariscono
-dalla libreria, dalle rotazioni e dalla musica del server; filtro per categoria o etichetta tua nella ricerca.
+**Ultimo aggiornamento:** 19/11/2026, nuovi utenti del pannello invitati con un link: la password la sceglie
+chi riceve il link.
 
 ## Indice
 
@@ -883,6 +883,25 @@ toglie nulla dal server.
 
 ## 23. Utenti del pannello
 
+### Invitare un utente con un link (consigliato)
+
+Così non devi inventare tu la password e mandarla.
+
+1. Menu **☰ → Utenti** (solo amministratori).
+2. In **Invita un nuovo utente** scrivi il **nome** con cui entrerà e scegli il **ruolo**.
+3. Premi **Crea link di invito**, poi **Copia** (o **Invia…** dal telefono) e mandalo, per esempio su WhatsApp.
+4. Chi riceve il link lo apre, sceglie la sua password (due volte) e preme **Salva la password ed entra**: è già
+   dentro il pannello. Le volte dopo entra con nome e password.
+
+![Invito di un nuovo utente nel pannello](immagini/pannello-invito-utente.png)
+
+![Pagina dell'invito: si sceglie la password](immagini/invito-password.png)
+
+Il link vale **7 giorni** e **una volta sola**. Finché non è usato lo trovi in **Inviti in attesa**: **Copia link**
+per rimandarlo, **Annulla** per farlo smettere di funzionare. Se è scaduto, creane uno nuovo.
+
+### Creare un utente con la password
+
 Menu **☰ → Utenti** (solo amministratori): scrivi nome, ruolo e password e premi **Salva**. Per cambiare il ruolo
 di un utente scrivi il suo nome, scegli il ruolo e lascia vuota la password. Cambiando la password, l'utente viene
 scollegato da tutti i dispositivi.
@@ -1004,3 +1023,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 17/11/2026 | Ricerca dei brani della regia (In onda, jingle, eventi) con il filtro per categoria o etichetta tua |
 | 17/11/2026 | Player pubblico più semplice con le copertine dei brani (iTunes, Deezer); musica di riserva con titolo e artista, sempre da un brano nuovo e solo dopo 8 secondi senza programma |
 | 17/11/2026 | Durata massima dei brani (10 minuti, dal pannello): i premixati spariscono da libreria, rotazioni, eventi, server, diretta autonoma e musica di emergenza |
+| 19/11/2026 | Utenti del pannello invitati con un link (7 giorni, una volta sola): la password la sceglie chi lo riceve |

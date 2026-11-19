@@ -306,8 +306,28 @@
           <thead><tr><th>Nome</th><th>Ruolo</th><th></th></tr></thead>
           <tbody id="users-list"></tbody>
         </table>
+        <form id="uinv-form" class="user-form">
+          <div class="section-title">Invita un nuovo utente</div>
+          <p class="hint">Scegli nome e ruolo e manda il link: la password la sceglie chi riceve il link.</p>
+          <input id="uinv-name" placeholder="Nome" required />
+          <select id="uinv-role">
+            <option value="conduttore">Conduttore: comanda la regia</option>
+            <option value="ospite">Ospite: vede soltanto</option>
+            <option value="amministratore">Amministratore: comanda e gestisce gli utenti</option>
+          </select>
+          <button class="primary" type="submit">Crea link di invito</button>
+          <div id="uinv-out" hidden>
+            <div class="invite-url"><input id="uinv-url" readonly /><button id="uinv-copy" type="button">Copia</button><button id="uinv-share" type="button" hidden>Invia…</button></div>
+            <p class="hint" id="uinv-hint"></p>
+          </div>
+          <p id="uinv-msg" class="hint"></p>
+        </form>
+        <div id="uinv-wait" hidden>
+          <div class="section-title">Inviti in attesa</div>
+          <ul class="list" id="uinv-list"></ul>
+        </div>
         <form id="user-form" class="user-form">
-          <div class="section-title">Nuovo utente o cambio password</div>
+          <div class="section-title">Nuovo utente con password o cambio password</div>
           <input id="u-name" placeholder="Nome" required />
           <select id="u-role">
             <option value="conduttore">Conduttore: comanda la regia</option>

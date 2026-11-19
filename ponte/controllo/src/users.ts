@@ -174,6 +174,13 @@ export class Users {
     if (!u || got.length !== want.length || !timingSafeEqual(got, want)) return null
     // durante il calcolo l'utente può essere stato eliminato o aver cambiato password
     if (!this.users.includes(u) || u.hash !== hash) return null
+    return this.openSession(u.name)!
+  }
+
+  /** Apre una sessione per un utente esistente (dopo l'accesso, o dopo aver accettato un invito). */
+  openSession(name: string): { token: string; user: PublicUser } | null {
+    const u = this.users.find((x) => x.name.toLowerCase() === name.toLowerCase())
+    if (!u) return null
     const token = randomBytes(32).toString('hex')
     this.purge()
     this.trim(u.name)

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111418" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Invito al pannello della radio</title>
+    <link rel="stylesheet" href="pannello.css" />
+  </head>
+  <body>
+    <section class="login">
+      <form id="i-form" class="card" hidden>
+        <h1 id="i-station">Benvenuto</h1>
+        <p class="hint" id="i-who"></p>
+        <label>Il tuo nome per entrare <input id="i-name" autocomplete="username" readonly /></label>
+        <label>Scegli una password (almeno 8 caratteri) <input id="i-pass" type="password" autocomplete="new-password" minlength="8" required /></label>
+        <label>Scrivila di nuovo <input id="i-pass2" type="password" autocomplete="new-password" minlength="8" required /></label>
+        <button class="primary" type="submit">Salva la password ed entra</button>
+        <p id="i-error" class="error" hidden></p>
+      </form>
+      <div id="i-bad" class="card guest" hidden>
+        <h1>Link non valido</h1>
+        <p id="i-bad-text" class="hint"></p>
+        <a class="btn-link" href="/dashboard">Vai alla pagina di accesso</a>
+      </div>
+    </section>
+    <script src="invito.js"></script>
+  </body>
+</html>

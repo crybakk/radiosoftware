@@ -801,13 +801,83 @@ function drawUsers(list) {
   }
 }
 
+const ROLE_NAME = { amministratore: 'Amministratore', conduttore: 'Conduttore', ospite: 'Ospite' }
+let userInviteDays = 7
+
+function userInviteUrl(inv) {
+  // il codice dopo # non arriva nei registri del server né ad altri siti
+  return `${location.origin}/invito.html#t=${encodeURIComponent(inv.token)}`
+}
+
+function dayMonth(iso) {
+  return new Date(iso).toLocaleString('it-IT', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+}
+
+function drawUserInvites(list) {
+  const ul = $('uinv-list')
+  ul.replaceChildren()
+  $('uinv-wait').hidden = !list || !list.length
+  for (const inv of list || []) {
+    const li = el('li')
+    const main = el('div', 't-main')
+    main.append(el('div', 't-title', `${inv.name} · ${ROLE_NAME[inv.role] || inv.role}`), el('div', 't-artist', `invitato da ${inv.by}, scade il ${dayMonth(inv.expiresAt)}`))
+    li.append(
+      main,
+      button('Copia link', '', () => navigator.clipboard.writeText(userInviteUrl(inv)).then(() => notice('Link copiato'), () => {}), 'small'),
+      button('Annulla', 'Il link smette di funzionare', async () => {
+        if (!confirm(`Annullare l'invito per ${inv.name}? Il link smetterà di funzionare.`)) return
+        try {
+          drawUserInvites((await api(`/api/utenti/inviti/${encodeURIComponent(inv.token)}`, { method: 'DELETE' })).invites)
+          if ($('uinv-url').value === userInviteUrl(inv)) $('uinv-out').hidden = true
+        } catch (e) {
+          $('uinv-msg').textContent = e.message
+        }
+      }, 'small')
+    )
+    ul.append(li)
+  }
+}
+
 async function loadUsers() {
   try {
-    drawUsers((await api('/api/utenti')).users)
+    const r = await api('/api/utenti')
+    if (r.inviteDays) userInviteDays = r.inviteDays
+    drawUsers(r.users)
+    drawUserInvites(r.invites)
   } catch (e) {
     $('user-msg').textContent = e.message
   }
 }
+
+$('uinv-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  $('uinv-msg').textContent = ''
+  try {
+    const r = await api('/api/utenti/inviti', {
+      method: 'POST',
+      body: JSON.stringify({ name: $('uinv-name').value.trim(), role: $('uinv-role').value })
+    })
+    $('uinv-url').value = userInviteUrl(r.invite)
+    $('uinv-hint').textContent = `Mandalo a ${r.invite.name} (per esempio su WhatsApp). Vale ${userInviteDays} giorni e una volta sola.`
+    $('uinv-out').hidden = false
+    $('uinv-share').hidden = !navigator.share
+    $('uinv-name').value = ''
+    drawUserInvites(r.invites)
+  } catch (err) {
+    $('uinv-msg').textContent = err.message
+  }
+})
+$('uinv-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('uinv-url').value)
+    notice('Link copiato')
+  } catch {
+    $('uinv-url').select()
+  }
+})
+$('uinv-share').addEventListener('click', () => {
+  navigator.share({ title: 'Invito al pannello della radio', text: 'Apri questo link e scegli la tua password:', url: $('uinv-url').value }).catch(() => {})
+})
 
 $('user-form').addEventListener('submit', async (e) => {
   e.preventDefault()
@@ -817,6 +887,7 @@ $('user-form').addEventListener('submit', async (e) => {
       body: JSON.stringify({ name: $('u-name').value.trim(), role: $('u-role').value, password: $('u-pass').value || undefined })
     })
     drawUsers(r.users)
+    if (r.invites) drawUserInvites(r.invites)
     $('user-msg').textContent = `Utente ${r.user.name} salvato`
     $('u-name').value = ''
     $('u-pass').value = ''

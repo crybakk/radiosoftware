@@ -13,6 +13,8 @@
 - Ascoltando in HLS il player pubblico cambia titolo e copertina con 30 s di ritardo; gli annunci a orario del
   server partono 30 s prima e dicono l'ora prevista (entrambi regolabili).
 - Il processore audio ora si applica una volta sola, dopo la scelta tra programma e musica di emergenza.
+- Nuovi utenti del pannello invitati con un link: l'amministratore sceglie nome e ruolo, chi riceve il link sceglie
+  la password ed entra. Il link vale 7 giorni e una volta sola, e si può annullare.
 
 ## v0.1.0 — 16 novembre 2026 (anteprima)
 
