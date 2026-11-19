@@ -20,6 +20,8 @@
  *   GET  /guida, /guida/immagini/<nome>   guida d'uso con gli screenshot (dopo l'accesso)
  *   POST /api/login, POST /api/logout, GET /api/io
  *   GET/POST /api/utenti, DELETE /api/utenti/<nome>   (solo amministratori)
+ *   POST /api/utenti/inviti, DELETE /api/utenti/inviti/<link>   inviti per nuovi utenti (solo amministratori)
+ *   GET /invito.html#t=<link>, GET/POST /api/invito   chi è invitato sceglie la sua password
  *   WS   /ws/pannello     stato della regia e comandi, microfono, diretta autonoma, ospiti
  *   GET  /ospite.html?t=<link>, WS /ws/ospite?t=<link>   pagina e canale degli ospiti (link creato dal pannello)
  *   PUT  /api/autonoma/carica?nome=<file>   carica un brano nella libreria del server (conduttori)
@@ -59,6 +61,7 @@ import { Alarms, DEFAULT_ALARM_CONFIG, type AlarmKey } from './alarms.ts'
 import { Notifier } from './notifier.ts'
 import { Relay } from './relay.ts'
 import { can, ROLES, sameSecret, Users, type PublicUser, type Role } from './users.ts'
+import { INVITE_DAYS, UserInvites } from './invitiUtenti.ts'
 import { VoiceHub, voiceSockets, weriftFactory } from './voce.ts'
 import { Guests } from './ospiti.ts'
 import { AUDIO_EXT, Library } from './libreria.ts'
@@ -215,6 +218,7 @@ if (env('MICROFONO_REMOTO', 'si') !== 'no') {
 }
 
 const users = new Users(join(DATA_DIR, 'utenti.json'), join(DATA_DIR, 'sessioni.json'))
+const userInvites = new UserInvites(join(DATA_DIR, 'inviti-utenti.json'), users)
 if (users.count() === 0) {
   const pw = env('PANNELLO_ADMIN_PASSWORD')
   if (pw.length >= 8) {
@@ -1117,6 +1121,31 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       return json(res, 404, { error: 'non trovato' })
     }
 
+    // --- invito di un nuovo utente: chi ha il link sceglie la password ---
+    if (url.pathname === '/api/invito') {
+      if (req.method !== 'GET' && req.method !== 'POST') return json(res, 404, { error: 'non trovato' })
+      if (req.method === 'POST' && !sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+      // link sbagliati contati come gli accessi sbagliati: non si possono provare a raffica
+      const cancel = reserveAttempt(clientIp(req))
+      if (!cancel) return json(res, 429, { error: 'Troppi tentativi: riprova tra un minuto' })
+      const body = req.method === 'POST' ? await readJson(req, 4096) : {}
+      const token = req.method === 'POST' ? String(body.t ?? '') : (url.searchParams.get('t') ?? '')
+      const inv = userInvites.find(token)
+      if (!inv) return json(res, 404, { error: 'Link non valido: è scaduto, è già stato usato o è stato annullato. Chiedi un link nuovo.' })
+      cancel()
+      if (req.method === 'GET') {
+        return json(res, 200, { name: inv.name, role: inv.role, station: env('NOME_RADIO', 'Radio'), expiresAt: inv.expiresAt }, { 'Cache-Control': 'no-store' })
+      }
+      const s = userInvites.accept(token, String(body.password ?? ''))
+      if (!s) return json(res, 404, { error: 'Link non valido: è scaduto, è già stato usato o è stato annullato. Chiedi un link nuovo.' })
+      console.log(`[utenti] ${s.user.name} ha accettato l'invito di ${inv.by} (${s.user.role})`)
+      res.setHeader(
+        'Set-Cookie',
+        `sessione=${s.token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${30 * 86400}${tls || viaHttps(req) ? '; Secure' : ''}`
+      )
+      return json(res, 200, { user: s.user })
+    }
+
     // --- pannello remoto (sessione) ---
     if (req.method === 'POST' && url.pathname === '/api/login') {
       if (!sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
@@ -1291,7 +1320,19 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       if (url.pathname === '/api/io') return json(res, 200, { user: me })
       if (!can(me.role, 'utenti')) return json(res, 403, { error: 'solo gli amministratori gestiscono gli utenti' })
       if (req.method !== 'GET' && !sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
-      if (req.method === 'GET' && url.pathname === '/api/utenti') return json(res, 200, { users: users.list(), roles: ROLES })
+      if (req.method === 'GET' && url.pathname === '/api/utenti') {
+        return json(res, 200, { users: users.list(), roles: ROLES, invites: userInvites.list(), inviteDays: INVITE_DAYS })
+      }
+      if (req.method === 'POST' && url.pathname === '/api/utenti/inviti') {
+        const body = await readJson(req, 4096)
+        const inv = userInvites.create(String(body.name ?? ''), String(body.role ?? '') as Role, me.name)
+        console.log(`[utenti] ${me.name} ha invitato ${inv.name} (${inv.role})`)
+        return json(res, 200, { invite: inv, invites: userInvites.list() })
+      }
+      if (req.method === 'DELETE' && url.pathname.startsWith('/api/utenti/inviti/')) {
+        userInvites.revoke(decodeURIComponent(url.pathname.slice('/api/utenti/inviti/'.length)))
+        return json(res, 200, { invites: userInvites.list() })
+      }
       if (req.method === 'POST' && url.pathname === '/api/utenti') {
         const body = await readJson(req, 4096)
         const name = String(body.name ?? '').trim()
@@ -1301,7 +1342,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         if (password) relay.kick(u.name)
         // cambio di ruolo: il pannello si ricollega e riceve il ruolo nuovo
         else if (before && before.role !== u.role) relay.kick(u.name, 4002, 'ruolo cambiato')
-        return json(res, 200, { user: u, users: users.list() })
+        return json(res, 200, { user: u, users: users.list(), invites: userInvites.list() })
       }
       if (req.method === 'DELETE' && url.pathname.startsWith('/api/utenti/')) {
         const name = decodeURIComponent(url.pathname.slice('/api/utenti/'.length))

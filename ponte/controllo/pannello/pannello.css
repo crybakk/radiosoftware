@@ -93,7 +93,8 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding:
 @media (min-width: 840px) { .users { margin: 12px auto; } }
 .table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
 .table td, .table th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--line); }
-.user-form { display: grid; gap: 8px; }
+.user-form { display: grid; gap: 8px; margin-top: 16px; }
+#uinv-wait { margin-top: 12px; }
 
 .mic { grid-column: 1 / -1; }
 .mic-who { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; }

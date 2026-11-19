@@ -284,6 +284,56 @@ describe('ruoli e sessioni del pannello', () => {
   })
 })
 
+describe('invito di un nuovo utente con un link', () => {
+  it("l'amministratore crea il link, l'invitato sceglie la password ed entra; il link non vale una seconda volta", async () => {
+    const { port } = await startServer()
+    const base = `http://127.0.0.1:${port}`
+    const admin = await login(port, 'admin', 'adminadmin')
+    const headers = { 'Content-Type': 'application/json', Cookie: admin.cookie! }
+    const r = await fetch(`${base}/api/utenti/inviti`, { method: 'POST', headers, body: JSON.stringify({ name: 'giulia', role: 'conduttore' }) })
+    expect(r.status).toBe(200)
+    const { invite } = await r.json()
+    const list = await (await fetch(`${base}/api/utenti`, { headers })).json()
+    expect(list.invites.map((i: any) => i.name)).toEqual(['giulia'])
+
+    // senza accesso non si creano inviti
+    expect((await fetch(`${base}/api/utenti/inviti`, { method: 'POST', body: JSON.stringify({ name: 'x1', role: 'amministratore' }) })).status).toBe(401)
+
+    const info = await fetch(`${base}/api/invito?t=${invite.token}`)
+    expect(info.status).toBe(200)
+    expect(await info.json()).toMatchObject({ name: 'giulia', role: 'conduttore' })
+    expect((await fetch(`${base}/invito.html`)).status).toBe(200)
+
+    const ok = await fetch(`${base}/api/invito`, { method: 'POST', body: JSON.stringify({ t: invite.token, password: 'password-giulia' }) })
+    expect(ok.status).toBe(200)
+    const cookie = ok.headers.get('set-cookie')!.split(';')[0]
+    const io = await (await fetch(`${base}/api/io`, { headers: { Cookie: cookie } })).json()
+    expect(io.user).toEqual({ name: 'giulia', role: 'conduttore' })
+    expect((await login(port, 'giulia', 'password-giulia')).status).toBe(200)
+
+    const again = await fetch(`${base}/api/invito`, { method: 'POST', body: JSON.stringify({ t: invite.token, password: 'altra-password' }) })
+    expect(again.status).toBe(404)
+    expect((await login(port, 'giulia', 'altra-password')).status).toBe(401)
+  })
+
+  it('un conduttore non può invitare', async () => {
+    const { port } = await startServer()
+    const base = `http://127.0.0.1:${port}`
+    const admin = await login(port, 'admin', 'adminadmin')
+    await fetch(`${base}/api/utenti`, { method: 'POST', headers: { Cookie: admin.cookie! }, body: JSON.stringify({ name: 'mario', role: 'conduttore', password: 'password1' }) })
+    const mario = await login(port, 'mario', 'password1')
+    const r = await fetch(`${base}/api/utenti/inviti`, { method: 'POST', headers: { Cookie: mario.cookie! }, body: JSON.stringify({ name: 'nuovo', role: 'amministratore' }) })
+    expect(r.status).toBe(403)
+  })
+
+  it('link inventati: dopo 5 tentativi al minuto si aspetta', async () => {
+    const { port } = await startServer()
+    const codes: number[] = []
+    for (let i = 0; i < 6; i++) codes.push((await fetch(`http://127.0.0.1:${port}/api/invito?t=inventato${i}`)).status)
+    expect(codes).toEqual([404, 404, 404, 404, 404, 429])
+  })
+})
+
 describe('accesso al pannello', () => {
   it('il limite di 5 tentativi al minuto per indirizzo regge anche a richieste in parallelo', async () => {
     const { port } = await startServer()
