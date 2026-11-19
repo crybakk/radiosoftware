@@ -68,6 +68,8 @@ function newAction(type: EventAction['type']): EventAction {
       return { type, sourceId: '', title: '' }
     case 'voice':
       return { type, text: 'Sono le {ora}. Avete ascoltato {brano} di {artista}.' }
+    case 'djMix':
+      return { type, on: true }
     default:
       return { type } as EventAction
   }
@@ -128,6 +130,8 @@ function actionSummary(a: EventAction, tracks: Map<number, Track>): string {
       return a.sourceId ? `ultima edizione di "${a.title || a.sourceId}"` : 'nessuna fonte scelta'
     case 'voice':
       return `"${a.text.length > 80 ? `${a.text.slice(0, 77)}…` : a.text}"`
+    case 'djMix':
+      return a.on ? 'acceso: i cambi automatici a tempo, come un DJ' : 'spento: dissolvenza normale'
   }
 }
 
@@ -774,6 +778,24 @@ function ActionForm({
       return <ReplayForm action={a} onChange={onChange} />
     case 'voice':
       return <VoiceForm action={a} onChange={onChange} />
+    case 'djMix':
+      return (
+        <div>
+          <div className="row">
+            <button className={`small ${a.on ? 'on' : ''}`} onClick={() => onChange({ ...a, on: true })}>
+              Accendi il Mix DJ
+            </button>
+            <button className={`small ${!a.on ? 'on' : ''}`} onClick={() => onChange({ ...a, on: false })}>
+              Spegni il Mix DJ
+            </button>
+          </div>
+          <div className="hint">
+            Acceso, in automatico i brani si cambiano a tempo come un DJ (sul battito, con lo scambio dei bassi e, se
+            serve, un loop). I brani senza ritmo regolare o con tempi troppo diversi usano la dissolvenza normale. Resta
+            acceso fino a un evento che lo spegne.
+          </div>
+        </div>
+      )
     case 'news': {
       const known = news.some((n) => n.id === a.sourceId)
       return (

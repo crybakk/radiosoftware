@@ -248,6 +248,27 @@ export function SettingsView({ radio }: { radio: Radio }) {
               />
             </label>
           ))}
+          <label className="check">
+            <input type="checkbox" checked={draft.djMix} onChange={(e) => setDraft({ ...draft, djMix: e.target.checked })} />
+            <span>
+              Mix DJ nei cambi automatici <em>· brani a tempo, come un DJ; si accende e spegne anche con gli eventi</em>
+            </span>
+          </label>
+          <label>
+            <span>
+              Mix DJ: velocità massima cambiata <em>· quanto può accelerare o rallentare il brano che entra</em>
+            </span>
+            <select
+              value={Math.round(draft.djMaxStretch * 100)}
+              onChange={(e) => setDraft({ ...draft, djMaxStretch: Number(e.target.value) / 100 })}
+            >
+              {[3, 4, 6, 8, 10].map((p) => (
+                <option key={p} value={p}>
+                  ±{p}%{p === 6 ? ' (consigliato)' : p > 6 ? ' (si sente di più)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </section>
 

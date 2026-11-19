@@ -34,8 +34,12 @@ export function useRadio() {
           track: cur ? { title: cur.title, artist: cur.artist } : null,
           nextTrack: next ? { title: next.title, artist: next.artist } : null
         })
-        // un evento può aver cambiato il profilo di rotazione
-        if (event.actions.some((a) => a.type === 'rotation')) setSettings(await api.getSettings())
+        // un evento può aver cambiato il profilo di rotazione o acceso/spento il Mix DJ
+        if (event.actions.some((a) => a.type === 'rotation' || a.type === 'djMix')) {
+          const s = await api.getSettings()
+          setSettings(s)
+          engineRef.current?.setOptions({ djMix: s.djMix, djMaxStretch: s.djMaxStretch })
+        }
         return steps
       }
     }
@@ -150,7 +154,9 @@ export function useRadio() {
       engine.setOptions({
         crossfadeSeconds: s.crossfadeSeconds,
         targetLoudness: s.targetLoudness,
-        autoQueueLength: s.autoQueueLength
+        autoQueueLength: s.autoQueueLength,
+        djMix: s.djMix,
+        djMaxStretch: s.djMaxStretch
       })
       try {
         await backend.setOutputDevice(s.outputDeviceId)

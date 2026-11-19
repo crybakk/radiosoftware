@@ -82,6 +82,10 @@ export interface Settings {
   cartwall: (number | null)[]
   /** Profilo di rotazione attivo, impostato dagli eventi (null = rotazione normale). */
   rotationProfile: RotationProfile | null
+  /** Mix DJ nei cambi automatici (acceso e spento dagli eventi o dalle impostazioni). */
+  djMix: boolean
+  /** Variazione massima di velocità del brano che entra nel Mix DJ (0.06 = ±6%). */
+  djMaxStretch: number
   /** Collegamento con il server ponte (invio del programma, allarmi, backup). */
   ponte: PonteSettings
   /** Fonti dei notiziari (feed dei podcast o link diretti). */
@@ -183,6 +187,8 @@ export const DEFAULT_SETTINGS: Settings = {
   previewDeviceId: '',
   cartwall: Array(12).fill(null),
   rotationProfile: null,
+  djMix: false,
+  djMaxStretch: 0.06,
   ponte: DEFAULT_PONTE,
   news: [],
   voice: DEFAULT_VOICE,
@@ -225,6 +231,8 @@ export type EventAction =
   | { type: 'news'; sourceId: string; title: string }
   /** Annuncio con la voce sintetica: testo con le parti che si riempiono da sole ({ora}, {brano}, ...). */
   | { type: 'voice'; text: string }
+  /** Mix DJ acceso o spento per i cambi automatici (resta così fino al prossimo evento che lo cambia). */
+  | { type: 'djMix'; on: boolean }
 
 export const ACTION_LABELS: Record<EventAction['type'], string> = {
   play: 'Brano',
@@ -238,7 +246,8 @@ export const ACTION_LABELS: Record<EventAction['type'], string> = {
   command: 'Comando esterno',
   replay: 'Replica di un programma',
   news: 'Notiziario',
-  voice: 'Annuncio vocale'
+  voice: 'Annuncio vocale',
+  djMix: 'Mix DJ'
 }
 
 /** Evento a orario fisso. */

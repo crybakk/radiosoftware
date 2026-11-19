@@ -228,6 +228,9 @@ export async function expandEvent(db: RadioDb, event: ScheduledEvent, fx: EventE
       case 'rotation':
         db.saveSettings({ rotationProfile: a.profile })
         break
+      case 'djMix':
+        db.saveSettings({ djMix: a.on })
+        break
       case 'replay': {
         let t: Track | null = null
         let why = 'nessuna puntata pubblicata'

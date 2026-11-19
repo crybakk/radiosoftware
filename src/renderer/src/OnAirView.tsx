@@ -69,7 +69,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
                 <span>{mmss(main.position)}</span>
                 <span className="remaining">-{mmss(main.remaining)}</span>
               </div>
-              {s.mode === 'auto' && s.queue.length > 0 && (
+              {(s.mode === 'auto' || s.dj.once) && s.queue.length > 0 && (
                 <div className="now-mix">Prossimo tra {mmss(main.toMix)}</div>
               )}
             </>
@@ -94,6 +94,25 @@ export function OnAirView({ radio }: { radio: Radio }) {
           <button className="big stop" disabled={!main} onClick={() => engine.stop()}>
             ■ STOP
           </button>
+          <div className="dj-row">
+            <button
+              className={`dj-once ${s.dj.once ? 'on' : ''}`}
+              disabled={!main || !s.queue.length}
+              title="Il prossimo cambio sarà a tempo, come un DJ (una volta sola)"
+              onClick={() => engine.setDjOnce(!s.dj.once)}
+            >
+              🎧 {s.dj.once ? 'Mix DJ prenotato (annulla)' : 'Mixa il prossimo'}
+            </button>
+            <span className={`dj-info ${s.dj.next && !s.dj.next.ok ? 'warn' : ''}`}>
+              {s.dj.mixing
+                ? 'Mix DJ in corso'
+                : s.dj.next
+                  ? s.dj.next.text
+                  : s.dj.always
+                    ? 'Mix DJ acceso nei cambi automatici'
+                    : ''}
+            </span>
+          </div>
         </div>
 
         <div className="queue" data-sezione="queue" data-titolo="In coda">

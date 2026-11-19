@@ -1,3 +1,4 @@
+import { DEFAULT_MAX_STRETCH, planMix, type MixDecision, type MixPlan } from './djMix'
 import { dueEvents } from './events'
 import { airTime } from './rotation'
 import { gainForTrack, type QueueItem, type ScheduledEvent, type Track } from './types'
@@ -16,7 +17,15 @@ export interface Player {
 
 export interface AudioBackend {
   createPlayer(track: Track, gainDb: number): Player
+  /**
+   * Mix DJ (facoltativo): avvia `to` agganciato al battito di `from` secondo il piano e prepara l'uscita di `from`
+   * (bassi, loop, sfumatura): `from` finisce da solo alla fine del mix. Rifiuta se non si può (si torna al cambio normale).
+   */
+  startMix?(from: Player, to: Player, plan: MixPlan): Promise<void>
 }
+
+/** Secondi di anticipo con cui si prepara il brano che entra nel Mix DJ. */
+export const DJ_LEAD_SECONDS = 6
 
 /** Servizi esterni al motore: database, rotazione, registro. */
 export interface PlayoutHost {
@@ -45,6 +54,22 @@ export interface PlayoutOptions {
   crossfadeSeconds: number
   targetLoudness: number
   autoQueueLength: number
+  /** Mix DJ acceso per tutti i cambi automatici (impostato dagli eventi). */
+  djMix?: boolean
+  /** Variazione massima di velocità nel Mix DJ (0.06 = ±6%). */
+  djMaxStretch?: number
+}
+
+/** Stato del Mix DJ per l'interfaccia. */
+export interface DjState {
+  /** Acceso per tutti i cambi automatici. */
+  always: boolean
+  /** Acceso per il prossimo cambio soltanto. */
+  once: boolean
+  /** Il prossimo cambio: Mix DJ possibile o motivo per cui sarà una dissolvenza. null = niente in coda. */
+  next: { ok: boolean; text: string } | null
+  /** Un Mix DJ è in corso. */
+  mixing: boolean
 }
 
 export interface OnAirInfo {
@@ -66,6 +91,7 @@ export interface PlayoutSnapshot {
   queue: (QueueItem & { eta: string })[]
   carts: { uid: string; track: Track; position: number; remaining: number }[]
   lastError: string | null
+  dj: DjState
 }
 
 interface Slot {
@@ -76,6 +102,10 @@ interface Slot {
   mixTriggered: boolean
   fading: boolean
   ended: boolean
+  /** Sta uscendo con un Mix DJ: finisce da solo. */
+  mixingOut?: boolean
+  /** Il Mix DJ non è riuscito: per questo brano vale il cambio normale. */
+  noDj?: boolean
 }
 
 /** Identifica un jingle della cartwall (i brani della libreria per id, gli altri per file). */
@@ -114,6 +144,8 @@ export class PlayoutEngine {
   /** Cresce a ogni STOP: un brano che stava caricando quando è stato premuto non va in onda. */
   private generation = 0
   private listeners = new Set<(s: PlayoutSnapshot) => void>()
+  /** Mix DJ per il prossimo cambio soltanto (pulsante in regia). */
+  private djOnce = false
 
   constructor(
     private backend: AudioBackend,
@@ -149,6 +181,12 @@ export class PlayoutEngine {
 
   getMode(): PlayoutMode {
     return this.mode
+  }
+
+  /** Mix DJ per il solo prossimo cambio (si spegne da solo dopo il cambio). */
+  setDjOnce(on: boolean): void {
+    this.djOnce = on
+    this.emit()
   }
 
   /** Avvia il primo brano in coda se non c'è nulla in onda. */
@@ -258,7 +296,11 @@ export class PlayoutEngine {
     // Un brano di durata sconosciuta (non analizzato) passa al successivo solo quando finisce davvero.
     if (cur && !cur.mixTriggered && !cur.fading && this.knownLength(cur.item.track)) {
       const pos = cur.player.position()
-      if (pos >= this.mixPoint(cur.item.track)) {
+      const dj = this.djPlan(cur)
+      if (dj?.ok && pos >= dj.plan.aStart - DJ_LEAD_SECONDS) {
+        cur.mixTriggered = true
+        await this.startDjMix(cur, dj.plan)
+      } else if (!dj?.ok && pos >= this.mixPoint(cur.item.track)) {
         cur.mixTriggered = true
         if (this.mode === 'auto' || this.queue[0]?.origin === 'event') await this.startNext()
       }
@@ -286,6 +328,8 @@ export class PlayoutEngine {
   snapshot(): PlayoutSnapshot {
     const etas = this.etas()
     const live = this.slots.filter((s) => !s.ended)
+    const cur = this.current()
+    const djNow = cur && !cur.mixTriggered ? this.djPlan(cur) : null
     return {
       mode: this.mode,
       onAir: live.map((s) => {
@@ -296,8 +340,8 @@ export class PlayoutEngine {
           origin: s.item.origin,
           position: pos,
           remaining: Math.max(0, this.endPoint(s.item.track) - pos),
-          toMix: Math.max(0, this.mixPoint(s.item.track) - pos),
-          fading: s.fading
+          toMix: Math.max(0, (s === cur && djNow?.ok ? djNow.plan.aStart : this.mixPoint(s.item.track)) - pos),
+          fading: s.fading || !!s.mixingOut
         }
       }),
       queue: this.queue.map((q, i) => ({ ...q, eta: etas[i].toISOString() })),
@@ -312,7 +356,8 @@ export class PlayoutEngine {
             remaining: Math.max(0, this.endPoint(c.item.track) - pos)
           }
         }),
-      lastError: this.lastError
+      lastError: this.lastError,
+      dj: this.djState()
     }
   }
 
@@ -394,9 +439,69 @@ export class PlayoutEngine {
   private current(): Slot | undefined {
     for (let i = this.slots.length - 1; i >= 0; i--) {
       const s = this.slots[i]
-      if (!s.ended && !s.fading) return s
+      if (!s.ended && !s.fading && !s.mixingOut) return s
     }
     return undefined
+  }
+
+  /** Il prossimo cambio sarà un Mix DJ? Solo dove il cambio avviene da solo, o se l'ha chiesto la regia. */
+  private djWanted(): boolean {
+    const next = this.queue[0]
+    if (!next || !this.backend.startMix) return false
+    if (this.djOnce) return true
+    return !!this.options.djMix && (this.mode === 'auto' || next.origin === 'event')
+  }
+
+  /** Piano del Mix DJ dal brano in onda al primo in coda; null se il Mix DJ non è richiesto. */
+  private djPlan(cur: Slot): MixDecision | null {
+    if (cur.noDj || !this.djWanted()) return null
+    const d = planMix(cur.item.track, this.queue[0].track, this.options.djMaxStretch ?? DEFAULT_MAX_STRETCH)
+    // il punto del mix è già passato (Mix DJ chiesto all'ultimo momento): cambio normale
+    if (d.ok && cur.player.position() > d.plan.aStart - 0.5) return { ok: false, reason: 'chiesto troppo tardi per questo brano' }
+    return d
+  }
+
+  private djState(): DjState {
+    const cur = this.current()
+    let next: DjState['next'] = null
+    if (this.queue[0] && (this.djOnce || this.options.djMix)) {
+      const d = cur && !cur.mixTriggered ? this.djPlan(cur) : null
+      if (d?.ok) next = { ok: true, text: `Mix DJ di ${d.plan.bars} battute${d.plan.loop ? ' con loop' : ''}` }
+      else if (d) next = { ok: false, text: `Dissolvenza normale: ${d.reason}` }
+      else if (cur && !this.djWanted()) next = { ok: false, text: 'In manuale il Mix DJ vale solo con "Mixa il prossimo"' }
+    }
+    return {
+      always: !!this.options.djMix,
+      once: this.djOnce,
+      next,
+      mixing: this.slots.some((s) => s.mixingOut && !s.ended)
+    }
+  }
+
+  /** Avvia il Mix DJ; se non riesce il brano torna in testa alla coda e vale il cambio normale. */
+  private async startDjMix(cur: Slot, plan: MixPlan): Promise<void> {
+    if (this.starting || !this.backend.startMix) return
+    this.starting = true
+    const gen = this.generation
+    const item = this.queue.shift()!
+    try {
+      this.eventDeadlines.delete(item.uid)
+      const slot = await this.launch(item, this.slots, (p) => this.backend.startMix!(cur.player, p, plan))
+      if (slot) {
+        cur.mixingOut = true
+        this.djOnce = false
+      } else if (gen === this.generation) {
+        this.queue.unshift(item)
+        cur.noDj = true
+        cur.mixTriggered = false
+        if (this.lastError) this.lastError = `Mix DJ non riuscito, cambio normale (${this.lastError})`
+      } else {
+        this.queue.unshift(item)
+      }
+    } finally {
+      this.starting = false
+      this.emit()
+    }
   }
 
   private mixPoint(t: Track): number {
@@ -419,7 +524,11 @@ export class PlayoutEngine {
     const now = this.now().getTime()
     const cur = this.current()
     let t = now
-    if (cur) t += Math.max(0, this.mixPoint(cur.item.track) - cur.player.position()) * 1000
+    if (cur) {
+      const dj = cur.mixTriggered ? null : this.djPlan(cur)
+      const at = dj?.ok ? dj.plan.aStart : this.mixPoint(cur.item.track)
+      t += Math.max(0, at - cur.player.position()) * 1000
+    }
     return this.queue.map((q) => {
       const at = new Date(t)
       t += airTime(q.track) * 1000
@@ -456,7 +565,11 @@ export class PlayoutEngine {
     }
   }
 
-  private async launch(item: QueueItem, list: Slot[]): Promise<Slot | null> {
+  private async launch(
+    item: QueueItem,
+    list: Slot[],
+    start: (p: Player) => Promise<void> = (p) => p.start()
+  ): Promise<Slot | null> {
     const player = this.backend.createPlayer(item.track, gainForTrack(item.track, this.options.targetLoudness))
     const slot: Slot = {
       item,
@@ -471,7 +584,7 @@ export class PlayoutEngine {
     const gen = this.generation
     const stale = (): boolean => list === this.slots && gen !== this.generation
     try {
-      await player.start()
+      await start(player)
     } catch (err) {
       if (stale()) {
         slot.ended = true

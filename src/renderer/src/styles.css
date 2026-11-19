@@ -102,6 +102,11 @@ main { flex: 1; overflow: hidden; }
 .big.play { background: #14532d; border-color: var(--green); }
 .big.next { background: #1e3a8a; border-color: var(--accent); }
 .big.stop { background: #7f1d1d; border-color: var(--red); }
+.dj-row { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+.dj-once { font-weight: 700; padding: 10px 14px; border-radius: 10px; background: #3b0764; border-color: #a855f7; }
+.dj-once.on { background: #a855f7; color: #12021f; }
+.dj-info { font-size: 13px; color: var(--muted, #9ca3af); }
+.dj-info.warn { color: #fde68a; }
 
 .queue { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
 .track-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
