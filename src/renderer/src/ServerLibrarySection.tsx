@@ -30,8 +30,9 @@ export function ServerLibrarySection({
   }, [])
 
   const load = async (): Promise<void> => setRows(await api.serverSyncList(filter, q))
+  // l'elenco si carica subito (non una finestra vuota) e si aggiorna cambiando il filtro
   useEffect(() => {
-    if (rows) void load()
+    void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter])
 

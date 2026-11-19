@@ -138,11 +138,20 @@ function connect() {
       studio = m.studio
       if (m.state) setState(m.state)
       render()
+      // la libreria della regia si vede subito (se la regia è collegata), senza dover cercare
+      if (studio && !libBrowsed) {
+        libBrowsed = true
+        $('search-form').requestSubmit()
+      }
     } else if (m.t === 'state') {
       setState(m.state)
     } else if (m.t === 'studio') {
       studio = m.connected
       render()
+      if (studio && !libBrowsed) {
+        libBrowsed = true
+        $('search-form').requestSubmit()
+      }
     } else if (m.t === 'alarms') {
       $('alarms').hidden = !m.alarms.length
       $('alarms').textContent = m.alarms.map((a) => `⚠ ${a.message}`).join('  ·  ')
@@ -155,6 +164,11 @@ function connect() {
     } else if (m.t === 'autonoma') {
       auto = m.state
       renderAuto()
+      // la libreria del server si vede subito, senza dover cercare
+      if (!autoBrowsed && auto && !$('auto-card').hidden) {
+        autoBrowsed = true
+        $('auto-search-form').requestSubmit()
+      }
     } else if (m.t === 'mic') {
       mic = m.mic
       renderMic()
@@ -565,6 +579,8 @@ $('invites-show').addEventListener('click', () => {
 // ---------- diretta autonoma ----------
 
 let auto = null
+let autoBrowsed = false
+let libBrowsed = false
 const autoCmd = (cmd) => request({ t: 'auto', cmd })
 
 function renderAuto() {
