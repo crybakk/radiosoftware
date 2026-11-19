@@ -6,8 +6,8 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 20/11/2026, la regia analizza la musica per il Mix DJ: BPM, battiti, tonalità, energia,
-intro e outro di ogni brano.
+**Ultimo aggiornamento:** 20/11/2026, Mix DJ: cambi di brano a tempo, come un DJ, dal pulsante "Mixa il prossimo"
+o dagli eventi; la regia analizza la musica (BPM, battiti, tonalità, energia, intro e outro).
 
 ## Indice
 
@@ -97,6 +97,29 @@ passato e quello che manca: negli ultimi secondi diventa rosso.
 
 **Dopo un riavvio o un blackout** la regia riparte nella modalità in cui era: se era in AUTOMATICO riprende a
 suonare da sola, se era in MANUALE resta ferma.
+
+### Mix DJ: cambi a tempo
+
+Invece della solita dissolvenza, il **Mix DJ** passa al brano successivo come un DJ:
+
+- il brano che entra parte sul battito, all'inizio di una frase musicale, e per tutto il mix segue il tempo di
+  quello che esce (lo accelera o rallenta un po', senza cambiare l'intonazione); finito il mix torna piano piano
+  alla sua velocità;
+- entra senza bassi; a metà mix i bassi passano dal brano che esce a quello che entra, poi il primo sfuma;
+- se il finale del brano che esce è troppo corto, ripete in **loop** le sue ultime 4 battute piene finché il mix
+  non è finito.
+
+Si usa in due modi:
+
+- **🎧 Mixa il prossimo** (sotto PLAY / AVANTI / STOP): solo il prossimo cambio sarà un Mix DJ, anche in manuale.
+  Ripremilo per annullare. Accanto la regia dice cosa farà ("Mix DJ di 16 battute", "con loop") oppure perché userà
+  la dissolvenza normale.
+- **Sempre, in automatico**: con l'azione **Mix DJ** di un evento (per esempio acceso dalle 22 alle 2) oppure in
+  **Impostazioni** → **Mix DJ nei cambi automatici**.
+
+Il Mix DJ funziona solo con la musica già analizzata (riga "Analisi per il Mix DJ" in Libreria) e con ritmo
+regolare. Se i tempi dei due brani sono troppo diversi (oltre il ±6%, si cambia in **Impostazioni**), con jingle,
+notiziari e brani parlati, la regia usa la dissolvenza normale. **AVANTI** e **STOP** funzionano come sempre.
 
 ## 3. Fare una diretta esterna
 
@@ -299,6 +322,7 @@ Un evento fa una serie di cose, in ordine, a un orario. Scheda **Eventi** → **
 | Replica di un programma | l'ultima puntata pubblicata del programma ([sezione 13](#13-programmi-puntate-e-repliche)) |
 | Notiziario | l'ultima edizione di un notiziario scaricato da internet ([Notiziari](#notiziari)) |
 | Annuncio vocale | un testo letto dalla voce sintetica ([Voce sintetica](#voce-sintetica)) |
+| Mix DJ | accende o spegne i cambi a tempo in automatico ([Mix DJ](#mix-dj-cambi-a-tempo)); resta così fino a un evento che lo cambia |
 
 Con **▶ Prova** esegui subito un evento per vedere come va. **Duplica** crea una copia da modificare. In alto vedi
 i prossimi eventi e, se attivo, il profilo di rotazione in uso.
@@ -1042,8 +1066,7 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 
 ## 25. In arrivo
 
-- **Mix DJ**: cambi di brano a tempo, sul battito, con lo scambio dei bassi e, quando serve, un loop sul finale del
-  brano che esce. Si accende dagli eventi o con un pulsante per un solo cambio.
+- Mix DJ anche sul server (diretta autonoma e musica di emergenza) e dal pannello.
 - Rotazione anche in base all'energia dei brani.
 - FluidStream, se un giorno servirà.
 
@@ -1081,3 +1104,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 19/11/2026 | Utenti del pannello invitati con un link (7 giorni, una volta sola): la password la sceglie chi lo riceve |
 | 19/11/2026 | Schede di benvenuto al primo accesso nel pannello, adatte al ruolo; si rivedono dal menu ☰ → 👋 Benvenuto |
 | 20/11/2026 | Analisi per il Mix DJ in Libreria: BPM, battiti, tonalità, energia, intro e outro di ogni brano |
+| 20/11/2026 | Mix DJ in regia: pulsante "Mixa il prossimo", azione "Mix DJ" negli eventi e impostazione per i cambi automatici |
