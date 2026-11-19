@@ -36,6 +36,7 @@
         <button id="users-btn" class="ghost" hidden>Utenti</button>
         <button id="imp-btn" class="ghost" hidden>Impostazioni server</button>
         <a id="guide-link" class="btn-link" href="/guida" target="_blank" rel="noopener">📖 Guida</a>
+        <button id="welcome-btn" class="ghost">👋 Benvenuto</button>
         <a class="btn-link" href="/" target="_blank" rel="noopener">📻 Player pubblico</a>
         <button id="logout" class="ghost">Esci</button>
       </nav>
@@ -341,11 +342,25 @@
         </form>
       </section>
     </section>
+    <div id="welcome" class="welcome" role="dialog" aria-modal="true" aria-labelledby="wel-title" hidden>
+      <div class="card welcome-card">
+        <div id="wel-icon" class="wel-icon"></div>
+        <h2 id="wel-title"></h2>
+        <p id="wel-text"></p>
+        <div id="wel-dots" class="wel-dots"></div>
+        <div class="wel-buttons">
+          <button id="wel-skip" class="ghost" type="button">Salta</button>
+          <button id="wel-back" type="button">← Indietro</button>
+          <button id="wel-next" class="primary" type="button">Avanti →</button>
+        </div>
+      </div>
+    </div>
     <script src="/pannello.js"></script>
     <script src="/programmi.js"></script>
     <script src="/ascoltatori.js"></script>
     <script src="/annunci.js"></script>
     <script src="/impostazioni.js"></script>
     <script src="/navigazione.js"></script>
+    <script src="/benvenuto.js"></script>
   </body>
 </html>

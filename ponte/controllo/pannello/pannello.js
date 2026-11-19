@@ -92,6 +92,8 @@ function showApp() {
   showRole()
   connect()
   loadUnknowns()
+  // benvenuto.js si carica dopo: al primo avvio la funzione c'è già quando arriva la risposta di /api/io
+  setTimeout(() => typeof checkWelcome === 'function' && checkWelcome(), 0)
 }
 
 /** Pulsanti e sezioni secondo il ruolo (anche quando l'amministratore lo cambia a pannello aperto). */

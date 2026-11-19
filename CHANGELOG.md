@@ -15,6 +15,8 @@
 - Il processore audio ora si applica una volta sola, dopo la scelta tra programma e musica di emergenza.
 - Nuovi utenti del pannello invitati con un link: l'amministratore sceglie nome e ruolo, chi riceve il link sceglie
   la password ed entra. Il link vale 7 giorni e una volta sola, e si può annullare.
+- Schede di benvenuto al primo accesso nel pannello, diverse secondo il ruolo; si rivedono dal menu ☰ → 👋 Benvenuto.
+  Gli utenti che esistevano già non le vedono da sole.
 
 ## v0.1.0 — 16 novembre 2026 (anteprima)
 

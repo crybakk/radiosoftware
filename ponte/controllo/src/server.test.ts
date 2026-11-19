@@ -309,6 +309,11 @@ describe('invito di un nuovo utente con un link', () => {
     const cookie = ok.headers.get('set-cookie')!.split(';')[0]
     const io = await (await fetch(`${base}/api/io`, { headers: { Cookie: cookie } })).json()
     expect(io.user).toEqual({ name: 'giulia', role: 'conduttore' })
+    // primo accesso: benvenuto; visto, non torna più
+    expect(io.benvenuto).toBe(true)
+    expect((await fetch(`${base}/api/io/benvenuto`, { method: 'POST', headers: { Cookie: cookie } })).status).toBe(200)
+    expect((await (await fetch(`${base}/api/io`, { headers: { Cookie: cookie } })).json()).benvenuto).toBe(false)
+    expect((await fetch(`${base}/api/io/benvenuto`, { method: 'POST' })).status).toBe(401)
     expect((await login(port, 'giulia', 'password-giulia')).status).toBe(200)
 
     const again = await fetch(`${base}/api/invito`, { method: 'POST', body: JSON.stringify({ t: invite.token, password: 'altra-password' }) })

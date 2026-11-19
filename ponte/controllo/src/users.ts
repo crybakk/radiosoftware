@@ -14,6 +14,8 @@ export interface User {
   role: Role
   hash: string
   salt: string
+  /** non ha ancora visto il benvenuto del pannello (solo utenti creati dopo il 19/11/2026) */
+  nuovo?: boolean
 }
 
 export interface PublicUser {
@@ -137,7 +139,7 @@ export class Users {
     if (existing && existing.role === 'amministratore' && role !== 'amministratore' && this.admins() === 1) {
       throw new Error("Deve restare almeno un amministratore")
     }
-    const user = existing ?? { name, role, hash: '', salt: '' }
+    const user: User = existing ?? { name, role, hash: '', salt: '', nuovo: true }
     user.role = role
     if (password) {
       user.salt = randomBytes(16).toString('hex')
@@ -156,6 +158,19 @@ export class Users {
     if (u.role === 'amministratore' && this.admins() === 1) throw new Error('Deve restare almeno un amministratore')
     this.users = this.users.filter((x) => x !== u)
     this.dropSessions(u.name)
+    writeJson(this.usersFile, this.users)
+  }
+
+  /** Deve vedere il benvenuto del pannello (primo accesso)? */
+  isNew(name: string): boolean {
+    return this.users.find((x) => x.name.toLowerCase() === name.toLowerCase())?.nuovo === true
+  }
+
+  /** Benvenuto visto (o saltato): non si mostra più da solo. */
+  welcomed(name: string): void {
+    const u = this.users.find((x) => x.name.toLowerCase() === name.toLowerCase())
+    if (!u?.nuovo) return
+    delete u.nuovo
     writeJson(this.usersFile, this.users)
   }
 
