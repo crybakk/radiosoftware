@@ -12,7 +12,7 @@ import { StatsView } from './StatsView'
 import { useRadio } from './useRadio'
 import { RiordinaContext, useOrdineSalvato } from './Riquadri'
 import { salvaOrdine, spostaSezione, unisciOrdine } from './ordine'
-import type { AggiornamentoStato } from '../../shared/api'
+import type { AggiornamentoStato, NovitaInstallate, NovitaVersione } from '../../shared/api'
 
 type Tab = 'onair' | 'library' | 'events' | 'log' | 'stats' | 'link' | 'settings' | 'guide'
 
@@ -115,6 +115,7 @@ export function App() {
       </header>
       {radio.audioError && <div className="banner error">{radio.audioError}</div>}
       <RestoredBanner />
+      <NovitaBanner />
       <UpdateBanner />
       {radio.snapshot.lastError && <div className="banner warn">{radio.snapshot.lastError}</div>}
       <main>
@@ -162,11 +163,56 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
   }
 }
 
+/** Elenco delle novità per versione, dalla più recente. */
+export function ElencoNovita({ novita }: { novita: NovitaVersione[] }) {
+  return (
+    <div className="novita">
+      {novita.map((v, i) => (
+        <details key={v.versione} open={i === 0}>
+          <summary>Versione {v.versione}</summary>
+          <ul>
+            {v.novita.map((n, j) => (
+              <li key={j}>{n}</li>
+            ))}
+          </ul>
+        </details>
+      ))}
+    </div>
+  )
+}
+
+/** Alla prima apertura dopo un aggiornamento: cosa è stato fatto, finché non si preme "Ho letto". */
+function NovitaBanner() {
+  const [n, setN] = useState<NovitaInstallate | null>(null)
+  useEffect(() => {
+    void window.radio.novitaInstallate().then(setN)
+  }, [])
+  if (!n) return null
+  return (
+    <div className="banner ok novita-banner">
+      <div className="row">
+        <b>Radio Regia aggiornata alla versione {n.a}. Ecco cosa è cambiato:</b>
+        <button
+          className="small"
+          onClick={() => {
+            setN(null)
+            void window.radio.novitaLette()
+          }}
+        >
+          Ho letto
+        </button>
+      </div>
+      {n.novita.length ? <ElencoNovita novita={n.novita} /> : <p>Nessuna descrizione per questa versione.</p>}
+    </div>
+  )
+}
+
 /** Versione nuova disponibile: si installa solo premendo "Aggiorna" (la regia si chiude e riparte). */
 function UpdateBanner() {
   const [st, setSt] = useState<AggiornamentoStato | null>(null)
   const [nascosto, setNascosto] = useState<string | null>(null)
   const [conferma, setConferma] = useState(false)
+  const [cosa, setCosa] = useState(false)
   useEffect(() => {
     void window.radio.aggiornamentoStato().then(setSt)
     return window.radio.onAggiornamento(setSt)
@@ -183,29 +229,41 @@ function UpdateBanner() {
       </div>
     )
   return (
-    <div className="banner ok inline-banner">
-      È disponibile Radio Regia {st.versione} (ora hai la {st.attuale}).{' '}
-      {conferma ? (
-        <>
-          La regia si chiude e riparte da sola (circa un minuto): se sei in onda, intanto il server manda la musica di emergenza.{' '}
-          <button className="small" onClick={() => void window.radio.aggiornamentoInstalla().catch(() => undefined)}>
-            Aggiorna adesso
-          </button>{' '}
-          <button className="small" onClick={() => setConferma(false)}>
-            Annulla
+    <>
+      <div className="banner ok inline-banner">
+        È disponibile Radio Regia {st.versione} (ora hai la {st.attuale}).{' '}
+        {!!st.novita?.length && (
+          <button className="small" onClick={() => setCosa(!cosa)}>
+            {cosa ? 'Nascondi le novità' : 'Cosa cambia?'}
           </button>
-        </>
-      ) : (
-        <>
-          <button className="small" onClick={() => setConferma(true)}>
-            Aggiorna
-          </button>{' '}
-          <button className="small" onClick={() => setNascosto(st.versione ?? null)}>
-            Più tardi
-          </button>
-        </>
+        )}{' '}
+        {conferma ? (
+          <>
+            La regia si chiude e riparte da sola (circa un minuto): se sei in onda, intanto il server manda la musica di emergenza.{' '}
+            <button className="small" onClick={() => void window.radio.aggiornamentoInstalla().catch(() => undefined)}>
+              Aggiorna adesso
+            </button>{' '}
+            <button className="small" onClick={() => setConferma(false)}>
+              Annulla
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="small" onClick={() => setConferma(true)}>
+              Aggiorna
+            </button>{' '}
+            <button className="small" onClick={() => setNascosto(st.versione ?? null)}>
+              Più tardi
+            </button>
+          </>
+        )}
+      </div>
+      {cosa && !!st.novita?.length && (
+        <div className="banner ok novita-banner">
+          <ElencoNovita novita={st.novita} />
+        </div>
       )}
-    </div>
+    </>
   )
 }
 

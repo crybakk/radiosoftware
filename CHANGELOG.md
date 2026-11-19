@@ -1,15 +1,11 @@
 # Novità
 
-## Prossima versione
+Dopo la v0.1.10 le novità di ogni versione sono nei file della cartella [`novita/`](novita/LEGGIMI.md) e nella
+descrizione di ogni release su GitHub; regia e pannello le mostrano quando si aggiorna.
 
-### Regia (PC di studio)
-
-- Schede in alto e riquadri di ogni pagina nell'ordine che preferisci: pulsante ⇅ Riordina, frecce, Ripristina.
+## Dalla v0.1.1 alla v0.1.10
 
 ### Server (ponte)
-
-- Pannello: riquadri della panoramica e voci del menu nell'ordine che preferisci (☰ → ⇅ Riordina); l'ordine resta
-  salvato nel browser.
 
 - Flusso HLS con tre qualità AAC (64, 128 e 192 kbit/s) scelte dal lettore in base alla rete, all'indirizzo di
   AzuraCast `/hls/<stazione>/live.m3u8`; anche `/api/nowplaying` lo indica come AzuraCast (`hls_url`). Gli

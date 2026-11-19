@@ -110,7 +110,12 @@ const impostazioni = new Impostazioni(env('IMPOSTAZIONI_FILE', '/impostazioni/.e
 // aggiornamento del server dalle release (solo quando un amministratore preme "Aggiorna server")
 // Stereo Tool: libreria scaricata da riavvia.sh e preset caricato dal pannello (vedi stereotool.ts)
 const stereoTool = new StereoTool(env('STEREOTOOL_CARTELLA', '/stereotool'))
-const aggiornamento = new AggiornamentoServer({ attuale: env('VERSIONE_SERVER'), cartellaRichieste: env('IMPOSTAZIONI_RICHIESTE', '/richieste') })
+const aggiornamento = new AggiornamentoServer({
+  attuale: env('VERSIONE_SERVER'),
+  cartellaRichieste: env('IMPOSTAZIONI_RICHIESTE', '/richieste'),
+  // le novità da mostrare dopo l'aggiornamento stanno coi dati (la cartella delle richieste la usa lo script di root)
+  fileNovita: join(DATA_DIR, 'novita-aggiornamento.json')
+})
 if (existsSync(env('IMPOSTAZIONI_RICHIESTE', '/richieste'))) aggiornamento.avvia()
 // chiave di attivazione: senza, il server risponde solo con la pagina per incollarla
 const attivazione = new Attivazione(process.env.CHIAVE_ATTIVAZIONE, env('IMPOSTAZIONI_FILE', '/impostazioni/.env'))
@@ -1270,6 +1275,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         if (req.method === 'POST') {
           const body = await readJson(req)
           if (body.annulla === true) aggiornamento.annulla()
+          else if (body.letto === true) aggiornamento.novitaLette()
           else if (body.controlla === true) await aggiornamento.controlla()
           else {
             try {
