@@ -44,9 +44,6 @@ jobs:
           if git ls-remote --exit-code --tags origin "refs/tags/v$VERSIONE" >/dev/null; then
             echo "::error::Il tag v$VERSIONE esiste già"; exit 1
           fi
-          if ! grep -q "^## v$VERSIONE" CHANGELOG.md; then
-            echo "::error::Manca la sezione '## v$VERSIONE' in CHANGELOG.md"; exit 1
-          fi
       - name: Scegli la versione
         id: v
         env:
@@ -66,7 +63,13 @@ jobs:
     needs: controllo
     runs-on: ubuntu-latest
     steps:
+      # tutta la storia e i tag: le note confrontano con la release precedente
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Crea la release in bozza
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,10 +79,11 @@ jobs:
           if gh release view "v$VERSIONE" --json isDraft -q .isDraft 2>/dev/null | grep -q true; then
             gh release delete "v$VERSIONE" --yes
           fi
-          # note della release = sezione della versione nel CHANGELOG; senza, GitHub elenca le PR unite
-          awk -v v="## v$VERSIONE" '$0 ~ "^## v" { dentro = (index($0, v) == 1); next } dentro' CHANGELOG.md > note.md
-          if [ -s note.md ]; then note="--notes-file note.md"; else note="--generate-notes"; fi
-          gh release create "v$VERSIONE" --draft --target "$GITHUB_SHA" --title "Radio Regia $VERSIONE" $note
+          # note della release: novità in italiano (cartella novita/) e quale programma cambia (regia, server);
+          # regia e server le leggono per mostrarle e per non aggiornarsi quando la versione non li riguarda
+          node scripts/note-release.mjs "$VERSIONE" > note.md
+          cat note.md
+          gh release create "v$VERSIONE" --draft --target "$GITHUB_SHA" --title "Radio Regia $VERSIONE" --notes-file note.md
 
   build:
     needs: [controllo, bozza]

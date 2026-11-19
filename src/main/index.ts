@@ -464,6 +464,8 @@ if (primary) app.whenReady().then(async () => {
   handle('aggiornamentoStato', () => aggiornamenti.get())
   handle('aggiornamentoInstalla', () => aggiornamenti.installa())
   handle('aggiornamentoControlla', () => aggiornamenti.controlla())
+  handle('novitaInstallate', () => aggiornamenti.novitaInstallate())
+  handle('novitaLette', () => aggiornamenti.novitaLette())
 
   // ponte
   handle('ponteStatus', () => ponte.getStatus())

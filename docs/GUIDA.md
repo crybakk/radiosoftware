@@ -6,8 +6,9 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 19/11/2026, schede di benvenuto al primo accesso nel pannello; nuovi utenti invitati
-con un link: la password la sceglie chi riceve il link.
+**Ultimo aggiornamento:** 19/11/2026, regia e pannello mostrano le novità di ogni aggiornamento e non propongono
+versioni che riguardano solo l'altro programma; schede di benvenuto al primo accesso nel pannello; nuovi utenti
+invitati con un link: la password la sceglie chi riceve il link.
 
 ## Indice
 
@@ -708,7 +709,10 @@ eventi, registro e impostazioni. Il server tiene gli ultimi 14.
    **Aggiorna** e conferma: la regia si chiude, si aggiorna e riparte da sola (circa un minuto; se sei in onda, intanto
    il server manda la musica di emergenza). Con **Più tardi** l'avviso sparisce fino al prossimo avvio. Non si
    aggiorna mai da sola. Per controllare subito: scheda **Impostazioni** → **Aggiornamenti** → **Controlla
-   aggiornamenti** (lì vedi anche la versione installata).
+   aggiornamenti** (lì vedi anche la versione installata). **Cosa cambia?** mostra l'elenco delle novità prima di
+   aggiornare; dopo l'aggiornamento, alla prima apertura, la regia mostra cosa è cambiato finché non premi **Ho
+   letto**. Se una versione nuova cambia solo il server, la regia non propone di aggiornarsi (in **Impostazioni** →
+   **Aggiornamenti** lo dice).
 
 Il programma si apre a schermo intero; può esserne aperta una sola copia alla volta. Poi:
 
@@ -778,7 +782,9 @@ Caddy ha bisogno delle porte 80 e 443.
 **Versione del server**) compare **Aggiorna server** (per controllare subito premi **Controlla aggiornamenti**):
 premilo e conferma. Il server scarica la versione nuova e
 riparte da solo in qualche minuto (ascoltatori, regia e dirette si staccano e si ricollegano); le impostazioni
-restano come sono e si aggiorna anche la guida. Non si aggiorna mai da solo. A mano si fa ancora così: scarica di
+restano come sono e si aggiorna anche la guida. Sotto **Aggiorna server** c'è l'elenco di cosa cambia; dopo
+l'aggiornamento il riquadro mostra cosa è cambiato finché un amministratore non preme **Ho letto**. Se una versione
+nuova cambia solo la regia, il server non propone di aggiornarsi. Non si aggiorna mai da solo. A mano si fa ancora così: scarica di
 nuovo lo ZIP, copialo nella VM come al punto 4 e rilancia `sudo bash installa-server.sh` dalla cartella `ponte`
 (serve anche la prima volta, per installare il servizio di aggiornamento).
 

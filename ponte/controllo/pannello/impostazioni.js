@@ -285,6 +285,21 @@ async function loadAgg() {
   }
 }
 
+/** Elenco delle novità per versione (dalla più recente); con più versioni le più vecchie restano chiuse. */
+function elencoNovita(novita, apri) {
+  const box = el('div', 'novita')
+  ;(novita ?? []).forEach((v, i) => {
+    const d = el('details')
+    d.open = apri || i === 0
+    d.append(el('summary', '', `Versione ${v.versione}`))
+    const ul = el('ul')
+    for (const n of v.novita) ul.append(el('li', '', n))
+    d.append(ul)
+    box.append(d)
+  })
+  return box
+}
+
 function drawAgg(st) {
   clearTimeout(aggPoll)
   const box = $('imp-agg')
@@ -292,6 +307,14 @@ function drawAgg(st) {
   box.replaceChildren(el('div', 'section-title', 'Versione del server'))
   const riga = (t, cls) => box.append(el('p', cls, t))
   riga(st.attuale ? `Installata: ${st.attuale}` : 'Versione installata sconosciuta (server installato prima degli aggiornamenti dal pannello).', 'hint')
+  // dopo un aggiornamento: cosa è stato fatto, finché non si preme "Ho letto"
+  if (st.novitaInstallate && !st.inCorso) {
+    const fatto = el('div', 'banner info')
+    fatto.append(el('b', '', `Server aggiornato alla versione ${st.novitaInstallate.a}. Ecco cosa è cambiato:`))
+    fatto.append(elencoNovita(st.novitaInstallate.novita, true))
+    fatto.append(button('Ho letto', '', async () => drawAgg(await api('/api/impostazioni/aggiornamento', { method: 'POST', body: JSON.stringify({ letto: true }) })), 'small'))
+    box.append(fatto)
+  }
   if (st.inCorso) {
     riga(
       st.servizioAssente
@@ -304,6 +327,9 @@ function drawAgg(st) {
     }
   } else if (st.disponibile) {
     riga(`È disponibile la versione ${st.ultima}.`, 'banner info')
+    if (st.novita?.length) {
+      box.append(el('p', '', 'Cosa cambia nel server:'), elencoNovita(st.novita, false))
+    }
     const conferma = el('span')
     box.append(
       button('Aggiorna server', '', () => {
@@ -320,6 +346,8 @@ function drawAgg(st) {
       }, 'small primary'),
       conferma
     )
+  } else if (st.soloRegia) {
+    riga(`La versione ${st.ultima} cambia solo la regia: il server non ha bisogno di aggiornarsi.`, 'hint')
   } else if (st.ultima) {
     riga('È l\'ultima versione.', 'hint')
   }
