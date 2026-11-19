@@ -791,7 +791,9 @@ function drawUsers(list) {
         button('Elimina', '', async () => {
           if (!confirm(`Eliminare l'utente ${u.name}?`)) return
           try {
-            drawUsers((await api(`/api/utenti/${encodeURIComponent(u.name)}`, { method: 'DELETE' })).users)
+            const r = await api(`/api/utenti/${encodeURIComponent(u.name)}`, { method: 'DELETE' })
+            drawUsers(r.users)
+            if (r.invites) drawUserInvites(r.invites)
           } catch (e) {
             $('user-msg').textContent = e.message
           }

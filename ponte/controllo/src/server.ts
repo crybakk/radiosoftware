@@ -1348,6 +1348,8 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         if (password) relay.kick(u.name)
         // cambio di ruolo: il pannello si ricollega e riceve il ruolo nuovo
         else if (before && before.role !== u.role) relay.kick(u.name, 4002, 'ruolo cambiato')
+        // un amministratore declassato non può più invitare: i suoi link si annullano
+        if (before?.role === 'amministratore' && u.role !== 'amministratore') userInvites.revokeBy(u.name)
         return json(res, 200, { user: u, users: users.list(), invites: userInvites.list() })
       }
       if (req.method === 'DELETE' && url.pathname.startsWith('/api/utenti/')) {
@@ -1355,7 +1357,9 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         if (name.toLowerCase() === me.name.toLowerCase()) return json(res, 400, { error: 'non puoi eliminare te stesso' })
         users.remove(name)
         relay.kick(name)
-        return json(res, 200, { users: users.list() })
+        // i link d'invito creati da chi è stato eliminato non valgono più
+        userInvites.revokeBy(name)
+        return json(res, 200, { users: users.list(), invites: userInvites.list() })
       }
       return json(res, 404, { error: 'non trovato' })
     }

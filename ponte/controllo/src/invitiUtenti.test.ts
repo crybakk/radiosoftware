@@ -91,4 +91,13 @@ describe('inviti per nuovi utenti', () => {
     writeFileSync(join(d, 'x.json'), JSON.stringify([{ token: 'a', name: 'x', role: 'capo' }, null]))
     expect(new UserInvites(join(d, 'x.json'), users).list()).toEqual([])
   })
+  it("gli inviti di un amministratore eliminato o declassato si annullano", () => {
+    const { invites } = make()
+    const a = invites.create('mario', 'amministratore', 'Admin')
+    const b = invites.create('luca', 'ospite', 'altro')
+    expect(invites.revokeBy('admin')).toBe(1)
+    expect(invites.find(a.token)).toBeNull()
+    expect(invites.find(b.token)?.name).toBe('luca')
+    expect(invites.accept(a.token, 'password-lunga')).toBeNull()
+  })
 })

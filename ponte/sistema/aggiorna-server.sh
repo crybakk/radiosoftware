@@ -10,13 +10,17 @@ REPO="crybakk/radiosoftware"
 # la richiesta arriva dal servizio di controllo: qui (come root) si legge solo un numero di versione
 versione=$(head -c 40 richieste/aggiorna 2>/dev/null | tr -d '[:space:]')
 rm -f richieste/aggiorna
-touch richieste/aggiornamento-in-corso
+# richieste/ è scrivibile dal servizio di controllo: niente touch (seguirebbe un collegamento simbolico
+# e creerebbe un file come root dove vuole lui), si crea un file nuovo e lo si sposta al suo posto
+segno=$(mktemp -p .)
+chmod 644 "$segno"
+mv -fT "$segno" richieste/aggiornamento-in-corso
 lavoro=$(mktemp -d)
 trap 'rm -rf "$lavoro"; rm -f richieste/aggiornamento-in-corso' EXIT
 
 esito() {
   local ok="$1" messaggio="$2" nuovo
-  nuovo=$(mktemp)
+  nuovo=$(mktemp -p .)
   python3 - "$ok" "$messaggio" > "$nuovo" <<'PY'
 import json, sys
 from datetime import datetime, timezone

@@ -109,6 +109,23 @@ export class UserInvites {
     if (this.invites.delete(token)) this.save()
   }
 
+  /**
+   * Annulla gli inviti creati da un amministratore che è stato eliminato o non è più amministratore:
+   * i suoi link non devono continuare a creare utenti (anche amministratori) al posto suo.
+   */
+  revokeBy(name: string): number {
+    const n = name.toLowerCase()
+    let removed = 0
+    for (const [k, i] of this.invites) {
+      if (i.by.toLowerCase() === n) {
+        this.invites.delete(k)
+        removed++
+      }
+    }
+    if (removed) this.save()
+    return removed
+  }
+
   /** L'invito di un link, se è ancora valido. */
   find(token: string | null | undefined): UserInvite | null {
     if (typeof token !== 'string' || !token) return null

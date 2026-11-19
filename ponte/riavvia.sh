@@ -26,12 +26,14 @@ chown 1000:1000 stereotool 2>/dev/null || true
 chmod 755 stereotool
 if [[ ! -s stereotool/libStereoTool.so ]]; then
   echo "Scarico la libreria di Stereo Tool (Thimeo)…"
-  st_tmp=$(mktemp -d)
+  st_tmp=$(mktemp -d -p .)
   # ZIP generico di Thimeo (circa 360 MB) con le librerie per tutti i sistemi. È fatto su Windows (percorsi con
   # la barra rovesciata, unzip esce con un errore): il file giusto lo estrae python. Serve la libreria per Linux
   # Intel/AMD a 64 bit senza X11, non quella della cartella Kantar.
   if curl -fsSL --retry 3 -m 1800 -o "$st_tmp/st.zip" https://download.thimeo.com/Stereo_Tool_Generic_plugin.zip; then
-    if python3 - "$st_tmp/st.zip" stereotool/libStereoTool.so <<'PY'
+    # si estrae nella cartella temporanea di root e poi si sposta: stereotool/ è scrivibile dal servizio di
+    # controllo, che potrebbe metterci un collegamento simbolico al posto del file
+    if python3 - "$st_tmp/st.zip" "$st_tmp/libStereoTool.so" <<'PY'
 import shutil, sys, zipfile
 with zipfile.ZipFile(sys.argv[1]) as z:
     scelti = []
@@ -48,11 +50,11 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     print('Libreria di Stereo Tool installata (' + info.filename + ').')
 PY
     then
-      chmod 644 stereotool/libStereoTool.so.nuovo
-      chown 1000:1000 stereotool/libStereoTool.so.nuovo 2>/dev/null || true
-      mv -f stereotool/libStereoTool.so.nuovo stereotool/libStereoTool.so
+      chmod 644 "$st_tmp/libStereoTool.so.nuovo"
+      chown 1000:1000 "$st_tmp/libStereoTool.so.nuovo" 2>/dev/null || true
+      # mv -T sostituisce un eventuale collegamento simbolico invece di seguirlo
+      mv -fT "$st_tmp/libStereoTool.so.nuovo" stereotool/libStereoTool.so
     else
-      rm -f stereotool/libStereoTool.so.nuovo
       echo "Attenzione: non riesco a estrarre Stereo Tool dallo ZIP (riprovo al prossimo riavvio)." >&2
     fi
   else
