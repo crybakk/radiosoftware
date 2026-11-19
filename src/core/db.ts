@@ -1,5 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { resolve } from 'node:path'
+import { chiaveDoppione, copiaDaTenere, motivoNonRadiofonico } from './pulizia'
+import { SECONDI_LIVE } from './liveAudio'
 import {
   DEFAULT_PONTE,
   DEFAULT_SETTINGS,
@@ -223,11 +225,28 @@ export interface AnalysisResult {
 
 export interface TrackSearch {
   text?: string
+  /** Filtri per campo (ognuno contiene il testo, senza maiuscole e accenti). */
+  title?: string
+  artist?: string
+  album?: string
+  genre?: string
+  yearFrom?: number | null
+  yearTo?: number | null
+  /** Ordine dei risultati (predefinito: artista e titolo). */
+  sort?: 'artista' | 'titolo' | 'anno' | 'durata' | 'aggiunti'
   kind?: TrackKind
   /** Solo i brani di questa categoria (genere del file, dei servizi o etichetta tua). */
   category?: string
   limit?: number
   offset?: number
+}
+
+const ORDINI: Record<string, string> = {
+  artista: 'artist COLLATE NOCASE, title COLLATE NOCASE',
+  titolo: 'title COLLATE NOCASE, artist COLLATE NOCASE',
+  anno: 'year IS NULL, year DESC, artist COLLATE NOCASE, title COLLATE NOCASE',
+  durata: 'duration DESC, artist COLLATE NOCASE',
+  aggiunti: 'added_at DESC, id DESC'
 }
 
 /** Campi che l'utente può correggere a mano dalla scheda brano. */
@@ -336,6 +355,15 @@ export class RadioDb {
     // v0.10: campi corretti a mano (titolo, artista, ..., punti di mix); nei database esistenti nessuno è segnato
     if (!cols.includes('manual_fields')) this.db.exec('ALTER TABLE tracks ADD COLUMN manual_fields INTEGER NOT NULL DEFAULT 0')
     if (!cols.includes('fp_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN fp_at TEXT')
+    // v0.12: pulizia della libreria. "radio_ok" = segnalato come non radiofonico ma tu hai detto che va bene;
+    // "orig_path" = da dove è stato spostato il file messo negli scarti (per rimetterlo a posto)
+    if (!cols.includes('radio_ok')) this.db.exec('ALTER TABLE tracks ADD COLUMN radio_ok INTEGER NOT NULL DEFAULT 0')
+    if (!cols.includes('orig_path')) this.db.exec("ALTER TABLE tracks ADD COLUMN orig_path TEXT NOT NULL DEFAULT ''")
+    // live riconosciuti dal suono (secondi di applausi a inizio/fine) e titoli giudicati dall'AI locale
+    if (!cols.includes('live_s')) this.db.exec('ALTER TABLE tracks ADD COLUMN live_s REAL')
+    if (!cols.includes('live_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN live_at TEXT')
+    if (!cols.includes('ai_motivo')) this.db.exec("ALTER TABLE tracks ADD COLUMN ai_motivo TEXT NOT NULL DEFAULT ''")
+    if (!cols.includes('ai_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN ai_at TEXT')
     this.db.exec(
       'CREATE TABLE IF NOT EXISTS fingerprints (track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE, fp BLOB NOT NULL)'
     )
@@ -505,7 +533,7 @@ export class RadioDb {
              composer=CASE WHEN composer='' THEN ? ELSE composer END,
              publisher=CASE WHEN publisher='' THEN ? ELSE publisher END,
              isrc=CASE WHEN isrc='' THEN ? ELSE isrc END,
-             duration=?, bitrate=?, sample_rate=?, file_size=?, file_mtime=?, analyzed_at=NULL, fp_at=NULL
+             duration=?, bitrate=?, sample_rate=?, file_size=?, file_mtime=?, analyzed_at=NULL, fp_at=NULL, live_at=NULL
            WHERE id=?`
         )
         .run(
@@ -662,6 +690,24 @@ export class RadioDb {
       where.push("minuscolo(title || ' ' || artist || ' ' || album) LIKE ? ESCAPE '\\'")
       params.push(`%${escapeLike(perRicerca(w))}%`)
     }
+    const field = (col: string, v: string | undefined): void => {
+      for (const w of String(v ?? '').slice(0, 100).trim().split(/\s+/).filter(Boolean).slice(0, 5)) {
+        where.push(`minuscolo(${col}) LIKE ? ESCAPE '\\'`)
+        params.push(`%${escapeLike(perRicerca(w))}%`)
+      }
+    }
+    field('title', q.title)
+    field('artist', q.artist)
+    field('album', q.album)
+    field("genre || ',' || mb_genres || ',' || dc_genres || ',' || lfm_tags || ',' || user_tags", q.genre)
+    if (q.yearFrom != null && Number.isFinite(Number(q.yearFrom))) {
+      where.push('year >= ?')
+      params.push(Number(q.yearFrom))
+    }
+    if (q.yearTo != null && Number.isFinite(Number(q.yearTo))) {
+      where.push('year <= ?')
+      params.push(Number(q.yearTo))
+    }
     if (q.category?.trim()) {
       where.push("minuscolo(genre || ',' || mb_genres || ',' || dc_genres || ',' || lfm_tags || ',' || user_tags) LIKE ? ESCAPE '\\'")
       params.push(`%${escapeLike(q.category.trim().toLowerCase())}%`)
@@ -672,10 +718,179 @@ export class RadioDb {
     )
     const tracks = (
       this.db
-        .prepare(`SELECT * FROM tracks WHERE ${clause} ORDER BY artist COLLATE NOCASE, title COLLATE NOCASE LIMIT ? OFFSET ?`)
+        .prepare(`SELECT * FROM tracks WHERE ${clause} ORDER BY ${ORDINI[q.sort ?? 'artista'] ?? ORDINI.artista} LIMIT ? OFFSET ?`)
         .all(...params, q.limit ?? 200, q.offset ?? 0) as Row[]
     ).map(rowToTrack)
     return { tracks, total }
+  }
+
+  // ---------- pulizia della libreria ----------
+
+  /**
+   * Musica in libreria che non sembra radiofonica (Track 01, live@, titoli che non sono titoli), col motivo.
+   * Esclusi i brani per cui hai detto "va bene così".
+   */
+  daControllare(limit = 2000): { tracks: (Track & { motivo: string })[]; total: number } {
+    const rows = this.db
+      .prepare(`SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND radio_ok = 0 AND ${this.short()} ORDER BY artist COLLATE NOCASE, title COLLATE NOCASE`)
+      .all() as Row[]
+    const out: (Track & { motivo: string })[] = []
+    let total = 0
+    for (const r of rows) {
+      const t = rowToTrack(r)
+      const live = r.live_s == null ? 0 : Number(r.live_s)
+      const motivo =
+        motivoNonRadiofonico(t) ??
+        (live >= SECONDI_LIVE ? `live (dal suono: ${live} s di applausi)` : null) ??
+        (r.ai_motivo ? `secondo l'AI: ${String(r.ai_motivo)}` : null)
+      if (!motivo) continue
+      total++
+      if (out.length < limit) out.push({ ...t, motivo })
+    }
+    return { tracks: out, total }
+  }
+
+  /**
+   * Doppioni nella musica in libreria: gruppi di brani con lo stesso artista e titolo, con la copia da tenere
+   * per prima. Esclusi i brani per cui hai detto "va bene così".
+   */
+  doppioni(limit = 1000): { gruppi: { tieni: number; tracks: Track[] }[]; total: number } {
+    const rows = this.db
+      .prepare(`SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND radio_ok = 0 AND ${this.short()}`)
+      .all() as Row[]
+    const byKey = new Map<string, Track[]>()
+    for (const r of rows) {
+      const t = rowToTrack(r)
+      const k = chiaveDoppione(t)
+      if (!k) continue
+      const g = byKey.get(k)
+      if (g) g.push(t)
+      else byKey.set(k, [t])
+    }
+    const gruppi = [...byKey.values()]
+      .filter((g) => g.length > 1)
+      .map((g) => {
+        const tieni = copiaDaTenere(g)
+        return { tieni: tieni.id, tracks: [tieni, ...g.filter((t) => t.id !== tieni.id)] }
+      })
+      .sort((a, b) => a.tracks[0].artist.localeCompare(b.tracks[0].artist) || a.tracks[0].title.localeCompare(b.tracks[0].title))
+    return { gruppi: gruppi.slice(0, limit), total: gruppi.length }
+  }
+
+  /** Musica ancora da ascoltare per riconoscere i live dal suono. */
+  pendingLive(limit = 20): Track[] {
+    return (
+      this.db
+        .prepare(`SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND radio_ok = 0 AND ${this.short()} AND live_at IS NULL ORDER BY id LIMIT ?`)
+        .all(limit) as Row[]
+    ).map(rowToTrack)
+  }
+
+  /** Secondi di applausi trovati (null = file non leggibile: non si riprova finché il file non cambia). */
+  saveLive(id: number, seconds: number | null): void {
+    this.db.prepare("UPDATE tracks SET live_s = ?, live_at = datetime('now') WHERE id = ?").run(seconds, id)
+  }
+
+  liveStats(): { done: number; total: number } {
+    const r = this.db
+      .prepare(
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN live_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1 AND radio_ok = 0 AND ${this.short()}`
+      )
+      .get() as Row
+    return { done: Number(r.done ?? 0), total: Number(r.total ?? 0) }
+  }
+
+  /** Musica da far giudicare all'AI: non ancora vista e non già segnalata dalle regole. */
+  pendingAiTitoli(limit = 30): Track[] {
+    const out: Track[] = []
+    const rows = this.db
+      .prepare(`SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND radio_ok = 0 AND ${this.short()} AND ai_at IS NULL ORDER BY id`)
+      .iterate() as Iterable<Row>
+    const skip: number[] = []
+    for (const r of rows) {
+      const t = rowToTrack(r)
+      // già nella lista per le regole: non serve chiedere all'AI
+      if (motivoNonRadiofonico(t)) skip.push(t.id)
+      else out.push(t)
+      if (out.length >= limit) break
+    }
+    const stmt = this.db.prepare("UPDATE tracks SET ai_at = datetime('now') WHERE id = ?")
+    for (const id of skip) stmt.run(id)
+    return out
+  }
+
+  /** Giudizio dell'AI: motivo per i titoli non adatti, '' per quelli a posto. */
+  saveAiTitoli(results: { id: number; motivo: string }[]): void {
+    const stmt = this.db.prepare("UPDATE tracks SET ai_motivo = ?, ai_at = datetime('now') WHERE id = ?")
+    for (const r of results) stmt.run(r.motivo.slice(0, 80), r.id)
+  }
+
+  aiTitoliStats(): { done: number; total: number } {
+    const r = this.db
+      .prepare(
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN ai_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1 AND radio_ok = 0 AND ${this.short()}`
+      )
+      .get() as Row
+    return { done: Number(r.done ?? 0), total: Number(r.total ?? 0) }
+  }
+
+  /** Rifà da capo il giudizio dell'AI su tutta la musica. */
+  resetAiTitoli(): void {
+    this.db.exec("UPDATE tracks SET ai_at = NULL, ai_motivo = ''")
+  }
+
+  /** "Va bene così": il brano non compare più tra quelli da controllare (on = false lo rimette). */
+  segnaRadiofonico(ids: number[], on = true): number {
+    const stmt = this.db.prepare('UPDATE tracks SET radio_ok = ? WHERE id = ?')
+    let n = 0
+    for (const id of ids) n += Number(stmt.run(on ? 1 : 0, Number(id)).changes)
+    return n
+  }
+
+  /**
+   * Toglie i brani dalla libreria senza toccare il file: escono da rotazioni, ricerca e server.
+   * È una scelta tua: la scansione non li rimette (missing = 0).
+   */
+  togliDallaLibreria(ids: number[]): number {
+    const stmt = this.db.prepare('UPDATE tracks SET enabled = 0, missing = 0 WHERE id = ? AND enabled = 1')
+    let n = 0
+    for (const id of ids) n += Number(stmt.run(Number(id)).changes)
+    return n
+  }
+
+  /** Rimette in libreria i brani tolti a mano (non quelli col file sparito). */
+  rimettiInLibreria(ids: number[]): number {
+    const stmt = this.db.prepare("UPDATE tracks SET enabled = 1, missing = 0, orig_path = '' WHERE id = ? AND enabled = 0 AND missing = 0")
+    let n = 0
+    for (const id of ids) n += Number(stmt.run(Number(id)).changes)
+    return n
+  }
+
+  /** Brani tolti a mano dalla libreria (con il percorso originale se il file è stato spostato negli scarti). */
+  toltiDallaLibreria(text = '', limit = 500): { tracks: (Track & { origPath: string })[]; total: number } {
+    const where = ['enabled = 0', 'missing = 0']
+    const params: (string | number)[] = []
+    for (const w of String(text).slice(0, 200).trim().split(/\s+/).filter(Boolean).slice(0, 8)) {
+      where.push("minuscolo(title || ' ' || artist || ' ' || album || ' ' || path) LIKE ? ESCAPE '\\'")
+      params.push(`%${escapeLike(perRicerca(w))}%`)
+    }
+    const clause = where.join(' AND ')
+    const total = Number((this.db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE ${clause}`).get(...params) as Row).n)
+    const tracks = (
+      this.db.prepare(`SELECT * FROM tracks WHERE ${clause} ORDER BY artist COLLATE NOCASE, title COLLATE NOCASE LIMIT ?`).all(...params, limit) as Row[]
+    ).map((r) => ({ ...rowToTrack(r), origPath: String(r.orig_path ?? '') }))
+    return { tracks, total }
+  }
+
+  /** Il file è stato spostato negli scarti: nuovo percorso, quello vecchio per rimetterlo a posto, e fuori dalla libreria. */
+  spostatoNegliScarti(id: number, path: string, origPath: string): void {
+    this.db.prepare('UPDATE tracks SET path = ?, orig_path = ?, enabled = 0, missing = 0 WHERE id = ?').run(path, origPath, id)
+  }
+
+  /** Percorso originale di un brano spostato negli scarti ('' = non spostato). */
+  percorsoOriginale(id: number): string {
+    const r = this.db.prepare('SELECT orig_path FROM tracks WHERE id = ?').get(id) as Row | undefined
+    return r ? String(r.orig_path ?? '') : ''
   }
 
   /** Musica della libreria con dimensione del file e scelta a mano per il server. */

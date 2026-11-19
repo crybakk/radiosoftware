@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { PonteStatus } from '../main/ponte'
 import type { ServerSyncStatus } from '../main/serverSync'
 import type { MbStatus } from '../main/musicbrainz'
+import type { AiTitoliStatus } from '../main/aiTitoli'
 import type { TagStatus } from '../main/tagServices'
 import type { AiStatus } from '../main/ai'
 import type { RemoteCommand, RemoteState } from '../core/remote'
@@ -22,6 +23,21 @@ const api: RadioApi = {
   updateTrack: call('updateTrack'),
   categories: call('categories'),
   setUserTag: call('setUserTag'),
+  daControllare: call('daControllare'),
+  doppioni: call('doppioni'),
+  segnaRadiofonico: call('segnaRadiofonico'),
+  togliDallaLibreria: call('togliDallaLibreria'),
+  spostaNegliScarti: call('spostaNegliScarti'),
+  rimettiInLibreria: call('rimettiInLibreria'),
+  toltiDallaLibreria: call('toltiDallaLibreria'),
+  aiTitoliStatus: call('aiTitoliStatus'),
+  aiTitoliStart: call('aiTitoliStart'),
+  aiTitoliStop: call('aiTitoliStop'),
+  onAiTitoliStatus: (cb: (s: AiTitoliStatus) => void) => {
+    const listener = (_: unknown, s: AiTitoliStatus): void => cb(s)
+    ipcRenderer.on('aiTitoliStatus', listener)
+    return () => ipcRenderer.removeListener('aiTitoliStatus', listener)
+  },
   mediaUrl: (t) =>
     /^https?:\/\//i.test(t.path)
       ? `media://stream/${encodeURIComponent(t.path)}`
