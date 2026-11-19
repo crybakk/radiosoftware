@@ -1,3 +1,4 @@
+import { rimettiInLibreria, spostaNegliScarti } from './pulizia'
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
 import { spawn } from 'node:child_process'
 import { expandEvent, newsTrack, voiceTrack } from '../core/eventActions'
@@ -286,6 +287,15 @@ if (primary) app.whenReady().then(async () => {
   handle('categories', () => db.categories())
   handle('setUserTag', (ids: number[], tag: string, on: boolean) => db.setUserTag(Array.isArray(ids) ? ids.map(Number) : [], String(tag ?? ''), !!on))
   handle('updateTrack', (id: number, edit: TrackEdit) => db.updateTrack(id, edit))
+  // pulizia della libreria
+  const ids = (v: unknown): number[] => (Array.isArray(v) ? v.map(Number).filter(Number.isFinite) : [])
+  handle('daControllare', () => db.daControllare())
+  handle('doppioni', () => db.doppioni())
+  handle('segnaRadiofonico', (v: number[], on: boolean) => db.segnaRadiofonico(ids(v), on !== false))
+  handle('togliDallaLibreria', (v: number[]) => ({ fatti: db.togliDallaLibreria(ids(v)), errori: [] }))
+  handle('spostaNegliScarti', (v: number[]) => spostaNegliScarti(db, ids(v)))
+  handle('rimettiInLibreria', (v: number[]) => rimettiInLibreria(db, ids(v)))
+  handle('toltiDallaLibreria', (text: string) => db.toltiDallaLibreria(String(text ?? '')))
 
   // impostazioni
   handle('getSettings', () => db.getSettings())

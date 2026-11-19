@@ -22,6 +22,13 @@ const api: RadioApi = {
   updateTrack: call('updateTrack'),
   categories: call('categories'),
   setUserTag: call('setUserTag'),
+  daControllare: call('daControllare'),
+  doppioni: call('doppioni'),
+  segnaRadiofonico: call('segnaRadiofonico'),
+  togliDallaLibreria: call('togliDallaLibreria'),
+  spostaNegliScarti: call('spostaNegliScarti'),
+  rimettiInLibreria: call('rimettiInLibreria'),
+  toltiDallaLibreria: call('toltiDallaLibreria'),
   mediaUrl: (t) =>
     /^https?:\/\//i.test(t.path)
       ? `media://stream/${encodeURIComponent(t.path)}`

@@ -75,7 +75,8 @@ export class AutonomousPlayer {
   async run(cmd: AutoCommand, by = ''): Promise<unknown> {
     switch (cmd.type) {
       case 'search':
-        return this.lib.search(String(cmd.q ?? '')).map(pub)
+        // ricerca vuota = sfoglia la libreria: più brani, in ordine alfabetico
+        return this.lib.search(String(cmd.q ?? ''), String(cmd.q ?? '').trim() ? 50 : 200).map(pub)
       case 'start':
         return this.start(by)
       case 'stop':

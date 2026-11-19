@@ -291,3 +291,16 @@ button.tiny.on { opacity: 1; background: var(--green); border-color: var(--green
 .chip.mine { border-color: #eab308; }
 .chip.on { background: var(--green); border-color: var(--green); color: #04130a; }
 .label-bar { margin: 6px 0; align-items: center; }
+
+/* filtri della ricerca e pulizia della libreria */
+.search-filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.search-filters input { flex: 1; min-width: 120px; }
+.search-filters input.anno { flex: 0 0 90px; min-width: 0; }
+.track-list li > input[type='checkbox'] { margin-right: 10px; width: 18px; height: 18px; flex: 0 0 auto; }
+.track-list li.selected { background: var(--panel2); }
+.pulizia-list { max-height: 420px; }
+.pulizia-list .t-main { cursor: pointer; }
+.pulizia-list .file-path { font-size: 11px; margin: 2px 0 0; word-break: break-all; }
+.pulizia-list li.gruppo { display: block; padding: 0; border-bottom: 2px solid var(--line); }
+.pulizia-list li.tieni { border-left: 3px solid var(--accent); }
+.tag.ok { color: var(--accent); border-color: var(--accent); }

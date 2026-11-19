@@ -2,6 +2,16 @@
 
 ## Prossima versione
 
+### Regia
+
+- Pulizia della libreria (Libreria → Pulizia): lista "Da controllare" dei brani che non sembrano radiofonici
+  (titoli tipo "Track 01", live@, nomi di file o registrazioni al posto del titolo, live e interviste) e dei
+  doppioni, con la copia migliore già scelta. Niente si toglie da solo: selezioni (anche tutti insieme) e togli.
+- Un brano si toglie dalla libreria senza cancellare il file; volendo il file si sposta nella sottocartella
+  "_Tolti dalla libreria" della cartella musica, per cancellarlo a mano. I brani tolti si rimettono quando vuoi.
+- Ricerca dei brani con filtri per titolo, artista, album, genere, anno e ordine; selezione multipla.
+- La libreria del server si vede subito (regia e pannello), senza dover prima cercare.
+
 ### Server (ponte)
 
 - Flusso HLS con tre qualità AAC (64, 128 e 192 kbit/s) scelte dal lettore in base alla rete, all'indirizzo di
