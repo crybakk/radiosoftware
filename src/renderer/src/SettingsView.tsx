@@ -6,6 +6,7 @@ import { listOutputDevices } from './audio'
 import { mmss } from './format'
 import { VoiceSection } from './VoiceSection'
 import type { Radio } from './useRadio'
+import { Riquadri } from './Riquadri'
 
 const NUMBERS: { key: keyof Settings; label: string; hint: string; min: number; max: number; step?: number }[] = [
   { key: 'crossfadeSeconds', label: 'Dissolvenza (secondi)', hint: 'Usata quando premi AVANTI', min: 0, max: 15, step: 0.5 },
@@ -147,7 +148,7 @@ function UpdateSection() {
   else if (st?.stato === 'disponibile' || st?.stato === 'pronto') esito = `È disponibile la versione ${st.versione}: premi "Aggiorna" nella barra in alto.`
   else if (st?.controllo === 'ok') esito = 'È l\'ultima versione.'
   return (
-    <section className="panel">
+    <section className="panel" data-sezione="aggiornamenti" data-titolo="Aggiornamenti">
       <div className="section-title">Aggiornamenti</div>
       <p className="hint">
         Versione installata: <b>{st?.attuale ?? '…'}</b>. La regia controlla da sola all'avvio e ogni 6 ore, ma non si
@@ -190,9 +191,9 @@ export function SettingsView({ radio }: { radio: Radio }) {
   const dirty = JSON.stringify(draft) !== JSON.stringify(radio.settings)
 
   return (
-    <div className="settings-view">
+    <Riquadri className="settings-view" chiave="impostazioni" nome="Impostazioni">
       <UpdateSection />
-      <section className="panel">
+      <section className="panel" data-sezione="schede-audio" data-titolo="Schede audio">
         <div className="section-title">Schede audio</div>
         <p className="hint">
           Con il RodeCaster Duo collegato via USB, scegli come uscita "in onda" il canale del RodeCaster dedicato al
@@ -225,7 +226,7 @@ export function SettingsView({ radio }: { radio: Radio }) {
         </button>
       </section>
 
-      <section className="panel">
+      <section className="panel" data-sezione="messa-in-onda" data-titolo="Messa in onda e rotazione">
         <div className="section-title">Messa in onda e rotazione</div>
         <div className="form-grid">
           {NUMBERS.map((n) => (
@@ -249,7 +250,7 @@ export function SettingsView({ radio }: { radio: Radio }) {
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel" data-sezione="notiziari" data-titolo="Notiziari">
         <div className="section-title">Notiziari</div>
         <p className="hint">
           Fonti dei notiziari da mandare in onda con gli eventi (azione "Notiziario"). Metti il link del feed di un
@@ -278,7 +279,7 @@ export function SettingsView({ radio }: { radio: Radio }) {
 
       <VoiceSection draft={draft} setDraft={setDraft} />
 
-      <section className="panel">
+      <section className="panel" data-sezione="servizi-dati" data-titolo="Servizi per i dati dei brani">
         <div className="section-title">Servizi per i dati dei brani</div>
         <p className="hint">
           Oltre a MusicBrainz, la regia può chiedere generi e caratteristiche dei brani ad altri servizi gratuiti. Ognuno
@@ -350,6 +351,6 @@ export function SettingsView({ radio }: { radio: Radio }) {
           Salva
         </button>
       </div>
-    </div>
+    </Riquadri>
   )
 }

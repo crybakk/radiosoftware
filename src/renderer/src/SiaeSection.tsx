@@ -51,7 +51,7 @@ export function SiaeSection() {
   const uses = rows?.reduce((a, r) => a + r.uses, 0) ?? 0
 
   return (
-    <section className="panel">
+    <section className="panel" data-sezione="siae" data-titolo="Report SIAE">
       <div className="section-title">Report SIAE trimestrale</div>
       <div className="row">
         <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
