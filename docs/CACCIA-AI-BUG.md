@@ -235,3 +235,28 @@ Contatore dei brani sconosciuti robusto a valori rovinati; un pacchetto audio di
 ## Non coperto (limite settimanale degli agenti raggiunto)
 
 Il controllo finale ha indicato 7 aree da riguardare con il metodo del giro 2; erano già state viste nel giro 1, ma non sono state ripassate: pagine del pannello, annunci e voce sintetica, decodifica audio delle impronte, notifiche e "in onda" pubblico, backup e puntate lato server, collegamento audio della regia, rotazioni con l'AI. Anche la caccia ai bug del giro 2 si è fermata per lo stesso limite: i bug corretti in questo giro sono quelli emersi dal controllo (sopra).
+
+---
+
+# Quarto giro – 19/11/2026: codice nuovo e server di prova
+
+Controllato il codice arrivato dopo il 16/11 (inviti al pannello, benvenuto, HLS, Stereo Tool, aggiornamento dal pannello, chiave di attivazione, copertine) e il server di prova (sonda di sole letture dal PC dello studio, più accesso e uscita con un utente di prova). Nessun problema critico o alto.
+
+## Corretti
+
+| Gravità | Problema |
+|---|---|
+| Medio | I link d'invito di un amministratore eliminato o declassato restavano validi 7 giorni e potevano creare altri amministratori. Ora si annullano con lui. |
+| Basso | Lo script di aggiornamento e il download di Stereo Tool (girano come root) scrivevano in cartelle modificabili dal pannello: con un collegamento simbolico, se il pannello fosse compromesso, potevano creare o sovrascrivere file di sistema. |
+| Basso | Le pagine (/, /dashboard, inviti, ospiti) rispondevano 404 alle richieste HEAD (anteprime dei link su WhatsApp/Telegram, monitor di disponibilità). |
+
+## Verificato sul server (tutto a posto)
+
+Le API riservate rispondono 401 senza accesso; cookie di sessione HttpOnly, Secure, SameSite=Strict; richieste da un altro sito rifiutate; le password delle impostazioni non arrivano mai al browser; percorsi con `../` respinti; amministrazione di Icecast solo con password e, sulla porta 8000 del server nuovo, bloccata; aggiornamento dal pannello funzionante (0.1.9); Stereo Tool attivo.
+
+## Da sapere (non toccati)
+
+- L'ingresso delle dirette esterne (porta TCP 9010) riceve la password in chiaro, come tutti i programmi tipo Icecast/BUTT.
+- `/status-json.xsl` e `/api/nowplaying` mostrano il numero di ascoltatori (servono alla compatibilità con AzuraCast e alle app), anche se il player pubblico non lo mostra.
+- `/admin/` di Icecast è raggiungibile da internet in HTTPS con la sola password, senza limite di tentativi.
+- Il contatore degli ascoltatori HLS si può gonfiare cambiando browser/User-Agent; la cartella delle copertine cresce senza limite (circa 100–200 KB per brano diverso).

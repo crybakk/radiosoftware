@@ -18,7 +18,7 @@ fi
 echo "$uscita"
 # l'esito si scrive in un file temporaneo di root fuori da richieste/ e poi si sposta al suo posto
 # (mv sostituisce un eventuale collegamento simbolico invece di seguirlo)
-nuovo=$(mktemp)
+nuovo=$(mktemp -p .)
 python3 - "$codice" "$uscita" > "$nuovo" <<'PY'
 import json, sys
 from datetime import datetime, timezone
