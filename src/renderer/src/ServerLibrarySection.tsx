@@ -30,8 +30,9 @@ export function ServerLibrarySection({
   }, [])
 
   const load = async (): Promise<void> => setRows(await api.serverSyncList(filter, q))
+  // l'elenco si carica subito (non una finestra vuota) e si aggiorna cambiando il filtro
   useEffect(() => {
-    if (rows) void load()
+    void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter])
 
@@ -57,7 +58,7 @@ export function ServerLibrarySection({
     set(k, Math.min(max, Math.max(min, Number(e.target.value) || min)) as never)
 
   return (
-    <section className="panel">
+    <section className="panel" data-sezione="libreria-server" data-titolo="Libreria sul server">
       <div className="section-title">Libreria sul server (diretta autonoma)</div>
       <p className="hint">
         Sul server va solo una selezione: niente live, interviste, file sotto i {draft.libraryMinKbps} kbps e brani più lunghi della durata massima (premixati). Puoi includere o

@@ -5,6 +5,20 @@ descrizione di ogni release su GitHub; regia e pannello le mostrano quando si ag
 
 ## Dalla v0.1.1 alla v0.1.10
 
+### Regia
+
+- Pulizia della libreria (Libreria → Pulizia): lista "Da controllare" dei brani che non sembrano radiofonici
+  (titoli tipo "Track 01", live@, nomi di file o registrazioni al posto del titolo, live e interviste) e dei
+  doppioni, con la copia migliore già scelta. Niente si toglie da solo: selezioni (anche tutti insieme) e togli.
+- Un brano si toglie dalla libreria senza cancellare il file; volendo il file si sposta nella sottocartella
+  "_Tolti dalla libreria" della cartella musica, per cancellarlo a mano. I brani tolti si rimettono quando vuoi.
+- Live riconosciuti anche dal suono: la regia ascolta inizio e fine di ogni brano (in background, dopo analisi e
+  impronte) e mette tra quelli da controllare i brani con applausi o pubblico.
+- Analisi dei titoli con l'AI locale (Pulizia → "Analizza i titoli con l'AI"): segnala mix, karaoke, parlato,
+  registrazioni e titoli che non sono titoli. Si ferma e si riprende quando vuoi.
+- Ricerca dei brani con filtri per titolo, artista, album, genere, anno e ordine; selezione multipla.
+- La libreria del server si vede subito (regia e pannello), senza dover prima cercare.
+
 ### Server (ponte)
 
 - Flusso HLS con tre qualità AAC (64, 128 e 192 kbit/s) scelte dal lettore in base alla rete, all'indirizzo di

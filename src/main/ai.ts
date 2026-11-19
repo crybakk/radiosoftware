@@ -54,6 +54,8 @@ export interface AiResult {
 export interface LlmEngine {
   /** Risposta del modello vincolata allo schema JSON. */
   complete(o: { modelPath: string; system: string; user: string; schema: object; signal?: AbortSignal }): Promise<string>
+  /** Modello aperto per tante domande di fila (senza ricaricarlo ogni volta); se manca si usa complete(). */
+  open?(o: { modelPath: string; system: string; schema: object }): Promise<{ ask(user: string, signal?: AbortSignal): Promise<string>; close(): Promise<void> }>
 }
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>

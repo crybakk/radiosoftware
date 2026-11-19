@@ -5,6 +5,7 @@ import { hhmm } from './format'
 import { listInputDevices } from './uplinkCapture'
 import { ServerLibrarySection } from './ServerLibrarySection'
 import type { Radio } from './useRadio'
+import { Riquadri } from './Riquadri'
 
 const api = window.radio
 
@@ -101,8 +102,8 @@ export function ConnectionView({ radio }: { radio: Radio }) {
 
   
   return (
-    <div className="settings-view">
-      <section className="panel">
+    <Riquadri className="settings-view" chiave="collegamento" nome="Collegamento">
+      <section className="panel" data-sezione="invio" data-titolo="Invio al ponte">
         <div className="section-title">
           Invio al ponte
           <button
@@ -138,7 +139,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
         </p>
       </section>
 
-      <section className="panel">
+      <section className="panel" data-sezione="stato-ponte" data-titolo="Stato del ponte">
         <div className="section-title">Stato del ponte</div>
         {!configured && <p className="hint">Inserisci qui sotto indirizzo e token del ponte per vedere allarmi e backup.</p>}
         {configured && (
@@ -190,7 +191,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
       </section>
 
       {configured && (
-        <section className="panel">
+        <section className="panel" data-sezione="backup" data-titolo="Backup del database">
           <div className="section-title">Backup del database</div>
           <p className="hint">
             Ogni giorno la regia salva sul ponte una copia di libreria, eventi, registro e impostazioni. Il ripristino
@@ -250,7 +251,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
         </section>
       )}
 
-      <section className="panel">
+      <section className="panel" data-sezione="impostazioni-collegamento" data-titolo="Impostazioni del collegamento">
         <div className="section-title">Impostazioni del collegamento</div>
         <p className="hint">I valori devono coincidere con quelli del file .env sul server ponte.</p>
         <div className="form-grid">
@@ -355,6 +356,6 @@ export function ConnectionView({ radio }: { radio: Radio }) {
         </div>
       </section>
       <ServerLibrarySection draft={draft} set={set} />
-    </div>
+    </Riquadri>
   )
 }

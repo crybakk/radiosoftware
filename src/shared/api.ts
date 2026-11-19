@@ -10,6 +10,8 @@ import type { ServerSyncStatus, ServerTrackRow } from '../main/serverSync'
 import type { MbStatus } from '../main/musicbrainz'
 import type { TagService, TagStatus } from '../main/tagServices'
 import type { AiResult, AiStatus } from '../main/ai'
+import type { EsitoPulizia } from '../main/pulizia'
+import type { AiTitoliStatus } from '../main/aiTitoli'
 import type { AiPlan } from '../core/aiRotation'
 import type { SiaeRow } from '../core/siae'
 import type { LibraryFolder, LogEntry, ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
@@ -28,6 +30,10 @@ export interface LibraryStatus {
   fingerprints: number
   fingerprintTotal: number
   fingerprinting: boolean
+  /** Musica ascoltata per riconoscere i live dal suono (applausi). */
+  liveChecked: number
+  liveTotal: number
+  liveChecking: boolean
   /** Analisi "da DJ" (Mix DJ): brani fatti, totale della musica, in corso. */
   djDone: number
   djTotal: number
@@ -91,6 +97,24 @@ export interface RadioApi {
   categories(): Promise<{ name: string; count: number; mine: boolean }[]>
   /** Mette (on) o toglie un'etichetta tua sui brani; restituisce quanti sono cambiati. */
   setUserTag(ids: number[], tag: string, on: boolean): Promise<number>
+  /** Musica che non sembra radiofonica (Track 01, live@, titoli che non sono titoli), col motivo. */
+  daControllare(): Promise<{ tracks: (Track & { motivo: string })[]; total: number }>
+  /** Doppioni (stesso artista e titolo): la prima copia di ogni gruppo è quella da tenere. */
+  doppioni(): Promise<{ gruppi: { tieni: number; tracks: Track[] }[]; total: number }>
+  /** "Va bene così": non compaiono più tra quelli da controllare (on = false li rimette). */
+  segnaRadiofonico(ids: number[], on?: boolean): Promise<number>
+  /** Toglie dalla libreria senza toccare i file. */
+  togliDallaLibreria(ids: number[]): Promise<EsitoPulizia>
+  /** Toglie dalla libreria e sposta i file nella sottocartella "_Tolti dalla libreria". */
+  spostaNegliScarti(ids: number[]): Promise<EsitoPulizia>
+  /** Rimette in libreria (e i file spostati tornano al loro posto). */
+  rimettiInLibreria(ids: number[]): Promise<EsitoPulizia>
+  /** Analisi dei titoli con l'AI locale (rifai = da capo su tutta la musica). */
+  aiTitoliStatus(): Promise<AiTitoliStatus>
+  aiTitoliStart(rifai?: boolean): Promise<AiTitoliStatus>
+  aiTitoliStop(): Promise<void>
+  onAiTitoliStatus(cb: (s: AiTitoliStatus) => void): () => void
+  toltiDallaLibreria(text: string): Promise<{ tracks: (Track & { origPath: string })[]; total: number }>
   mediaUrl(track: Pick<Track, 'id' | 'path'>): string
   listGenres(): Promise<string[]>
 

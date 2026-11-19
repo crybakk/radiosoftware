@@ -6,7 +6,9 @@ import { KIND_LABEL, mmss } from './format'
 import { MusicBrainzSection } from './MusicBrainzSection'
 import { CategoriesSection } from './CategoriesSection'
 import { TrackSearch } from './TrackSearch'
+import { PuliziaSection } from './PuliziaSection'
 import type { Radio } from './useRadio'
+import { Riquadri } from './Riquadri'
 
 export function LibraryView({ radio: _radio }: { radio: Radio }) {
   const [folders, setFolders] = useState<LibraryFolder[]>([])
@@ -18,6 +20,18 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
   const [label, setLabel] = useState('')
   const [shown, setShown] = useState<Track[]>([])
   const [labelMsg, setLabelMsg] = useState('')
+  const [sel, setSel] = useState<Set<number>>(new Set())
+  const [selMsg, setSelMsg] = useState('')
+
+  const togli = async (ids: number[], scarti: boolean): Promise<void> => {
+    const r = scarti ? await window.radio.spostaNegliScarti(ids) : await window.radio.togliDallaLibreria(ids)
+    setSelMsg(
+      `${r.fatti} ${r.fatti === 1 ? 'brano tolto' : 'brani tolti'} dalla libreria${scarti ? ' e spostati in "_Tolti dalla libreria"' : ' (i file restano dove sono)'}. Li ritrovi in Pulizia → Tolti dalla libreria.` +
+        (r.errori.length ? ` Problemi: ${r.errori.slice(0, 3).join('; ')}` : '')
+    )
+    setSel(new Set())
+    setRefresh((x) => x + 1)
+  }
 
   const tag = async (ids: number[], on: boolean): Promise<void> => {
     const n = await window.radio.setUserTag(ids, label, on)
@@ -34,8 +48,8 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
   const analyzed = status ? status.total - status.pendingAnalysis : 0
 
   return (
-    <div className="library-view">
-      <section className="panel">
+    <Riquadri className="library-view" chiave="libreria" nome="Libreria">
+      <section className="panel" data-sezione="cartelle" data-titolo="Cartelle della libreria">
         <div className="section-title">Cartelle della libreria</div>
         <p className="hint">
           Ogni cartella ha un tipo: la musica va in rotazione, i jingle si alternano alla musica e si possono mettere
@@ -129,6 +143,8 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
 
       <MusicBrainzSection onEdit={setEditing} refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} />
 
+      <PuliziaSection refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} onChanged={() => setRefresh((x) => x + 1)} status={status} />
+
       <CategoriesSection
         selected={category}
         onSelect={setCategory}
@@ -140,7 +156,7 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
         refreshKey={`${refresh}-${status?.total}`}
       />
 
-      <section className="panel grow">
+      <section className="panel grow" data-sezione="brani" data-titolo="Brani">
         <div className="section-title">
           Brani
           {category && (
@@ -163,7 +179,44 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
             {labelMsg && <span className="hint">{labelMsg}</span>}
           </div>
         )}
+        <div className="row label-bar">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={shown.length > 0 && shown.every((t) => sel.has(t.id))}
+              onChange={(e) => setSel(e.target.checked ? new Set([...sel, ...shown.map((t) => t.id)]) : new Set())}
+            />
+            <span>Seleziona tutti i {shown.length} mostrati</span>
+          </label>
+          {sel.size > 0 && (
+            <>
+              <span className="hint">{sel.size} selezionati</span>
+              <button className="small danger" onClick={() => void togli([...sel], false)} title="Il file resta sul PC dov'è">
+                Togli dalla libreria
+              </button>
+              <button
+                className="small danger"
+                onClick={() => void togli([...sel], true)}
+                title='Il file va nella sottocartella "_Tolti dalla libreria" della sua cartella musica, per cancellarlo a mano quando vuoi'
+              >
+                Togli e sposta il file negli scarti
+              </button>
+              <button className="small ghost" onClick={() => setSel(new Set())}>
+                Deseleziona
+              </button>
+            </>
+          )}
+          {selMsg && <span className="hint">{selMsg}</span>}
+        </div>
         <TrackSearch
+          filters
+          selected={sel}
+          onToggle={(t) => {
+            const s = new Set(sel)
+            if (s.has(t.id)) s.delete(t.id)
+            else s.add(t.id)
+            setSel(s)
+          }}
           refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}-${status?.analyzing ? 1 : 0}`}
           limit={300}
           category={category}
@@ -200,7 +253,7 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
           }}
         />
       )}
-    </div>
+    </Riquadri>
   )
 }
 

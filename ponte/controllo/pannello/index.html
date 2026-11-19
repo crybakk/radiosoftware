@@ -30,14 +30,15 @@
       </header>
       <nav id="menu" class="menu" hidden>
         <span id="who"></span>
-        <button id="progs-btn" class="ghost">Programmi</button>
-        <button id="stats-btn" class="ghost">Ascoltatori</button>
-        <button id="ann-btn" class="ghost" hidden>Annunci vocali</button>
-        <button id="users-btn" class="ghost" hidden>Utenti</button>
-        <button id="imp-btn" class="ghost" hidden>Impostazioni server</button>
-        <a id="guide-link" class="btn-link" href="/guida" target="_blank" rel="noopener">📖 Guida</a>
-        <button id="welcome-btn" class="ghost">👋 Benvenuto</button>
-        <a class="btn-link" href="/" target="_blank" rel="noopener">📻 Player pubblico</a>
+        <button id="progs-btn" class="ghost" data-sezione="progs" data-titolo="Programmi">Programmi</button>
+        <button id="stats-btn" class="ghost" data-sezione="stats" data-titolo="Ascoltatori">Ascoltatori</button>
+        <button id="ann-btn" class="ghost" hidden data-sezione="ann" data-titolo="Annunci vocali">Annunci vocali</button>
+        <button id="users-btn" class="ghost" hidden data-sezione="users" data-titolo="Utenti">Utenti</button>
+        <button id="imp-btn" class="ghost" hidden data-sezione="imp" data-titolo="Impostazioni server">Impostazioni server</button>
+        <a id="guide-link" class="btn-link" data-sezione="guida" data-titolo="Guida" href="/guida" target="_blank" rel="noopener">📖 Guida</a>
+        <button id="welcome-btn" class="ghost" data-sezione="benvenuto" data-titolo="Benvenuto">👋 Benvenuto</button>
+        <a class="btn-link" href="/" target="_blank" data-sezione="player" data-titolo="Player pubblico" rel="noopener">📻 Player pubblico</a>
+        <button id="riordina-btn" class="ghost" title="Cambia l'ordine dei riquadri e delle voci del menu">⇅ Riordina</button>
         <button id="logout" class="ghost">Esci</button>
       </nav>
 
@@ -46,7 +47,7 @@
       <div id="readonly" class="banner info" hidden>Con il tuo ruolo puoi vedere la regia ma non comandarla.</div>
 
       <main id="main">
-        <section class="card now" id="now">
+        <section class="card now" id="now" data-sezione="now" data-titolo="Brano in onda">
           <div class="now-kind" id="now-kind"></div>
           <div class="now-title" id="now-title">Nessun brano in onda</div>
           <div class="now-artist" id="now-artist"></div>
@@ -54,13 +55,13 @@
           <div class="now-times"><span id="now-pos">0:00</span><span id="now-rem" class="remaining"></span></div>
         </section>
 
-        <section class="transport">
+        <section class="transport" data-sezione="transport" data-titolo="PLAY / AVANTI / STOP">
           <button class="big play" data-cmd="play">▶ PLAY</button>
           <button class="big next" data-cmd="next">⏭ AVANTI</button>
           <button class="big stop" data-cmd="stop">■ STOP</button>
         </section>
 
-        <section class="card mic" id="mic-card" hidden>
+        <section class="card mic" id="mic-card" hidden data-sezione="mic" data-titolo="Microfono">
           <div class="section-title">Microfono <span id="mic-who" class="mic-who"></span></div>
           <p id="mic-hint" class="hint" hidden></p>
           <div class="mic-row">
@@ -76,7 +77,7 @@
           <audio id="mic-ret" autoplay></audio>
         </section>
 
-        <section class="card guests mic" id="guests-card" hidden>
+        <section class="card guests mic" id="guests-card" hidden data-sezione="ospiti" data-titolo="Ospiti">
           <div class="section-title">Ospiti <span id="guests-count" class="mic-who"></span></div>
           <div id="guests-list"></div>
           <div id="guests-ctl">
@@ -93,7 +94,7 @@
           </div>
         </section>
 
-        <section class="card auto" id="auto-card" hidden>
+        <section class="card auto" id="auto-card" hidden data-sezione="autonoma" data-titolo="Diretta autonoma">
           <div class="section-title">Diretta autonoma dal server <span id="auto-badge" class="mic-who"></span></div>
           <p class="hint" id="auto-hint">Il ponte suona la musica della libreria del server al posto della regia. Con la coda vuota sceglie da solo.</p>
           <div id="auto-now" class="auto-now"></div>
@@ -115,7 +116,7 @@
           <p id="auto-upload" class="hint" hidden></p>
         </section>
 
-        <section class="card video" id="video-card" hidden>
+        <section class="card video" id="video-card" hidden data-sezione="video" data-titolo="Dirette video">
           <div class="section-title">Dirette video (YouTube, Facebook) <span id="video-badge" class="mic-who"></span></div>
           <p class="hint" id="video-status"></p>
           <div id="video-ctl">
@@ -153,7 +154,7 @@
           </div>
         </section>
 
-        <section class="card unk" id="unk-card">
+        <section class="card unk" id="unk-card" data-sezione="sconosciuti" data-titolo="Brani sconosciuti">
           <div class="section-title">Brani sconosciuti delle esterne <span id="unk-badge" class="mic-who"></span></div>
           <p class="hint" id="unk-status"></p>
           <ul class="list unk-list" id="unk-list"></ul>
@@ -163,12 +164,12 @@
           </details>
         </section>
 
-        <section class="card">
+        <section class="card" data-sezione="coda" data-titolo="In coda">
           <div class="section-title">In coda</div>
           <ul class="list" id="queue"></ul>
         </section>
 
-        <section class="card">
+        <section class="card" data-sezione="cerca" data-titolo="Cerca nella libreria">
           <div class="section-title">Cerca nella libreria</div>
           <form id="search-form" class="search">
             <input id="search-q" placeholder="Titolo o artista" autocomplete="off" />
@@ -177,7 +178,7 @@
           <ul class="list" id="results"></ul>
         </section>
 
-        <section class="card">
+        <section class="card" data-sezione="jingle" data-titolo="Jingle">
           <div class="section-title">Jingle <button class="small ghost" data-cmd="stopCarts">Ferma jingle</button></div>
           <div class="carts" id="carts"></div>
         </section>
@@ -361,6 +362,7 @@
     <script src="/annunci.js"></script>
     <script src="/impostazioni.js"></script>
     <script src="/navigazione.js"></script>
+    <script src="/ordine.js"></script>
     <script src="/benvenuto.js"></script>
   </body>
 </html>

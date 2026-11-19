@@ -35,7 +35,8 @@ export const AUDIO_EXT = new Set(['.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opu
 async function* walk(dir: string): AsyncGenerator<string> {
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
   for (const e of entries) {
-    if (e.name.startsWith('.')) continue
+    // cartelle nascoste e quella dei file tolti dalla libreria della regia (copiata per errore col disco USB)
+    if (e.name.startsWith('.') || (e.isDirectory() && e.name === '_Tolti dalla libreria')) continue
     const p = join(dir, e.name)
     if (e.isDirectory()) yield* walk(p)
     else if (e.isFile() && AUDIO_EXT.has(extname(e.name).toLowerCase())) yield p
@@ -185,13 +186,16 @@ export class Library {
     // bloccare il servizio per secondi. Bastano 200 caratteri e 8 parole diverse.
     const words = [...new Set(norm(String(q).slice(0, 200)).split(/\s+/).filter(Boolean))].slice(0, 8)
     const out: ServerTrack[] = []
+    const byName = (a: ServerTrack, b: ServerTrack): number => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title)
+    // senza parole: i primi brani in ordine alfabetico (il pannello mostra subito la libreria, non una lista vuota)
+    if (!words.length) return this.all().filter((t) => this.usable(t)).sort(byName).slice(0, limit)
     for (const t of this.tracks.values()) {
       if (!this.usable(t)) continue
       const hay = norm(`${t.artist} ${t.title}`)
       if (words.every((w) => hay.includes(w))) out.push(t)
       if (out.length >= limit) break
     }
-    return out.sort((a, b) => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title))
+    return out.sort(byName)
   }
 
   /**

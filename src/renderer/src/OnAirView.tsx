@@ -3,6 +3,7 @@ import type { Track } from '../../core/types'
 import { hhmm, KIND_LABEL, mmss } from './format'
 import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
+import { Riquadri } from './Riquadri'
 
 function Meter({ radio }: { radio: Radio }) {
   const [level, setLevel] = useState(0)
@@ -54,8 +55,8 @@ export function OnAirView({ radio }: { radio: Radio }) {
 
   return (
     <div className="onair-view">
-      <section className="left">
-        <div className={`now ${ending ? 'ending' : ''}`}>
+      <Riquadri as="section" className="left" chiave="onair-sinistra" nome="In onda, colonna sinistra">
+        <div className={`now ${ending ? 'ending' : ''}`} data-sezione="now" data-titolo="Brano in onda">
           {main ? (
             <>
               <div className="now-kind">{KIND_LABEL[main.track.kind]}</div>
@@ -83,7 +84,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
           <Meter radio={radio} />
         </div>
 
-        <div className="transport">
+        <div className="transport" data-sezione="transport" data-titolo="PLAY / AVANTI / STOP">
           <button className="big play" disabled={!!main || !s.queue.length} onClick={() => void engine.play()}>
             ▶ PLAY
           </button>
@@ -95,7 +96,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
           </button>
         </div>
 
-        <div className="queue">
+        <div className="queue" data-sezione="queue" data-titolo="In coda">
           <div className="section-title">
             In coda
             {s.queue.length > 0 && (
@@ -146,10 +147,11 @@ export function OnAirView({ radio }: { radio: Radio }) {
             ))}
           </ul>
         </div>
-      </section>
+      </Riquadri>
 
-      <section className="right">
+      <Riquadri as="section" className="right" chiave="onair-destra" nome="In onda, colonna destra">
         <TrackSearch
+          sezione={{ id: 'cerca', titolo: 'Cerca brani' }}
           actions={(t) => (
             <>
               <PreviewButton radio={radio} track={t} />
@@ -163,7 +165,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
           )}
         />
         <Cartwall radio={radio} />
-      </section>
+      </Riquadri>
     </div>
   )
 }
@@ -180,7 +182,7 @@ function Cartwall({ radio }: { radio: Radio }) {
   }
 
   return (
-    <div className="cartwall">
+    <div className="cartwall" data-sezione="cartwall" data-titolo="Jingle istantanei">
       <div className="section-title">
         Jingle istantanei
         {radio.snapshot.carts.length > 0 && (

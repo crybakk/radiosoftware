@@ -3,6 +3,7 @@ import type { LogEntry } from '../../core/types'
 import { KIND_LABEL, mmss } from './format'
 import { SiaeSection } from './SiaeSection'
 import { logRange } from './logRange'
+import { Riquadri } from './Riquadri'
 
 function isoDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -39,9 +40,9 @@ export function LogView() {
   const incomplete = music.filter((e) => !e.composer || !e.siaeCode).length
 
   return (
-    <div className="log-view">
+    <Riquadri className="log-view" chiave="registro" nome="Registro">
       <SiaeSection />
-      <section className="panel grow">
+      <section className="panel grow" data-sezione="registro" data-titolo="Registro di trasmissione">
         <div className="section-title">Registro di trasmissione</div>
         <div className="row">
           <label className="inline">
@@ -105,6 +106,6 @@ export function LogView() {
           </tbody>
         </table>
       </section>
-    </div>
+    </Riquadri>
   )
 }

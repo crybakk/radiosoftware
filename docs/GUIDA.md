@@ -411,6 +411,40 @@ come i generi: nelle regole di rotazione, nel **Brano casuale** e nelle rotazion
 per filtrare la ricerca dei brani in **In onda**, nei **Jingle istantanei** e negli **Eventi** (menu **Tutte le
 categorie**, le tue etichette sono in cima con la ★).
 
+### Pulizia della libreria: brani non radiofonici e doppioni
+
+Nella sezione **Pulizia della libreria** trovi tre elenchi:
+
+- **Da controllare**: i brani che non sembrano adatti alla messa in onda, col motivo: titoli generici ("Track 01",
+  "Traccia 3"), live@ e altri live, interviste, nomi di file o registrazioni al posto del titolo ("REC_0012"),
+  titoli fatti solo di numeri.
+- **Doppioni**: brani con lo stesso artista e titolo (senza badare a maiuscole, accenti e "Remastered"). In ogni
+  gruppo la copia con la qualità migliore è segnata **da tenere** e le altre sono già selezionate.
+- **Tolti dalla libreria**: quelli che hai tolto, per rimetterli se cambi idea.
+
+Due aiuti in più riempiono **Da controllare** da soli, in background:
+
+- **Live dal suono**: dopo l'analisi e le impronte, la regia ascolta i primi 10 e gli ultimi 12 secondi di ogni
+  brano e segnala quelli con almeno 3 secondi di applausi o pubblico. È un indizio: controlla tu.
+- **Titoli con l'AI**: premi **Analizza i titoli con l'AI** (serve il modello scaricato in **Rotazioni con l'AI**).
+  L'AI legge artista, titolo e cartella di 30 brani alla volta e segnala mix, karaoke, parlato, registrazioni e
+  titoli che non sono titoli. Su 20.000 brani ci vogliono alcune ore: puoi fermarla e riprendere, e i brani già
+  letti non si rifanno.
+
+Niente si toglie da solo. Seleziona i brani (o **Seleziona tutti**) e scegli:
+
+- **Togli dalla libreria**: il brano non va più in onda, non si trova nella ricerca e sparisce dal server. Il file
+  resta sul PC dov'è, e le scansioni non lo rimettono.
+- **Togli e sposta il file negli scarti**: come sopra, e il file va nella sottocartella **_Tolti dalla libreria**
+  della sua cartella musica (con le stesse sottocartelle). Quando vuoi la cancelli a mano.
+- **Va bene così**: il brano resta e non compare più tra quelli da controllare.
+
+Anche nell'elenco **Brani** puoi selezionare più brani e toglierli insieme. Con **Filtri** cerchi per titolo,
+artista, album, genere o anno e scegli l'ordine.
+
+Se togli più di 20 brani in una volta, la regia non li cancella dal server finché non premi **Conferma
+cancellazioni** (Collegamento → Libreria sul server).
+
 ## 10. Rotazioni con l'AI
 
 Invece di creare a mano gli eventi **Regole di rotazione** fascia per fascia, scrivi il palinsesto a parole e li

@@ -15,6 +15,7 @@ import { AnnounceTester } from './VoiceSection'
 import { hhmm, KIND_LABEL } from './format'
 import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
+import { Riquadri } from './Riquadri'
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
@@ -172,8 +173,8 @@ export function EventsView({ radio }: { radio: Radio }) {
   const profile = radio.settings.rotationProfile
 
   return (
-    <div className="events-view">
-      <section className="panel">
+    <Riquadri className="events-view" chiave="eventi" nome="Eventi">
+      <section className="panel" data-sezione="eventi" data-titolo="Eventi programmati">
         <div className="section-title">
           Eventi programmati
           <button
@@ -311,7 +312,7 @@ export function EventsView({ radio }: { radio: Radio }) {
           onClose={() => setDraft(null)}
         />
       )}
-    </div>
+    </Riquadri>
   )
 }
 

@@ -1,5 +1,6 @@
 import { ANALYSIS_TIMEOUT_MS, analyzeFile } from '../core/analyzer'
 import { fingerprintFile } from '../core/fingerprintFile'
+import { secondiApplausi } from '../core/liveAudio'
 import { DjAnalyzer, decodeMono } from './djAnalyzer'
 import type { RadioDb } from '../core/db'
 import { scanLibrary, type ScanProgress } from '../core/scanner'
@@ -13,6 +14,7 @@ export class LibraryService {
   private scanning: ScanProgress | null = null
   private analyzing = false
   private fingerprinting = false
+  private liveChecking = false
   private djRunning = false
   private dj: DjAnalyzer | null
   private stopRequested = false
@@ -40,6 +42,10 @@ export class LibraryService {
       fingerprints: fp.done,
       fingerprintTotal: fp.total,
       fingerprinting: this.fingerprinting,
+      ...(() => {
+        const l = this.db.liveStats()
+        return { liveChecked: l.done, liveTotal: l.total, liveChecking: this.liveChecking }
+      })(),
       ...this.djStatus()
     }
   }
@@ -148,6 +154,44 @@ export class LibraryService {
       this.fingerprinting = false
       this.emit()
     }
+    await this.liveAll()
+  }
+
+  /**
+   * Live riconosciuti dal suono (applausi all'inizio o alla fine), dopo le impronte.
+   * Legge solo i primi e gli ultimi secondi di ogni brano, uno alla volta.
+   */
+  async liveAll(): Promise<void> {
+    if (this.liveChecking || this.fingerprinting || this.analyzing || !this.ffmpegPath) return
+    this.liveChecking = true
+    this.stopRequested = false
+    const abort = (this.abort = new AbortController())
+    this.emit()
+    let lastEmit = 0
+    try {
+      for (;;) {
+        const batch = this.db.pendingLive(20)
+        if (!batch.length || this.stopRequested) break
+        for (const t of batch) {
+          if (this.stopRequested) break
+          try {
+            this.db.saveLive(t.id, await secondiApplausi(this.ffmpegPath, t.path, abort.signal))
+          } catch {
+            if (abort.signal.aborted) break
+            // file illeggibile: non si riprova finché il file non cambia
+            this.db.saveLive(t.id, null)
+          }
+          if (Date.now() - lastEmit > 1000) {
+            lastEmit = Date.now()
+            this.emit()
+          }
+        }
+      }
+    } finally {
+      if (this.abort === abort) this.abort = null
+      this.liveChecking = false
+      this.emit()
+    }
     await this.djAll()
   }
 
@@ -157,11 +201,11 @@ export class LibraryService {
   }
 
   /**
-   * Analisi "da DJ" della musica (BPM, battiti, tonalità, energia, intro/outro), dopo le impronte.
+   * Analisi "da DJ" della musica (BPM, battiti, tonalità, energia, intro/outro), dopo i live.
    * Qualche secondo a brano, un brano alla volta, in un thread separato.
    */
   async djAll(): Promise<void> {
-    if (!this.dj || this.djRunning || this.analyzing || this.fingerprinting || !this.ffmpegPath) return
+    if (!this.dj || this.djRunning || this.liveChecking || this.analyzing || this.fingerprinting || !this.ffmpegPath) return
     this.djRunning = true
     this.stopRequested = false
     const abort = (this.abort = new AbortController())

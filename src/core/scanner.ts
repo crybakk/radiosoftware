@@ -2,6 +2,7 @@ import { readdir, stat } from 'node:fs/promises'
 import { basename, extname, join, resolve } from 'node:path'
 import type { RadioDb, ScannedFile } from './db'
 import type { TrackKind } from './types'
+import { CARTELLA_SCARTI } from './pulizia'
 
 export const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.opus'])
 
@@ -32,7 +33,8 @@ async function* walk(dir: string, unreadable: string[]): AsyncGenerator<string> 
     return
   }
   for (const e of entries) {
-    if (e.name.startsWith('.')) continue
+    // cartelle nascoste e quella dei file tolti dalla libreria (da cancellare a mano)
+    if (e.name.startsWith('.') || (e.isDirectory() && e.name === CARTELLA_SCARTI)) continue
     const full = join(dir, e.name)
     if (e.isDirectory()) yield* walk(full, unreadable)
     else if (e.isFile() && AUDIO_EXTENSIONS.has(extname(e.name).toLowerCase())) yield full
