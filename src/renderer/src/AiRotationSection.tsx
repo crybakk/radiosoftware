@@ -85,7 +85,7 @@ export function AiRotationSection({
   const pct = Math.round(st.progress * 100)
 
   return (
-    <section className="panel ai-panel">
+    <section className="panel ai-panel" data-sezione="rotazioni-ai" data-titolo="Rotazioni con l'AI">
       <div className="section-title">
         Rotazioni con l'AI
         <button className="small" onClick={() => setOpen(!open)}>

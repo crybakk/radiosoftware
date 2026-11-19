@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ListenerStats } from '../../core/ponteClient'
 import { cleanError } from './ConnectionView'
+import { Riquadri } from './Riquadri'
 
 /**
  * Ascoltatori: gli stessi dati del pannello remoto, letti dal ponte (Icecast principale e secondario,
@@ -212,8 +213,8 @@ export function StatsView() {
     new Date(t).toLocaleString('it-IT', kind === 'settimana' ? { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' } : { hour: '2-digit', minute: '2-digit' })
 
   return (
-    <div className="stats-view">
-      <section className="panel">
+    <Riquadri className="stats-view" chiave="ascoltatori" nome="Ascoltatori">
+      <section className="panel" data-sezione="ascoltatori" data-titolo="Ascoltatori">
         <div className="section-title">Ascoltatori</div>
         <div className="row">
           <button className={kind === 'giorno' ? 'primary' : ''} onClick={() => setKind('giorno')}>
@@ -261,15 +262,15 @@ export function StatsView() {
       </section>
       {r && (
         <>
-          <section className="panel">
+          <section className="panel" data-sezione="andamento" data-titolo="Andamento">
             <div className="section-title">{kind === 'settimana' ? 'Andamento della settimana (media per ora)' : 'Andamento del giorno (media ogni 10 minuti)'}</div>
             <LineChart r={r} />
           </section>
-          <section className="panel">
+          <section className="panel" data-sezione="per-ora" data-titolo="Per ora del giorno">
             <div className="section-title">Per ora del giorno (media)</div>
             <HourChart hours={r.byHour} />
           </section>
-          <section className="panel">
+          <section className="panel" data-sezione="per-programma" data-titolo="Per programma">
             <div className="section-title">Per programma</div>
             <table className="table">
               <thead>
@@ -301,6 +302,6 @@ export function StatsView() {
           </section>
         </>
       )}
-    </div>
+    </Riquadri>
   )
 }

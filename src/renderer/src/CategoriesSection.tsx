@@ -37,7 +37,7 @@ export function CategoriesSection({
   }, [cats, filter, all])
 
   return (
-    <section className="panel">
+    <section className="panel" data-sezione="categorie" data-titolo="Categorie">
       <div className="section-title">Categorie</div>
       <p className="hint">
         I generi dei file, quelli trovati da MusicBrainz, Discogs e Last.fm, e le <b>etichette tue</b> (★). Tocca una

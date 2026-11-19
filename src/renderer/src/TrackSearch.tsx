@@ -25,10 +25,13 @@ export function TrackSearch({
   onResult,
   filters,
   selected,
-  onToggle
+  onToggle,
+  sezione
 }: {
   kind?: TrackKind
   actions: (t: Track) => ReactNode
+  /** Per il riordino dei riquadri (vedi Riquadri.tsx). */
+  sezione?: { id: string; titolo: string }
   placeholder?: string
   limit?: number
   autoFocus?: boolean
@@ -96,7 +99,7 @@ export function TrackSearch({
   }, [text, kindFilter, limit, refreshKey, activeCategory, f])
 
   return (
-    <div className="search">
+    <div className="search" data-sezione={sezione?.id} data-titolo={sezione?.titolo}>
       <div className="search-bar">
         <input autoFocus={autoFocus} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} />
         {!kind && (

@@ -33,7 +33,7 @@ export function MusicBrainzSection({ onEdit, refreshKey }: { onEdit: (t: Track) 
   const hours = Math.ceil((st.todo * 2.2) / 3600)
 
   return (
-    <section className="panel mb-panel">
+    <section className="panel mb-panel" data-sezione="musicbrainz" data-titolo="Dati dei brani (SIAE e generi)">
       <div className="section-title">Dati dei brani: report SIAE e generi</div>
       <p className="hint">
         MusicBrainz completa autori, editore, ISWC e ISRC dove mancano: i dati scritti a mano non vengono toccati. Il

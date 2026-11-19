@@ -229,6 +229,12 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding:
 .wel-buttons { display: flex; gap: 8px; justify-content: space-between; }
 .wel-buttons .primary { margin-left: auto; min-width: 120px; }
 
+/* Riordino a piacere (ordine.js) */
+.riordina-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--panel2); border: 1px solid var(--accent); border-radius: 12px; grid-column: 1 / -1; flex-basis: 100%; }
+.riordina-barra[hidden] { display: none; }
+.riordina-voce { display: inline-flex; align-items: center; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; font-size: 14px; }
+.riordina-attivo > [data-sezione]:not([hidden]) { outline: 1px dashed var(--accent); outline-offset: 2px; }
+
 /* novità degli aggiornamenti del server */
 .novita { margin: 6px 0 10px; }
 .novita summary { cursor: pointer; font-weight: 600; margin-top: 4px; }

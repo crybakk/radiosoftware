@@ -106,7 +106,7 @@ export function VoiceSection({ draft, setDraft }: { draft: Settings; setDraft: (
 
   const chosen = voices.find((x) => x.id === v.voice)
   return (
-    <section className="panel">
+    <section className="panel" data-sezione="voce" data-titolo="Voce sintetica">
       <div className="section-title">Voce sintetica</div>
       <p className="hint">
         Per gli annunci (azione "Annuncio vocale" negli eventi) e, se lo scegli, al posto di un notiziario che manca. Gratuita e

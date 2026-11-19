@@ -8,6 +8,7 @@ import { CategoriesSection } from './CategoriesSection'
 import { TrackSearch } from './TrackSearch'
 import { PuliziaSection } from './PuliziaSection'
 import type { Radio } from './useRadio'
+import { Riquadri } from './Riquadri'
 
 export function LibraryView({ radio: _radio }: { radio: Radio }) {
   const [folders, setFolders] = useState<LibraryFolder[]>([])
@@ -47,8 +48,8 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
   const analyzed = status ? status.total - status.pendingAnalysis : 0
 
   return (
-    <div className="library-view">
-      <section className="panel">
+    <Riquadri className="library-view" chiave="libreria" nome="Libreria">
+      <section className="panel" data-sezione="cartelle" data-titolo="Cartelle della libreria">
         <div className="section-title">Cartelle della libreria</div>
         <p className="hint">
           Ogni cartella ha un tipo: la musica va in rotazione, i jingle si alternano alla musica e si possono mettere
@@ -146,7 +147,7 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
         refreshKey={`${refresh}-${status?.total}`}
       />
 
-      <section className="panel grow">
+      <section className="panel grow" data-sezione="brani" data-titolo="Brani">
         <div className="section-title">
           Brani
           {category && (
@@ -243,7 +244,7 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
           }}
         />
       )}
-    </div>
+    </Riquadri>
   )
 }
 

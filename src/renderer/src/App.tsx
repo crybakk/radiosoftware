@@ -10,6 +10,8 @@ import { OnAirView } from './OnAirView'
 import { SettingsView } from './SettingsView'
 import { StatsView } from './StatsView'
 import { useRadio } from './useRadio'
+import { RiordinaContext, useOrdineSalvato } from './Riquadri'
+import { salvaOrdine, spostaSezione, unisciOrdine } from './ordine'
 import type { AggiornamentoStato, NovitaInstallate, NovitaVersione } from '../../shared/api'
 
 type Tab = 'onair' | 'library' | 'events' | 'log' | 'stats' | 'link' | 'settings' | 'guide'
@@ -37,21 +39,61 @@ function Clock() {
 export function App() {
   const radio = useRadio()
   const [tab, setTab] = useState<Tab>('onair')
+  const [riordina, setRiordina] = useState(false)
+  const ordineSchede = unisciOrdine(
+    TABS.map((t) => t.id),
+    useOrdineSalvato('schede')
+  )
+  const schede = ordineSchede.map((id) => TABS.find((t) => t.id === id)).filter((t) => !!t)
+  const spostaScheda = (id: Tab, verso: -1 | 1) =>
+    salvaOrdine('schede', spostaSezione(ordineSchede, TABS.map((t) => t.id), id, verso))
   const auto = radio.snapshot.mode === 'auto'
   const onAir = radio.snapshot.onAir.length > 0
 
   return (
     <PreviewContext.Provider value={radio.preview}>
+    <RiordinaContext.Provider value={riordina}>
     <div className="app">
       <header className="topbar">
         <div className={`onair-lamp ${onAir ? 'lit' : ''}`}>{onAir ? 'IN ONDA' : 'FERMO'}</div>
-        <nav className="tabs">
-          {TABS.map((t) => (
-            <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
-              {t.label}
-            </button>
-          ))}
+        <nav className={`tabs ${riordina ? 'riordina-attivo' : ''}`}>
+          {schede.map((t, i) =>
+            riordina ? (
+              <span key={t.id} className="riordina-voce scheda">
+                <button className="small" disabled={i === 0} title="Sposta a sinistra" onClick={() => spostaScheda(t.id, -1)}>
+                  ◀
+                </button>
+                <button className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+                  {t.label}
+                </button>
+                <button
+                  className="small"
+                  disabled={i === schede.length - 1}
+                  title="Sposta a destra"
+                  onClick={() => spostaScheda(t.id, 1)}
+                >
+                  ▶
+                </button>
+              </span>
+            ) : (
+              <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+                {t.label}
+              </button>
+            )
+          )}
         </nav>
+        <button
+          className={`riordina-btn ${riordina ? 'active' : ''}`}
+          onClick={() => setRiordina(!riordina)}
+          title="Cambia l'ordine delle schede in alto e dei riquadri di ogni pagina"
+        >
+          {riordina ? '✓ Fatto' : '⇅ Riordina'}
+        </button>
+        {riordina && ordineSchede.join() !== TABS.map((t) => t.id).join() && (
+          <button className="small" onClick={() => salvaOrdine('schede', null)} title="Torna all'ordine originale delle schede">
+            Ripristina schede
+          </button>
+        )}
         {radio.settings.ponte.enabled && (
           <button
             className={`link-pill ${radio.ponte?.alarms.length ? 'bad' : uplinkClass(radio.ponte?.uplink.state)}`}
@@ -90,6 +132,7 @@ export function App() {
         </ViewErrorBoundary>
       </main>
     </div>
+    </RiordinaContext.Provider>
     </PreviewContext.Provider>
   )
 }

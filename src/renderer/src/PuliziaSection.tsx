@@ -115,7 +115,7 @@ export function PuliziaSection({ refreshKey, onChanged, status }: { refreshKey: 
   )
 
   return (
-    <section className="panel pulizia">
+    <section className="panel pulizia" data-sezione="pulizia" data-titolo="Pulizia della libreria">
       <div className="section-title">Pulizia della libreria</div>
       <p className="hint">
         Qui trovi i brani che non sembrano adatti alla messa in onda (titoli tipo "Track 01", live@, nomi di file al posto
