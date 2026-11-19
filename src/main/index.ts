@@ -47,6 +47,11 @@ function ffmpegPath(): string | null {
   return p ? p.replace('app.asar', 'app.asar.unpacked') : null
 }
 
+/** Thread dell'analisi DJ: nell'installazione sta fuori dall'archivio asar, con essentia.js. */
+function djWorkerUrl(): URL {
+  return new URL(new URL('./djWorker.js', import.meta.url).href.replace('/app.asar/', '/app.asar.unpacked/'))
+}
+
 let win: BrowserWindow | null = null
 const RENDERER_FILE = join(import.meta.dirname, '../renderer/index.html')
 // l'indirizzo di sviluppo vale solo quando il programma non è installato
@@ -122,7 +127,7 @@ if (primary) app.whenReady().then(async () => {
     return
   }
   db.closeDanglingLog(new Date())
-  const library = new LibraryService(db, ffmpegPath())
+  const library = new LibraryService(db, ffmpegPath(), djWorkerUrl())
   const rotation = new RotationService(db)
   const ponte = new PonteService(db, app.getPath('userData'), ffmpegPath())
   // notiziari: scaricati al momento, uno per fonte (l'ultimo)

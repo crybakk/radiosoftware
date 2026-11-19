@@ -34,6 +34,10 @@ export interface LibraryStatus {
   liveChecked: number
   liveTotal: number
   liveChecking: boolean
+  /** Analisi "da DJ" (Mix DJ): brani fatti, totale della musica, in corso. */
+  djDone: number
+  djTotal: number
+  djAnalyzing: boolean
 }
 
 /** Funzioni che il processo principale offre all'interfaccia (window.radio). */

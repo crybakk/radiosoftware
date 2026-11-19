@@ -6,9 +6,8 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 19/11/2026, regia e pannello mostrano le novità di ogni aggiornamento e non propongono
-versioni che riguardano solo l'altro programma; schede di benvenuto al primo accesso nel pannello; nuovi utenti
-invitati con un link: la password la sceglie chi riceve il link.
+**Ultimo aggiornamento:** 20/11/2026, la regia analizza la musica per il Mix DJ: BPM, battiti, tonalità, energia,
+intro e outro di ogni brano.
 
 ## Indice
 
@@ -316,6 +315,13 @@ i prossimi eventi e, se attivo, il profilo di rotazione in uso.
 
 In sottofondo parte l'**analisi**: livella il volume di tutti i brani, trova dove inizia e finisce l'audio utile e
 dove far partire il brano successivo. Con 20.000 brani ci vuole un po', ma puoi andare in onda subito.
+
+Dopo le impronte audio parte l'**analisi per il Mix DJ** (riga "Analisi per il Mix DJ"): per ogni brano di musica
+trova i **BPM** e i battiti, il primo tempo della battuta, la **tonalità**, l'**energia** (da 1 a 10), dove finisce
+l'**intro** e dove inizia l'**outro**. Ci vogliono alcuni secondi a brano: con 20.000 brani circa un giorno, in
+sottofondo e solo mentre la regia è aperta (riprende da dove era rimasta). Non esiste un archivio online con questi
+dati, per questo li calcola la regia. I risultati si vedono in fondo alla scheda del brano. Se un brano non ha un
+ritmo regolare (classica, live, tempi liberi) la scheda lo dice: in quel caso il cambio sarà la dissolvenza normale.
 
 Sotto c'è l'elenco dei brani. **Scheda** apre la scheda del brano, dove puoi:
 
@@ -1036,6 +1042,9 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 
 ## 25. In arrivo
 
+- **Mix DJ**: cambi di brano a tempo, sul battito, con lo scambio dei bassi e, quando serve, un loop sul finale del
+  brano che esce. Si accende dagli eventi o con un pulsante per un solo cambio.
+- Rotazione anche in base all'energia dei brani.
 - FluidStream, se un giorno servirà.
 
 ## 26. Modifiche alla guida
@@ -1071,3 +1080,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 17/11/2026 | Durata massima dei brani (10 minuti, dal pannello): i premixati spariscono da libreria, rotazioni, eventi, server, diretta autonoma e musica di emergenza |
 | 19/11/2026 | Utenti del pannello invitati con un link (7 giorni, una volta sola): la password la sceglie chi lo riceve |
 | 19/11/2026 | Schede di benvenuto al primo accesso nel pannello, adatte al ruolo; si rivedono dal menu ☰ → 👋 Benvenuto |
+| 20/11/2026 | Analisi per il Mix DJ in Libreria: BPM, battiti, tonalità, energia, intro e outro di ogni brano |

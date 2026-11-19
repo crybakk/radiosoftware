@@ -97,3 +97,8 @@ Struttura:
 - `src/core/` – logica indipendente da Electron (database, scansione, analisi, rotazione, eventi, motore di messa in onda), coperta dai test in `tests/`.
 - `src/main/` – processo principale Electron (database, file audio, finestre di dialogo).
 - `src/renderer/` – interfaccia React e motore audio Web Audio.
+
+## Licenza
+
+La regia usa [Essentia](https://essentia.upf.edu/) (essentia.js, AGPL-3.0) per BPM, battiti e tonalità, quindi è
+distribuita con la licenza **GNU AGPL 3.0 o successive** (file `LICENSE`).
