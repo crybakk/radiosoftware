@@ -17,6 +17,7 @@ import { fpcalcPath } from './fpcalc'
 import { AcoustId } from '../core/acoustid'
 import { AiService, previewCounts } from './ai'
 import { llamaEngine } from './llm'
+import { AiTitoliService } from './aiTitoli'
 import { AI_LABEL, cleanPlan, planEvents, summarize, type AiPlan } from '../core/aiRotation'
 import { RadioDb, type TrackEdit, type TrackSearch } from '../core/db'
 import { RotationService } from '../core/rotationService'
@@ -172,10 +173,18 @@ if (primary) app.whenReady().then(async () => {
   })
   const tags = tagWorkers(db, (st) => win?.webContents.send('tagStatus', st))
   const tagWorker = (s: TagService) => tags.find((w) => w.service === s)!
+  const llm = llamaEngine()
   const ai = new AiService({
     dir: join(app.getPath('userData'), 'ai'),
-    engine: llamaEngine(),
+    engine: llm,
     onStatus: (st) => win?.webContents.send('aiStatus', st)
+  })
+  const aiTitoli = new AiTitoliService({
+    db,
+    engine: llm,
+    modelPath: () => ai.modelPath,
+    busy: () => ai.status().busy,
+    onStatus: (st) => win?.webContents.send('aiTitoliStatus', st)
   })
   // brani caricati dal pannello e scaricati in regia: analisi, impronta e MusicBrainz da soli
   serverSync.onCatalogued = (ids) => {
@@ -295,6 +304,13 @@ if (primary) app.whenReady().then(async () => {
   handle('togliDallaLibreria', (v: number[]) => ({ fatti: db.togliDallaLibreria(ids(v)), errori: [] }))
   handle('spostaNegliScarti', (v: number[]) => spostaNegliScarti(db, ids(v)))
   handle('rimettiInLibreria', (v: number[]) => rimettiInLibreria(db, ids(v)))
+  handle('aiTitoliStatus', () => aiTitoli.status())
+  handle('aiTitoliStart', (rifai?: boolean) => {
+    if (rifai) db.resetAiTitoli()
+    aiTitoli.start()
+    return aiTitoli.status()
+  })
+  handle('aiTitoliStop', () => aiTitoli.stop())
   handle('toltiDallaLibreria', (text: string) => db.toltiDallaLibreria(String(text ?? '')))
 
   // impostazioni
@@ -422,6 +438,7 @@ if (primary) app.whenReady().then(async () => {
   handle('aiRemoveModel', () => ai.removeModel())
   handle('aiCancelGenerate', () => ai.cancelGeneration())
   handle('aiGenerate', async (description: string) => {
+    if (aiTitoli.status().running) throw new Error("l'AI sta analizzando i titoli della libreria: fermala (Libreria → Pulizia) o aspetta che finisca")
     db.saveSettings({ aiDescription: description })
     return ai.generate(description, db.rotationCandidates('music'))
   })
@@ -528,6 +545,7 @@ if (primary) app.whenReady().then(async () => {
     mb.stop()
     for (const w of tags) w.stop()
     ai.stop()
+    aiTitoli.stop()
     serverSync.stop()
     library.stop()
     ponte.stop()

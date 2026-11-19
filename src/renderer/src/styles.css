@@ -304,3 +304,6 @@ button.tiny.on { opacity: 1; background: var(--green); border-color: var(--green
 .pulizia-list li.gruppo { display: block; padding: 0; border-bottom: 2px solid var(--line); }
 .pulizia-list li.tieni { border-left: 3px solid var(--accent); }
 .tag.ok { color: var(--accent); border-color: var(--accent); }
+.pulizia-auto { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 8px 0; }
+.pulizia-auto > div { background: var(--panel2); border-radius: 10px; padding: 10px; font-size: 14px; }
+@media (max-width: 900px) { .pulizia-auto { grid-template-columns: 1fr; } }

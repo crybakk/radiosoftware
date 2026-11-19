@@ -133,7 +133,7 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
 
       <MusicBrainzSection onEdit={setEditing} refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} />
 
-      <PuliziaSection refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} onChanged={() => setRefresh((x) => x + 1)} />
+      <PuliziaSection refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} onChanged={() => setRefresh((x) => x + 1)} status={status} />
 
       <CategoriesSection
         selected={category}

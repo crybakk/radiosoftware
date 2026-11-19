@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Track } from '../../core/types'
 import type { EsitoPulizia } from '../../main/pulizia'
+import type { AiTitoliStatus } from '../../main/aiTitoli'
+import type { LibraryStatus } from '../../shared/api'
 import { mmss } from './format'
 
 const api = window.radio
@@ -11,7 +13,23 @@ type Vista = 'controllare' | 'doppioni' | 'tolti'
  * Pulizia della libreria: brani che non sembrano radiofonici, doppioni e brani tolti.
  * Niente si toglie da solo: scegli tu (anche tanti insieme) e i file restano sul PC.
  */
-export function PuliziaSection({ refreshKey, onChanged }: { refreshKey: string; onChanged: () => void }) {
+export function PuliziaSection({ refreshKey, onChanged, status }: { refreshKey: string; onChanged: () => void; status: LibraryStatus | null }) {
+  const [ai, setAi] = useState<AiTitoliStatus | null>(null)
+  const [aiErr, setAiErr] = useState('')
+  useEffect(() => {
+    void api.aiTitoliStatus().then(setAi)
+    return api.onAiTitoliStatus(setAi)
+  }, [])
+  const aiStart = async (rifai: boolean): Promise<void> => {
+    setAiErr('')
+    try {
+      setAi(await api.aiTitoliStart(rifai))
+    } catch (e) {
+      setAiErr((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+    }
+  }
+  // brani nuovi segnalati dall'AI o dall'ascolto dei live: la lista si aggiorna
+  const liveKey = status ? Math.floor(status.liveChecked / 200) : 0
   const [vista, setVista] = useState<Vista>('controllare')
   const [controllare, setControllare] = useState<{ tracks: (Track & { motivo: string })[]; total: number } | null>(null)
   const [doppioni, setDoppioni] = useState<{ gruppi: { tieni: number; tracks: Track[] }[]; total: number } | null>(null)
@@ -24,9 +42,10 @@ export function PuliziaSection({ refreshKey, onChanged }: { refreshKey: string; 
 
   useEffect(() => {
     void api.daControllare().then(setControllare)
-    void api.doppioni().then((d) => {
-      setDoppioni(d)
-    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey, n, ai?.flagged, ai?.running, liveKey, status?.liveChecking])
+  useEffect(() => {
+    void api.doppioni().then(setDoppioni)
   }, [refreshKey, n])
   useEffect(() => {
     const t = setTimeout(() => void api.toltiDallaLibreria(q).then(setTolti), 150)
@@ -103,6 +122,58 @@ export function PuliziaSection({ refreshKey, onChanged }: { refreshKey: string; 
         del titolo, live e interviste) e i doppioni. Niente si toglie da solo: scegli tu. I file restano sul PC; se vuoi, li
         sposto nella sottocartella "_Tolti dalla libreria" della cartella musica, così li cancelli a mano quando vuoi.
       </p>
+      <div className="pulizia-auto">
+        <div>
+          <b>Live dal suono</b>: la regia ascolta l'inizio e la fine di ogni brano e segnala quelli con applausi o
+          pubblico.{' '}
+          {status && status.liveTotal > 0 && (
+            <span className="hint">
+              Ascoltati {status.liveChecked} di {status.liveTotal}
+              {status.liveChecking ? ' (in corso, dopo analisi e impronte)' : status.liveChecked < status.liveTotal ? ' (parte dopo analisi e impronte)' : ''}.
+            </span>
+          )}
+          {status && status.liveTotal > 0 && (
+            <div className="progress thin">
+              <div className="progress-fill" style={{ width: `${(status.liveChecked / Math.max(1, status.liveTotal)) * 100}%` }} />
+            </div>
+          )}
+        </div>
+        <div>
+          <b>Titoli con l'AI</b>: l'AI della regia legge artista, titolo e cartella e segnala quelli che non sembrano
+          canzoni (mix, karaoke, parlato, registrazioni...). Lavora in background, puoi fermarla e riprendere.{' '}
+          {ai && ai.total > 0 && (
+            <span className="hint">
+              Letti {ai.done} di {ai.total}
+              {ai.running ? `, segnalati ${ai.flagged} finora` : ''}.
+            </span>
+          )}
+          {ai && ai.total > 0 && (ai.running || ai.done > 0) && (
+            <div className="progress thin">
+              <div className="progress-fill" style={{ width: `${(ai.done / Math.max(1, ai.total)) * 100}%` }} />
+            </div>
+          )}
+          <div className="row">
+            {ai?.running ? (
+              <button className="small" onClick={() => void api.aiTitoliStop()}>
+                Ferma l'AI
+              </button>
+            ) : (
+              <>
+                <button className="small primary" disabled={!!ai && ai.done >= ai.total} onClick={() => void aiStart(false)}>
+                  {ai && ai.done > 0 ? "Continua l'analisi con l'AI" : "Analizza i titoli con l'AI"}
+                </button>
+                {ai && ai.done > 0 && (
+                  <button className="small ghost" onClick={() => void aiStart(true)} title="Rilegge tutti i titoli da capo">
+                    Rifai da capo
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+          {(aiErr || ai?.error) && <div className="banner error inline-banner">{aiErr || ai?.error}</div>}
+        </div>
+      </div>
+
       <div className="row">
         <button className={vista === 'controllare' ? 'primary' : ''} onClick={() => setVista('controllare')}>
           Da controllare ({controllare?.total ?? '…'})

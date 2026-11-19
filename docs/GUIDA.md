@@ -415,6 +415,15 @@ Nella sezione **Pulizia della libreria** trovi tre elenchi:
   gruppo la copia con la qualità migliore è segnata **da tenere** e le altre sono già selezionate.
 - **Tolti dalla libreria**: quelli che hai tolto, per rimetterli se cambi idea.
 
+Due aiuti in più riempiono **Da controllare** da soli, in background:
+
+- **Live dal suono**: dopo l'analisi e le impronte, la regia ascolta i primi 10 e gli ultimi 12 secondi di ogni
+  brano e segnala quelli con almeno 3 secondi di applausi o pubblico. È un indizio: controlla tu.
+- **Titoli con l'AI**: premi **Analizza i titoli con l'AI** (serve il modello scaricato in **Rotazioni con l'AI**).
+  L'AI legge artista, titolo e cartella di 30 brani alla volta e segnala mix, karaoke, parlato, registrazioni e
+  titoli che non sono titoli. Su 20.000 brani ci vogliono alcune ore: puoi fermarla e riprendere, e i brani già
+  letti non si rifanno.
+
 Niente si toglie da solo. Seleziona i brani (o **Seleziona tutti**) e scegli:
 
 - **Togli dalla libreria**: il brano non va più in onda, non si trova nella ricerca e sparisce dal server. Il file

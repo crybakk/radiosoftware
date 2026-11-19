@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { resolve } from 'node:path'
 import { chiaveDoppione, copiaDaTenere, motivoNonRadiofonico } from './pulizia'
+import { SECONDI_LIVE } from './liveAudio'
 import {
   DEFAULT_PONTE,
   DEFAULT_SETTINGS,
@@ -358,6 +359,11 @@ export class RadioDb {
     // "orig_path" = da dove è stato spostato il file messo negli scarti (per rimetterlo a posto)
     if (!cols.includes('radio_ok')) this.db.exec('ALTER TABLE tracks ADD COLUMN radio_ok INTEGER NOT NULL DEFAULT 0')
     if (!cols.includes('orig_path')) this.db.exec("ALTER TABLE tracks ADD COLUMN orig_path TEXT NOT NULL DEFAULT ''")
+    // live riconosciuti dal suono (secondi di applausi a inizio/fine) e titoli giudicati dall'AI locale
+    if (!cols.includes('live_s')) this.db.exec('ALTER TABLE tracks ADD COLUMN live_s REAL')
+    if (!cols.includes('live_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN live_at TEXT')
+    if (!cols.includes('ai_motivo')) this.db.exec("ALTER TABLE tracks ADD COLUMN ai_motivo TEXT NOT NULL DEFAULT ''")
+    if (!cols.includes('ai_at')) this.db.exec('ALTER TABLE tracks ADD COLUMN ai_at TEXT')
     this.db.exec(
       'CREATE TABLE IF NOT EXISTS fingerprints (track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE, fp BLOB NOT NULL)'
     )
@@ -527,7 +533,7 @@ export class RadioDb {
              composer=CASE WHEN composer='' THEN ? ELSE composer END,
              publisher=CASE WHEN publisher='' THEN ? ELSE publisher END,
              isrc=CASE WHEN isrc='' THEN ? ELSE isrc END,
-             duration=?, bitrate=?, sample_rate=?, file_size=?, file_mtime=?, analyzed_at=NULL, fp_at=NULL
+             duration=?, bitrate=?, sample_rate=?, file_size=?, file_mtime=?, analyzed_at=NULL, fp_at=NULL, live_at=NULL
            WHERE id=?`
         )
         .run(
@@ -732,7 +738,11 @@ export class RadioDb {
     let total = 0
     for (const r of rows) {
       const t = rowToTrack(r)
-      const motivo = motivoNonRadiofonico(t)
+      const live = r.live_s == null ? 0 : Number(r.live_s)
+      const motivo =
+        motivoNonRadiofonico(t) ??
+        (live >= SECONDI_LIVE ? `live (dal suono: ${live} s di applausi)` : null) ??
+        (r.ai_motivo ? `secondo l'AI: ${String(r.ai_motivo)}` : null)
       if (!motivo) continue
       total++
       if (out.length < limit) out.push({ ...t, motivo })
@@ -765,6 +775,68 @@ export class RadioDb {
       })
       .sort((a, b) => a.tracks[0].artist.localeCompare(b.tracks[0].artist) || a.tracks[0].title.localeCompare(b.tracks[0].title))
     return { gruppi: gruppi.slice(0, limit), total: gruppi.length }
+  }
+
+  /** Musica ancora da ascoltare per riconoscere i live dal suono. */
+  pendingLive(limit = 20): Track[] {
+    return (
+      this.db
+        .prepare(`SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND radio_ok = 0 AND ${this.short()} AND live_at IS NULL ORDER BY id LIMIT ?`)
+        .all(limit) as Row[]
+    ).map(rowToTrack)
+  }
+
+  /** Secondi di applausi trovati (null = file non leggibile: non si riprova finché il file non cambia). */
+  saveLive(id: number, seconds: number | null): void {
+    this.db.prepare("UPDATE tracks SET live_s = ?, live_at = datetime('now') WHERE id = ?").run(seconds, id)
+  }
+
+  liveStats(): { done: number; total: number } {
+    const r = this.db
+      .prepare(
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN live_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1 AND radio_ok = 0 AND ${this.short()}`
+      )
+      .get() as Row
+    return { done: Number(r.done ?? 0), total: Number(r.total ?? 0) }
+  }
+
+  /** Musica da far giudicare all'AI: non ancora vista e non già segnalata dalle regole. */
+  pendingAiTitoli(limit = 30): Track[] {
+    const out: Track[] = []
+    const rows = this.db
+      .prepare(`SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND radio_ok = 0 AND ${this.short()} AND ai_at IS NULL ORDER BY id`)
+      .iterate() as Iterable<Row>
+    const skip: number[] = []
+    for (const r of rows) {
+      const t = rowToTrack(r)
+      // già nella lista per le regole: non serve chiedere all'AI
+      if (motivoNonRadiofonico(t)) skip.push(t.id)
+      else out.push(t)
+      if (out.length >= limit) break
+    }
+    const stmt = this.db.prepare("UPDATE tracks SET ai_at = datetime('now') WHERE id = ?")
+    for (const id of skip) stmt.run(id)
+    return out
+  }
+
+  /** Giudizio dell'AI: motivo per i titoli non adatti, '' per quelli a posto. */
+  saveAiTitoli(results: { id: number; motivo: string }[]): void {
+    const stmt = this.db.prepare("UPDATE tracks SET ai_motivo = ?, ai_at = datetime('now') WHERE id = ?")
+    for (const r of results) stmt.run(r.motivo.slice(0, 80), r.id)
+  }
+
+  aiTitoliStats(): { done: number; total: number } {
+    const r = this.db
+      .prepare(
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN ai_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1 AND radio_ok = 0 AND ${this.short()}`
+      )
+      .get() as Row
+    return { done: Number(r.done ?? 0), total: Number(r.total ?? 0) }
+  }
+
+  /** Rifà da capo il giudizio dell'AI su tutta la musica. */
+  resetAiTitoli(): void {
+    this.db.exec("UPDATE tracks SET ai_at = NULL, ai_motivo = ''")
   }
 
   /** "Va bene così": il brano non compare più tra quelli da controllare (on = false lo rimette). */

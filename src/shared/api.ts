@@ -11,6 +11,7 @@ import type { MbStatus } from '../main/musicbrainz'
 import type { TagService, TagStatus } from '../main/tagServices'
 import type { AiResult, AiStatus } from '../main/ai'
 import type { EsitoPulizia } from '../main/pulizia'
+import type { AiTitoliStatus } from '../main/aiTitoli'
 import type { AiPlan } from '../core/aiRotation'
 import type { SiaeRow } from '../core/siae'
 import type { LibraryFolder, LogEntry, ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
@@ -29,6 +30,10 @@ export interface LibraryStatus {
   fingerprints: number
   fingerprintTotal: number
   fingerprinting: boolean
+  /** Musica ascoltata per riconoscere i live dal suono (applausi). */
+  liveChecked: number
+  liveTotal: number
+  liveChecking: boolean
 }
 
 /** Funzioni che il processo principale offre all'interfaccia (window.radio). */
@@ -83,6 +88,11 @@ export interface RadioApi {
   spostaNegliScarti(ids: number[]): Promise<EsitoPulizia>
   /** Rimette in libreria (e i file spostati tornano al loro posto). */
   rimettiInLibreria(ids: number[]): Promise<EsitoPulizia>
+  /** Analisi dei titoli con l'AI locale (rifai = da capo su tutta la musica). */
+  aiTitoliStatus(): Promise<AiTitoliStatus>
+  aiTitoliStart(rifai?: boolean): Promise<AiTitoliStatus>
+  aiTitoliStop(): Promise<void>
+  onAiTitoliStatus(cb: (s: AiTitoliStatus) => void): () => void
   toltiDallaLibreria(text: string): Promise<{ tracks: (Track & { origPath: string })[]; total: number }>
   mediaUrl(track: Pick<Track, 'id' | 'path'>): string
   listGenres(): Promise<string[]>

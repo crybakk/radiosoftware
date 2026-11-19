@@ -1,5 +1,6 @@
 import { ANALYSIS_TIMEOUT_MS, analyzeFile } from '../core/analyzer'
 import { fingerprintFile } from '../core/fingerprintFile'
+import { secondiApplausi } from '../core/liveAudio'
 import type { RadioDb } from '../core/db'
 import { scanLibrary, type ScanProgress } from '../core/scanner'
 import type { LibraryStatus } from '../shared/api'
@@ -12,6 +13,7 @@ export class LibraryService {
   private scanning: ScanProgress | null = null
   private analyzing = false
   private fingerprinting = false
+  private liveChecking = false
   private stopRequested = false
   private abort: AbortController | null = null
   private listeners = new Set<(s: LibraryStatus) => void>()
@@ -33,7 +35,11 @@ export class LibraryService {
       analyzing: this.analyzing,
       fingerprints: fp.done,
       fingerprintTotal: fp.total,
-      fingerprinting: this.fingerprinting
+      fingerprinting: this.fingerprinting,
+      ...(() => {
+        const l = this.db.liveStats()
+        return { liveChecked: l.done, liveTotal: l.total, liveChecking: this.liveChecking }
+      })()
     }
   }
 
@@ -139,6 +145,44 @@ export class LibraryService {
       }
     } finally {
       this.fingerprinting = false
+      this.emit()
+    }
+    await this.liveAll()
+  }
+
+  /**
+   * Live riconosciuti dal suono (applausi all'inizio o alla fine), dopo le impronte.
+   * Legge solo i primi e gli ultimi secondi di ogni brano, uno alla volta.
+   */
+  async liveAll(): Promise<void> {
+    if (this.liveChecking || this.fingerprinting || this.analyzing || !this.ffmpegPath) return
+    this.liveChecking = true
+    this.stopRequested = false
+    const abort = (this.abort = new AbortController())
+    this.emit()
+    let lastEmit = 0
+    try {
+      for (;;) {
+        const batch = this.db.pendingLive(20)
+        if (!batch.length || this.stopRequested) break
+        for (const t of batch) {
+          if (this.stopRequested) break
+          try {
+            this.db.saveLive(t.id, await secondiApplausi(this.ffmpegPath, t.path, abort.signal))
+          } catch {
+            if (abort.signal.aborted) break
+            // file illeggibile: non si riprova finché il file non cambia
+            this.db.saveLive(t.id, null)
+          }
+          if (Date.now() - lastEmit > 1000) {
+            lastEmit = Date.now()
+            this.emit()
+          }
+        }
+      }
+    } finally {
+      if (this.abort === abort) this.abort = null
+      this.liveChecking = false
       this.emit()
     }
   }
