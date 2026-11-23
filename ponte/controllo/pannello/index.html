@@ -72,6 +72,30 @@
             <button id="mic-close" class="ghost" hidden>Chiudi microfono</button>
           </div>
           <div class="meter" id="mic-meter" hidden><div id="mic-level" class="meter-fill"></div></div>
+          <div class="mics" id="mic-list">
+            <div class="mic-ch" data-mic="0">
+              <div class="mic-ch-head"><b>Microfono 1</b>
+                <button type="button" class="ghost small mic-mute" title="Muto: questo microfono non va in onda">🔇 Muto</button>
+              </div>
+              <div class="mic-ch-sel">
+                <select class="mic-dev" aria-label="Ingresso del microfono 1"></select>
+                <select class="mic-chan" aria-label="Canale del microfono 1"></select>
+              </div>
+              <label class="vol">Volume <input type="range" class="mic-vol" min="0" max="2" step="0.05" value="1" /></label>
+              <div class="meter small"><div class="meter-fill mic-ch-level"></div></div>
+            </div>
+            <div class="mic-ch" data-mic="1">
+              <div class="mic-ch-head"><b>Microfono 2</b>
+                <button type="button" class="ghost small mic-mute" title="Muto: questo microfono non va in onda">🔇 Muto</button>
+              </div>
+              <div class="mic-ch-sel">
+                <select class="mic-dev" aria-label="Ingresso del microfono 2"></select>
+                <select class="mic-chan" aria-label="Canale del microfono 2"></select>
+              </div>
+              <label class="vol">Volume <input type="range" class="mic-vol" min="0" max="2" step="0.05" value="1" /></label>
+              <div class="meter small"><div class="meter-fill mic-ch-level"></div></div>
+            </div>
+          </div>
           <div class="mic-opts">
             <label class="check"><input type="checkbox" id="mic-headphones" checked /> Uso le cuffie</label>
             <label class="vol">Ritorno <input type="range" id="mic-return" min="0" max="1" step="0.05" value="0.8" /></label>
@@ -105,13 +129,17 @@
             <button id="auto-skip" hidden>⏭ Salta</button>
             <button id="auto-stop" class="ghost" hidden>■ Ferma e torna alla regia</button>
           </div>
-          <ul class="list" id="auto-queue"></ul>
-          <form id="auto-search-form" class="search">
-            <input id="auto-q" placeholder="Cerca nella libreria del server" autocomplete="off" />
-            <button type="submit">Cerca</button>
-          </form>
-          <ul class="list" id="auto-results"></ul>
-          <label class="upload">
+          <div id="auto-lib" hidden>
+            <div class="section-title sub">In coda nella diretta autonoma</div>
+            <ul class="list" id="auto-queue"></ul>
+            <div class="section-title sub">Libreria del server</div>
+            <form id="auto-search-form" class="search">
+              <input id="auto-q" placeholder="Cerca nella libreria del server" autocomplete="off" />
+              <button type="submit">Cerca</button>
+            </form>
+            <ul class="list" id="auto-results"></ul>
+          </div>
+          <label class="upload" id="auto-upload-btn">
             <input type="file" id="auto-file" accept="audio/*,.mp3,.m4a,.aac,.flac,.ogg,.opus,.wav" multiple />
             <span>⬆ Carica brani dal dispositivo</span>
           </label>
@@ -456,6 +484,7 @@
         </div>
       </div>
     </div>
+    <script src="/microfoni.js"></script>
     <script src="/pannello.js"></script>
     <script src="/programmi.js"></script>
     <script src="/ascoltatori.js"></script>
@@ -464,6 +493,7 @@
     <script src="/impostazioni.js"></script>
     <script src="/navigazione.js"></script>
     <script src="/ordine.js"></script>
+    <script src="/impaginazione.js"></script>
     <script src="/benvenuto.js"></script>
   </body>
 </html>

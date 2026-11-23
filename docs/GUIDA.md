@@ -6,7 +6,8 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 23/11/2026, con il Mix DJ acceso la rotazione cambia tempo ogni 4-6 brani.
+**Ultimo aggiornamento:** 23/11/2026, due microfoni insieme dal pannello; pannello impaginato per telefono e PC; la
+libreria della diretta autonoma compare solo quando la avvii.
 
 ## Indice
 
@@ -236,7 +237,11 @@ Se l'app non si collega, guarda [Problemi comuni, dirette esterne](#dirette-este
 
 ## 4. Il pannello dal telefono
 
-Il pannello comanda la regia dal browser, da qualsiasi posto: telefono, tablet o computer.
+Il pannello comanda la regia dal browser, da qualsiasi posto: telefono, tablet o computer. Si adatta da solo
+allo schermo: sul telefono i riquadri stanno uno sotto l'altro; sul computer (schermo largo) stanno su tre
+colonne, con il brano in onda accanto a **PLAY / AVANTI / STOP**, così vedi quasi tutto senza scorrere.
+
+![Pannello dal computer](immagini/pannello-pc.png)
 
 **Aprirlo:** scrivi nel browser l'indirizzo della radio con `https://` davanti e `/dashboard` in fondo (durante le
 prove: `https://player.radioattivainformazione.it:9443/dashboard`). L'indirizzo senza `/dashboard` apre invece il
@@ -286,13 +291,36 @@ della regia. La voce si somma al programma che va in onda (regia, diretta estern
 Da sapere:
 
 - funziona solo con il pannello aperto in **https**;
-- un microfono alla volta: se è già aperto da un altro, vedi chi lo sta usando;
+- il microfono del pannello lo apre una persona alla volta: se è già aperto da un altro, vedi chi lo sta usando;
 - se la connessione cade o chiudi la pagina, esci dall'onda da solo;
 - la voce va in onda solo se c'è un programma (regia, esterna o diretta autonoma), non sopra la musica di
   riserva. Con la regia spenta avvia la [diretta autonoma](#7-diretta-autonoma-senza-la-regia) e parla sopra;
 - **Uso le cuffie**: lascialo spuntato. Senza cuffie toglilo prima di aprire il microfono (la voce suona un po'
   meno naturale, ma niente eco);
 - **Ritorno**: il volume del programma in cuffia.
+
+### Due microfoni insieme
+
+Dal pannello puoi andare in onda con **due microfoni** sullo stesso telefono o computer, per esempio conduttore e
+ospite seduti vicini.
+
+1. Collega i due microfoni: due **microfoni USB**, oppure una **scheda audio con 2 ingressi** (i microfoni nei
+   suoi ingressi 1 e 2).
+2. In **Microfono 1** scegli l'ingresso. In **Microfono 2** scegli l'altro: all'inizio c'è scritto *nessuno*.
+   - Con due microfoni USB scegli i due nomi e lascia **Tutto l'ingresso**.
+   - Con una scheda a 2 ingressi scegli la scheda in tutti e due, poi **Solo canale 1** nel primo e
+     **Solo canale 2** nel secondo.
+3. Premi **🎙 Apri microfono**: ogni microfono ha la sua barra del livello.
+4. Con **Volume** regoli ogni microfono, con **🎙 Attivo / 🔇 Muto** lo togli e lo rimetti in onda (per esempio
+   se l'ospite tossisce). Si può fare anche mentre sei in onda.
+
+Da sapere:
+
+- per cambiare ingresso o canale chiudi e riapri il microfono; volume e muto invece cambiano subito;
+- la barra grande in alto è il totale, cioè quello che va in onda;
+- con **Solo canale 1/2** il browser non toglie l'eco: usa le cuffie;
+- le scelte restano salvate in quel browser;
+- sul telefono di solito c'è un ingresso solo: due microfoni servono soprattutto dal computer.
 
 ## 6. Ospiti in diretta
 
@@ -324,11 +352,12 @@ nella sua libreria e tu ci parli sopra con il microfono del pannello.
 ![Diretta autonoma nel pannello](immagini/pannello-autonoma.png)
 
 - **▶ Avvia diretta autonoma**: la musica del server va in onda **al posto della regia** (la regia può restare
-  accesa, ma non si sente). Se si collega una diretta esterna, ha la precedenza lei.
+  accesa, ma non si sente). Se si collega una diretta esterna, ha la precedenza lei. Finché non la avvii il
+  riquadro mostra solo questo pulsante: coda e libreria del server compaiono quando sei in diretta autonoma.
 - **Cerca nella libreria del server**: ⤒ mette il brano come prossimo, + lo aggiunge in fondo. Con la coda vuota
   il server sceglie da solo, senza ripetere troppo presto lo stesso brano o artista.
 - **⬆ Carica brani dal dispositivo**: scegli uno o più file dal telefono o dal computer; vanno sul server e in
-  coda. Di notte scendono anche nella regia ([sezione 22](#22-la-musica-sul-server)).
+  coda. Se la libreria del server è vuota il pulsante c'è anche prima di avviare, per caricare i primi brani. Di notte scendono anche nella regia ([sezione 22](#22-la-musica-sul-server)).
 - **⏭ Salta** passa al brano successivo; **■ Ferma e torna alla regia** chiude la diretta autonoma.
 
 Il brano successivo si decide circa 20 secondi prima della fine di quello in onda: fino ad allora puoi cambiare la
@@ -1186,3 +1215,5 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 23/11/2026 | Passaggi del Mix DJ: filtro, eco, riverbero, stacco, rullo, frenata e riavvolto, scelti dalla regia o a mano; passaggi permessi nelle Impostazioni |
 | 23/11/2026 | Con il Mix DJ acceso la rotazione cambia tempo ogni 4-6 brani, dentro la fascia di energia |
 | 23/11/2026 | Eventi e rotazioni della regia da remoto: dal pannello (anche rotazioni con l'AI) e dal bot Telegram |
+| 23/11/2026 | Pannello impaginato per telefono e PC (tre colonne sugli schermi larghi); libreria della diretta autonoma solo quando la avvii |
+| 23/11/2026 | Due microfoni insieme dal pannello (due microfoni USB o i 2 ingressi di una scheda audio), ognuno con volume e muto |
