@@ -260,6 +260,7 @@ function renderNow() {
     $('now-rem').textContent = ''
     $('now-progress').style.width = '0'
     $('now').classList.remove('ending')
+    $('now-intro').hidden = true
     return
   }
   const passed = (Date.now() - stateAt) / 1000
@@ -272,6 +273,13 @@ function renderNow() {
   $('now-rem').textContent = `-${mmss(rem)}`
   $('now-progress').style.width = `${Math.min(100, (pos / Math.max(1, pos + rem)) * 100)}%`
   $('now').classList.toggle('ending', rem <= 10)
+  // conto alla rovescia dell'intro: quanto manca alla voce
+  const intro = cur.introLeft == null ? -1 : cur.introLeft - passed
+  $('now-intro').hidden = intro <= 0
+  if (intro > 0) {
+    $('now-intro').textContent = `🎙 Intro ${Math.ceil(intro)} s`
+    $('now-intro').classList.toggle('last', intro <= 3)
+  }
 }
 
 function trackRow(t, left) {
@@ -280,6 +288,7 @@ function trackRow(t, left) {
   const main = el('div', 't-main')
   const title = el('div', 't-title', t.title)
   if (t.eventLabel) title.append(el('span', 'tag', t.eventLabel))
+  if (t.intro > 0) title.append(el('span', 'tag intro', `intro ${Math.round(t.intro)} s`))
   main.append(title, el('div', 't-artist', t.artist || KIND[t.kind] || ''))
   li.append(main, el('span', 't-dur', mmss(t.duration)))
   return li

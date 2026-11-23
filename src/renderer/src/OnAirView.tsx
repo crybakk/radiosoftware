@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Track } from '../../core/types'
+import { introLeft, introSeconds } from '../../core/intro'
 import { hhmm, KIND_LABEL, mmss } from './format'
 import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
@@ -52,6 +53,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
   const fading = s.onAir.slice(0, -1)
   const progress = main ? Math.min(100, (main.position / Math.max(1, main.track.cueOut || main.track.duration)) * 100) : 0
   const ending = main && main.remaining < 10
+  const intro = main ? introLeft(main.track, main.position) : null
 
   return (
     <div className="onair-view">
@@ -69,6 +71,11 @@ export function OnAirView({ radio }: { radio: Radio }) {
                 <span>{mmss(main.position)}</span>
                 <span className="remaining">-{mmss(main.remaining)}</span>
               </div>
+              {intro !== null && (
+                <div className={`now-intro ${intro <= 3 ? 'last' : ''}`} title="Tempo che resta prima che parta la voce o il pezzo pieno">
+                  🎙 Intro {Math.ceil(intro)} s
+                </div>
+              )}
               {(s.mode === 'auto' || s.dj.once) && s.queue.length > 0 && (
                 <div className="now-mix">Prossimo tra {mmss(main.toMix)}</div>
               )}
@@ -142,6 +149,11 @@ export function OnAirView({ radio }: { radio: Radio }) {
                     {q.track.artist}
                     {q.track.kind !== 'music' && <span className="tag">{KIND_LABEL[q.track.kind]}</span>}
                     {q.origin === 'event' && <span className="tag event">{q.eventLabel || 'Evento'}</span>}
+                    {introSeconds(q.track) > 0 && (
+                      <span className="tag intro" title="Durata dell'intro">
+                        intro {Math.round(introSeconds(q.track))} s
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="t-dur">{mmss(q.track.duration)}</div>

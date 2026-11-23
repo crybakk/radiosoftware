@@ -1,5 +1,6 @@
 /** Controllo remoto dal lato regia: collegamento al ponte, stato da inviare, esecuzione dei comandi. */
 import type { FromStudio, RemoteCommand, RemoteState, RemoteTrack, ToStudio } from '../../ponte/controllo/src/protocol.ts'
+import { introLeft, introSeconds } from './intro'
 import type { PlayoutEngine, PlayoutSnapshot } from './playout'
 import { ponteControlBase } from './ponteClient'
 import type { Track } from './types'
@@ -17,9 +18,21 @@ export function toRemoteState(s: PlayoutSnapshot, carts: (Track | null)[], uplin
   return {
     mode: s.mode,
     onAir: cur
-      ? { ...remoteTrack(cur.track), position: Math.max(0, cur.position - cur.track.cueIn), remaining: cur.remaining }
+      ? {
+          ...remoteTrack(cur.track),
+          position: Math.max(0, cur.position - cur.track.cueIn),
+          remaining: cur.remaining,
+          introLeft: introLeft(cur.track, cur.position)
+        }
       : null,
-    queue: s.queue.map((q) => ({ ...remoteTrack(q.track), uid: q.uid, eta: q.eta, origin: q.origin, eventLabel: q.eventLabel })),
+    queue: s.queue.map((q) => ({
+      ...remoteTrack(q.track),
+      uid: q.uid,
+      eta: q.eta,
+      origin: q.origin,
+      eventLabel: q.eventLabel,
+      intro: introSeconds(q.track)
+    })),
     carts: carts.map((t, i) => ({ n: i + 1, name: t ? t.title || t.artist : null, playing: !!t && playing.has(t.id) })),
     uplink,
     lastError: s.lastError,

@@ -61,6 +61,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding:
 .now.ending .remaining { color: var(--red); }
 .progress { height: 10px; background: var(--panel2); border-radius: 5px; overflow: hidden; }
 .progress-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.25s linear; }
+.now-intro { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 6px; background: #1f4d2e; color: #b9f5c9; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.now-intro[hidden] { display: none; }
+.now-intro.last { background: #7a1e1e; color: #fff; }
+.tag.intro { border-color: #4caf6e; color: #b9f5c9; }
 .now-times { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; font-size: 18px; margin-top: 6px; }
 .remaining { font-size: 26px; font-weight: 700; }
 
