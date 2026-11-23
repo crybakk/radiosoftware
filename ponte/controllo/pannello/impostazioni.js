@@ -6,7 +6,7 @@ let impPoll = null
 
 $('imp-btn').addEventListener('click', () => {
   $('menu').hidden = true
-  for (const id of ['main', 'users', 'progs', 'stats', 'ann']) $(id).hidden = true
+  for (const id of ['main', 'users', 'progs', 'stats', 'ann', 'eventi']) $(id).hidden = true
   $('imp').hidden = false
   loadImp()
 })

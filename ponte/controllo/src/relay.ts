@@ -1,5 +1,5 @@
 /** Smista i messaggi tra la regia (una sola) e i pannelli remoti (quanti si vuole). */
-import type { AutoState, FromPanel, GuestInfo, FromStudio, MicStatus, RemoteState, ToPanel, ToStudio, VideoStatus } from './protocol.ts'
+import type { AutoState, FromPanel, GuestInfo, FromStudio, MicStatus, RemoteCommand, RemoteState, ToPanel, ToStudio, VideoStatus } from './protocol.ts'
 import { can, sameSecret, type PublicUser } from './users.ts'
 import type { VoiceHub } from './voce.ts'
 import type { AutonomousPlayer } from './autonoma.ts'
@@ -12,13 +12,31 @@ export interface Peer {
 }
 
 interface Pending {
-  panel: Peer
-  panelId: string
+  /** Pannello che aspetta la risposta (null = comando del server, per esempio dal bot Telegram). */
+  panel: Peer | null
   timer: ReturnType<typeof setTimeout>
   search: boolean
+  done: (ok: boolean, data?: unknown, error?: string) => void
 }
 
 const REPLY_TIMEOUT_MS = 10_000
+
+/** Comandi su eventi e rotazioni, con il permesso che serve sul pannello. */
+export const EVENT_COMMANDS: Record<string, 'vedere' | 'comandare' | 'utenti'> = {
+  events: 'vedere',
+  eventRun: 'comandare',
+  rotationSet: 'comandare',
+  eventSave: 'utenti',
+  eventDelete: 'utenti',
+  eventEnable: 'utenti',
+  rotationRules: 'utenti',
+  aiStatus: 'vedere',
+  aiGenerate: 'utenti',
+  aiCancel: 'utenti',
+  aiPreview: 'utenti',
+  aiApply: 'utenti'
+}
+
 /** Comandi in attesa di risposta dalla regia, al massimo, per ogni pannello. */
 export const MAX_PENDING_PER_PANEL = 20
 /** Dimensione massima di un comando per la regia (JSON). */
@@ -101,7 +119,7 @@ export class Relay {
           if (!p) return
           clearTimeout(p.timer)
           this.pending.delete(msg.id)
-          this.sendTo(p.panel, { t: 'reply', id: p.panelId, ok: msg.ok, data: msg.data, error: msg.error })
+          p.done(msg.ok === true, msg.data, msg.error)
         }
       },
       close: () => {
@@ -113,8 +131,8 @@ export class Relay {
         // i comandi in attesa non avranno risposta
         for (const [id, p] of this.pending) {
           clearTimeout(p.timer)
-          this.sendTo(p.panel, { t: 'reply', id: p.panelId, ok: false, error: 'regia scollegata' })
           this.pending.delete(id)
+          p.done(false, undefined, 'regia scollegata')
         }
       }
     }
@@ -127,6 +145,32 @@ export class Relay {
   /** Segnale di vita a livello di applicazione verso la regia collegata. */
   pingStudio(): void {
     this.sendStudio({ t: 'ping' })
+  }
+
+  /** Manda un comando alla regia e chiama `done` con la risposta (o con l'errore dopo 10 secondi). */
+  private forward(cmd: RemoteCommand, by: string, panel: Peer | null, search: boolean, done: Pending['done']): void {
+    const id = `c${++this.seq}`
+    this.pending.set(id, {
+      panel,
+      search,
+      done,
+      timer: setTimeout(() => {
+        this.pending.delete(id)
+        done(false, undefined, 'la regia non ha risposto')
+      }, REPLY_TIMEOUT_MS)
+    })
+    this.sendStudio({ t: 'cmd', id, cmd, by })
+  }
+
+  /** Comando alla regia dal server stesso (bot Telegram): niente pannello, la risposta arriva come promessa. */
+  command(cmd: RemoteCommand, by: string): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      if (!this.studio) return reject(new Error('regia scollegata dal ponte'))
+      let mine = 0
+      for (const p of this.pending.values()) if (p.panel === null) mine++
+      if (mine >= MAX_PENDING_PER_PANEL) return reject(new Error('troppi comandi in attesa: riprova tra poco'))
+      this.forward(cmd, by, null, false, (ok, data, error) => (ok ? resolve(data) : reject(new Error(error || 'errore della regia'))))
+    })
   }
 
   // ---------- pannelli ----------
@@ -207,8 +251,11 @@ export class Relay {
           return
         }
         if (msg.t !== 'cmd' || typeof msg.cmd !== 'object' || msg.cmd === null) return
-        // la ricerca è una lettura: la può fare anche chi non comanda
-        if (msg.cmd.type !== 'search' && !can(now.role, 'comandare')) return reply(false, 'il tuo ruolo non permette di comandare la regia')
+        // la ricerca e l'elenco degli eventi sono letture: le può fare anche chi non comanda
+        const need = msg.cmd.type === 'search' ? 'vedere' : (EVENT_COMMANDS[msg.cmd.type] ?? 'comandare')
+        if (!can(now.role, need)) {
+          return reply(false, need === 'utenti' ? 'solo gli amministratori possono modificare eventi e regole di rotazione' : 'il tuo ruolo non permette di comandare la regia')
+        }
         if (!this.studio) return reply(false, 'regia scollegata')
         // limiti per non sommergere la regia in onda: una ricerca alla volta e pochi comandi in attesa per pannello
         const search = msg.cmd.type === 'search'
@@ -220,17 +267,7 @@ export class Relay {
         }
         if (mine >= MAX_PENDING_PER_PANEL) return reply(false, 'troppi comandi in attesa: attendi le risposte della regia')
         if (Buffer.byteLength(JSON.stringify(msg.cmd)) > MAX_CMD_BYTES) return reply(false, 'comando troppo grande')
-        const id = `c${++this.seq}`
-        this.pending.set(id, {
-          panel: peer,
-          panelId: msg.id,
-          search,
-          timer: setTimeout(() => {
-            this.pending.delete(id)
-            reply(false, 'la regia non ha risposto')
-          }, REPLY_TIMEOUT_MS)
-        })
-        this.sendStudio({ t: 'cmd', id, cmd: msg.cmd, by: now.name })
+        this.forward(msg.cmd, now.name, peer, search, (ok, data, error) => reply(ok, error, data))
       },
       close: () => {
         this.panels.delete(peer)

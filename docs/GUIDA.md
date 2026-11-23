@@ -367,6 +367,26 @@ Un evento fa una serie di cose, in ordine, a un orario. Scheda **Eventi** → **
 Con **▶ Prova** esegui subito un evento per vedere come va. **Duplica** crea una copia da modificare. In alto vedi
 i prossimi eventi e, se attivo, il profilo di rotazione in uso.
 
+### Eventi e rotazioni da remoto
+
+Con la regia accesa e collegata al server, eventi e rotazioni si comandano anche da fuori studio:
+
+- **Pannello** → menu ☰ → **Eventi e rotazioni**: prossimi eventi, elenco, **▶ Esegui ora**, rotazione attiva da
+  cambiare al volo (**Usa questa** / **Torna alla normale**) e regole generali. Gli amministratori creano, modificano,
+  duplicano, accendono, spengono ed eliminano gli eventi con le stesse azioni della regia e preparano le
+  [rotazioni con l'AI](#10-rotazioni-con-lai) (l'AI lavora sul PC di regia: puoi chiudere la pagina, il risultato resta lì).
+- **Bot Telegram della radio**: sezioni **📅 Eventi** e **🔁 Rotazione** ([Bot Telegram](#bot-telegram-della-radio)).
+
+| Chi | Cosa può fare |
+|---|---|
+| Ospite del pannello | vedere eventi e rotazione |
+| Conduttore | in più: esegui ora, cambia rotazione |
+| Amministratore | tutto: modifica eventi, regole e rotazioni con l'AI |
+| Chi è nella chat del bot | accendere e spegnere eventi, esegui ora (con conferma), cambiare rotazione |
+
+Gli eventi con un **Comando esterno** (🔒) da remoto si vedono soltanto: per sicurezza si creano e si cambiano solo in regia.
+Gli orari sono quelli del PC di regia.
+
 ## 9. Libreria e scheda brano
 
 ![Libreria](immagini/regia-libreria.png)
@@ -742,7 +762,8 @@ Quando il problema si risolve arriva un secondo messaggio. Gli allarmi attivi si
 ### Bot Telegram della radio
 
 Un secondo bot, diverso da quello degli allarmi, per etichettare dal telefono i brani sconosciuti delle esterne e
-vedere come va la radio. È **solo lettura**: non comanda nulla. Chiunque sia nella chat può usarlo.
+vedere come va la radio. Chiunque sia nella chat può usarlo: oltre a guardare, può accendere, spegnere ed eseguire
+gli eventi della regia e cambiarne la rotazione.
 
 **Attivarlo (una volta):**
 
@@ -766,6 +787,8 @@ parlato premi **🚫 Non è musica**. Il bot legge solo i comandi e le risposte 
 | 📻 In onda | chi trasmette, voci dal pannello, brano in onda, regia collegata, allarmi |
 | 🎧 Ascoltatori | adesso, picco, media e ore di ascolto di oggi e della settimana |
 | 🎙 Puntate | programmi in registrazione e puntate da pubblicare |
+| 📅 Eventi | prossimi eventi e tutti gli eventi della regia, con **Spegni/Accendi** e **▶ Esegui ora** (chiede conferma); anche con `/eventi` |
+| 🔁 Rotazione | rotazione attiva e regole; un pulsante per ogni rotazione usata negli eventi e **Torna alla rotazione normale**; anche con `/rotazione` |
 
 ## 17. Backup
 
@@ -1162,3 +1185,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 23/11/2026 | Conto alla rovescia dell'intro del brano in onda ed etichetta "intro N s" in coda, in regia e nel pannello |
 | 23/11/2026 | Passaggi del Mix DJ: filtro, eco, riverbero, stacco, rullo, frenata e riavvolto, scelti dalla regia o a mano; passaggi permessi nelle Impostazioni |
 | 23/11/2026 | Con il Mix DJ acceso la rotazione cambia tempo ogni 4-6 brani, dentro la fascia di energia |
+| 23/11/2026 | Eventi e rotazioni della regia da remoto: dal pannello (anche rotazioni con l'AI) e dal bot Telegram |
