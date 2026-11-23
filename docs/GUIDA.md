@@ -6,8 +6,7 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 23/11/2026, rotazione per energia (nei profili di rotazione e nelle rotazioni con l'AI) e,
-con il Mix DJ acceso, precedenza ai brani che si possono mixare a tempo.
+**Ultimo aggiornamento:** 23/11/2026, conto alla rovescia dell'intro per chi parla, in regia e nel pannello.
 
 ## Indice
 
@@ -94,6 +93,12 @@ Telefono (pannello) ───────▶                 └─▶ YouTube /
 
 In alto a sinistra la spia **IN ONDA** (rossa) o **FERMO**. Il riquadro grande mostra il brano in onda, il tempo
 passato e quello che manca: negli ultimi secondi diventa rosso.
+
+**Conto alla rovescia dell'intro**: se il brano in onda ha un'intro strumentale di almeno 3 secondi, sotto i tempi
+compare **🎙 Intro 12 s**, cioè quanto manca prima che parta la voce o il pezzo pieno: è il tempo che hai per
+parlarci sopra. Negli ultimi 3 secondi diventa rosso, poi sparisce. Nella coda i brani con un'intro hanno
+l'etichetta **intro N s**. Vale solo per la musica già analizzata per il Mix DJ (riga "Analisi per il Mix DJ" in
+Libreria). Lo stesso conto e le stesse etichette si vedono nel pannello.
 
 **Dopo un riavvio o un blackout** la regia riparte nella modalità in cui era: se era in AUTOMATICO riprende a
 suonare da sola, se era in MANUALE resta ferma.
@@ -1122,3 +1127,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 20/11/2026 | Analisi per il Mix DJ in Libreria: BPM, battiti, tonalità, energia, intro e outro di ogni brano |
 | 20/11/2026 | Mix DJ in regia: pulsante "Mixa il prossimo", azione "Mix DJ" negli eventi e impostazione per i cambi automatici |
 | 23/11/2026 | Energia dei brani nella rotazione (salti massimi di 2 punti, fascia di energia nei profili e nelle rotazioni con l'AI); con il Mix DJ acceso precedenza ai brani mixabili |
+| 23/11/2026 | Conto alla rovescia dell'intro del brano in onda ed etichetta "intro N s" in coda, in regia e nel pannello |

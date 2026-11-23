@@ -15,8 +15,10 @@ export interface RemoteTrack {
 
 export interface RemoteState {
   mode: 'auto' | 'manual'
-  onAir: (RemoteTrack & { position: number; remaining: number; eventLabel?: string }) | null
-  queue: (RemoteTrack & { uid: string; eta: string; origin: 'manual' | 'auto' | 'event'; eventLabel?: string })[]
+  /** introLeft: secondi alla fine dell'intro (per parlarci sopra), null se finita o assente. */
+  onAir: (RemoteTrack & { position: number; remaining: number; eventLabel?: string; introLeft?: number | null }) | null
+  /** intro: secondi di intro del brano (0 = nessuna). */
+  queue: (RemoteTrack & { uid: string; eta: string; origin: 'manual' | 'auto' | 'event'; eventLabel?: string; intro?: number })[]
   carts: { n: number; name: string | null; playing: boolean }[]
   uplink: string
   lastError: string | null
