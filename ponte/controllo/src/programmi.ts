@@ -30,6 +30,8 @@ export interface Program {
   slots: Slot[]
   /** Registrazione automatica delle fasce. */
   record: boolean
+  /** Va in onda dallo studio: la regia lo registra anche lei (vedi puntateRegia.ts). */
+  studio: boolean
   /** Visibile sulla pagina e nell'app. */
   published: boolean
   /** Copertina presente (file programmi/<id>.jpg|png). */
@@ -38,13 +40,39 @@ export interface Program {
   createdAt: number
 }
 
+/** Segno nella registrazione, in secondi dall'inizio del file. */
+export interface Marker {
+  at: number
+  /** inizio/fine = segnati in regia; interruzione = la regia era scollegata dal ponte (o il server è ripartito). */
+  kind: 'inizio' | 'fine' | 'interruzione'
+  /** Durata dell'interruzione (secondi). */
+  length?: number
+  note?: string
+}
+
 export interface Episode {
   id: string
   programId: string
   title: string
   description: string
-  /** "bozza" = registrazione da rivedere; "pubblicata" = ascoltabile; "ritirata" = tolta dal pubblico. */
-  status: 'registrazione' | 'bozza' | 'pubblicata' | 'ritirata'
+  /**
+   * "bozza" = registrazione da rivedere; "elaborazione" = si sta passando in Stereo Tool prima di
+   * pubblicarla; "pubblicata" = ascoltabile; "ritirata" = tolta dal pubblico.
+   */
+  status: 'registrazione' | 'bozza' | 'elaborazione' | 'pubblicata' | 'ritirata'
+  /** Da dove viene la registrazione: dal ponte (predefinito) o dalla regia dello studio. */
+  source?: 'ponte' | 'regia'
+  markers?: Marker[]
+  /** Inizio e fine proposti per il taglio (secondi), dai segni della regia. */
+  cut?: { from: number; to: number }
+  /** Da passare in Stereo Tool alla pubblicazione (registrazioni della regia, non ancora elaborate). */
+  stereotool?: boolean
+  /** Perché è da rivedere (interruzioni, inizio e fine automatici...). */
+  reason?: string
+  /** Registrazione del ponte ancora in corso da pubblicare appena finisce, tagliata qui (ms). */
+  autoPublish?: { from: number; to: number }
+  /** Registrazione del ponte sostituita da quella della regia: si toglie appena finisce. */
+  replaced?: boolean
   /** Inizio e fine della registrazione (ms). */
   recordedFrom: number
   recordedTo: number
@@ -154,6 +182,14 @@ export class Programs {
     // con la durata vera letta dal file più tardi (vedi Recorder); senza audio si tolgono come in endRecording.
     // Se il server riparte dentro la stessa fascia, il Recorder continua la stessa puntata (resumable).
     let dropped = false
+    for (const e of this.data.episodes) {
+      // elaborazione con Stereo Tool interrotta dal riavvio: torna da rivedere (il file originale c'è ancora)
+      if (e.status === 'elaborazione') {
+        e.status = 'bozza'
+        e.reason = 'la pubblicazione si è interrotta per un riavvio del server: ripubblicala'
+        dropped = true
+      }
+    }
     for (const e of [...this.data.episodes]) {
       if (e.status !== 'registrazione') continue
       const st = this.fileStat(this.rawFile(e.id))
@@ -232,7 +268,7 @@ export class Programs {
   // ---------- programmi ----------
 
   list(): Program[] {
-    return this.data.programs.map((p) => ({ ...p }))
+    return this.data.programs.map((p) => ({ ...p, studio: p.studio === true }))
   }
 
   get(id: string): Program | undefined {
@@ -250,6 +286,7 @@ export class Programs {
         author: (input.author ?? '').trim().slice(0, 300),
         slots,
         record: input.record !== false,
+        studio: input.studio === true,
         published: input.published !== false
       })
       this.save()
@@ -264,6 +301,7 @@ export class Programs {
       author: (input.author ?? '').trim().slice(0, 300),
       slots,
       record: input.record !== false,
+      studio: input.studio === true,
       published: input.published !== false,
       art: '',
       artUpdatedAt: 0,
@@ -362,12 +400,53 @@ export class Programs {
     return { ...e }
   }
 
+  /** Cambia i dati della regia su una puntata (segni, taglio, pubblicazione automatica...). */
+  patchEpisode(id: string, patch: Partial<Pick<Episode, 'markers' | 'cut' | 'reason' | 'autoPublish' | 'replaced' | 'status'>>): Episode {
+    const e = this.episode(id)
+    if (!e) throw new Error('puntata non trovata')
+    Object.assign(e, patch)
+    for (const k of Object.keys(patch) as (keyof typeof patch)[]) if (patch[k] === undefined) delete e[k]
+    this.save()
+    return { ...e }
+  }
+
+  /** Registrazione arrivata dalla regia (il file è già in registrazioni/<id>.mp3). */
+  addStudioEpisode(input: { id: string; programId: string; from: number; to: number; length: number; markers: Marker[]; cut: { from: number; to: number }; reason?: string }): Episode {
+    const p = this.get(input.programId)
+    if (!p) throw new Error('programma non trovato')
+    const d = new Date(input.from)
+    const e: Episode = {
+      id: input.id,
+      programId: p.id,
+      title: `${p.title} del ${d.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      description: '',
+      status: 'bozza',
+      source: 'regia',
+      markers: input.markers,
+      cut: input.cut,
+      stereotool: true,
+      ...(input.reason ? { reason: input.reason } : {}),
+      recordedFrom: input.from,
+      recordedTo: input.to,
+      length: input.length,
+      size: this.fileSize(this.rawFile(input.id)),
+      createdAt: this.now(),
+      publishAt: 0
+    }
+    this.data.episodes.push(e)
+    this.save()
+    return { ...e }
+  }
+
   /** Dopo il taglio: puntata pubblicata. */
   published(id: string, meta: { title: string; description: string; length: number }): Episode {
     const e = this.episode(id)
     if (!e) throw new Error('puntata non trovata')
+    delete e.reason
+    delete e.autoPublish
     Object.assign(e, {
       status: 'pubblicata',
+      stereotool: false,
       title: meta.title.trim().slice(0, 300) || e.title,
       description: meta.description.trim().slice(0, 4000),
       length: meta.length,

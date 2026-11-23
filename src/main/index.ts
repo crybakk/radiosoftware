@@ -7,6 +7,8 @@ import { NewsFetcher, type NewsSource } from '../core/news'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ffmpegStatic from 'ffmpeg-static'
+import { StudioRecorder } from '../core/registratore'
+import { RegistrazioneProgrammi } from '../core/registrazioneProgrammi'
 import { logToCsv } from '../core/csv'
 import { quarterRange, siaeCsv, siaeRows } from '../core/siae'
 import { syncServerPlays } from '../core/serverPlays'
@@ -130,6 +132,19 @@ if (primary) app.whenReady().then(async () => {
   const library = new LibraryService(db, ffmpegPath(), djWorkerUrl())
   const rotation = new RotationService(db)
   const ponte = new PonteService(db, app.getPath('userData'), ffmpegPath())
+  // registrazione in regia dei programmi fatti dallo studio (stesso audio che va al ponte)
+  const studioRecorder = new StudioRecorder({ dir: join(app.getPath('userData'), 'registrazioni'), ffmpeg: ffmpegPath() ?? 'ffmpeg' })
+  const registrazioni = new RegistrazioneProgrammi({
+    recorder: studioRecorder,
+    server: () => {
+      const c = ponte.client()
+      return c ? { fine: (f) => c.fineRegistrazione(f), upload: (f, body) => c.inviaRegistrazione(f, body) } : null
+    },
+    programs: () => ponte.listPrograms(),
+    stateFile: join(app.getPath('userData'), 'registrazioni.json'),
+    // invio subito ma senza togliere tutta la banda del 4G alla diretta
+    maxKbps: 3000
+  })
   // notiziari: scaricati al momento, uno per fonte (l'ultimo)
   const newsDir = join(app.getPath('userData'), 'notiziari')
   const news = new NewsFetcher(newsDir)
@@ -474,7 +489,10 @@ if (primary) app.whenReady().then(async () => {
 
   // ponte
   handle('ponteStatus', () => ponte.getStatus())
-  handle('ponteCapture', (active: boolean, sampleRate: number) => ponte.setCapture(active, sampleRate))
+  handle('ponteCapture', (active: boolean, sampleRate: number) => {
+    studioRecorder.setSampleRate(active ? sampleRate : 0)
+    return ponte.setCapture(active, sampleRate)
+  })
   handle('ponteReport', (r: StudioReport) => ponte.setReport(r))
   handle('ponteBackupNow', () => ponte.backupNow())
   handle('ponteListBackups', () => ponte.listBackups())
@@ -506,7 +524,19 @@ if (primary) app.whenReady().then(async () => {
     if (res.canceled || !res.filePaths[0]) return null
     return serverSync.exportTo(res.filePaths[0])
   })
-  ipcMain.on('uplink:pcm', (e, pcm: Uint8Array) => fromRegia(e) && ponte.writePcm(pcm))
+  ipcMain.on('uplink:pcm', (e, pcm: Uint8Array) => {
+    if (!fromRegia(e)) return
+    ponte.writePcm(pcm)
+    studioRecorder.write(pcm)
+  })
+
+  // registrazione dei programmi dallo studio
+  handle('registrazioneStato', () => registrazioni.status())
+  handle('registrazioneRegistra', (programId?: string) => registrazioni.registra(programId))
+  handle('registrazioneNonFermare', () => registrazioni.nonFermare())
+  handle('registrazioneFine', () => registrazioni.fine())
+  registrazioni.onStatus((s) => win?.webContents.send('registrazioneStato', s))
+  registrazioni.start()
   ipcMain.on('remote:state', (e, state: RemoteState) => fromRegia(e) && ponte.sendRemoteState(state))
   // comandi dal pannello remoto: li esegue l'interfaccia, che ha il motore di messa in onda
   const waiting = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
@@ -547,7 +577,16 @@ if (primary) app.whenReady().then(async () => {
   // riprende l'analisi lasciata a metà
   void library.analyzeAll()
 
-  app.on('before-quit', () => {
+  let recordingClosed = false
+  app.on('before-quit', (ev) => {
+    // registrazione in corso: prima si chiude il file (poche decine di millisecondi), poi si esce
+    if (!recordingClosed && studioRecorder.status().active) {
+      ev.preventDefault()
+      recordingClosed = true
+      void registrazioni.chiudi().finally(() => app.quit())
+      return
+    }
+    registrazioni.stop()
     clearInterval(syncTimer)
     mb.stop()
     for (const w of tags) w.stop()

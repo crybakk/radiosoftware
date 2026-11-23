@@ -305,7 +305,28 @@ export function isPublishing(id: string): boolean {
   return publishing.has(id)
 }
 
-/** Taglia la bozza tra inizio e fine (secondi) e la pubblica. */
+/**
+ * Stereo Tool sulle registrazioni della regia (vedi stereotoolFile.ts): lo imposta il server all'avvio.
+ * Senza, le registrazioni della regia restano bozze (non si pubblicano senza elaborazione).
+ */
+export interface Elaborazione {
+  /** Taglia `input` tra from e to (secondi), lo passa in Stereo Tool e scrive `output`. */
+  elabora: (input: string, output: string, from: number, to: number) => Promise<void>
+  /** Messaggio per chi gestisce la radio (Telegram/email). */
+  avvisa?: (text: string) => void
+  /** Dopo la pubblicazione (o l'errore): per ridisegnare il pannello. */
+  fatto?: (e: Episode | null) => void
+}
+let elaborazione: Elaborazione | null = null
+export function configuraElaborazione(e: Elaborazione | null): void {
+  elaborazione = e
+}
+
+/**
+ * Taglia la bozza tra inizio e fine (secondi) e la pubblica. Le registrazioni della regia passano prima
+ * in Stereo Tool: ci vogliono minuti, quindi la puntata resta "in elaborazione" e si pubblica da sola alla
+ * fine (la funzione risponde subito).
+ */
 export async function publishEpisode(
   programs: Programs,
   id: string,
@@ -316,12 +337,55 @@ export async function publishEpisode(
   if (!e) throw new Error('puntata non trovata')
   if (e.status !== 'bozza') throw new Error('si possono pubblicare solo le bozze')
   if (publishing.has(id)) throw new Error('la puntata si sta già pubblicando')
+  if (e.stereotool) return startProcessing(programs, e, meta, opts)
   publishing.add(id)
   try {
     return await cutAndPublish(programs, e, meta, opts)
   } finally {
     publishing.delete(id)
   }
+}
+
+function startProcessing(
+  programs: Programs,
+  e: Episode,
+  meta: { from: number; to: number; title: string; description: string },
+  opts: { seconds?: (file: string) => Promise<number> }
+): Episode {
+  const el = elaborazione
+  if (!el) throw new Error('Stereo Tool non è disponibile sul server: la registrazione della regia non si può elaborare')
+  const id = e.id
+  if (!existsSync(programs.rawFile(id))) throw new Error('il file della registrazione non c\'è più')
+  const from = Math.max(0, Number(meta.from) || 0)
+  const to = Math.min(e.length || Infinity, Number(meta.to) || e.length)
+  if (!(to - from >= 10)) throw new Error('la puntata deve durare almeno 10 secondi: controlla inizio e fine')
+  publishing.add(id)
+  programs.editEpisode(id, { title: meta.title, description: meta.description })
+  const started = programs.patchEpisode(id, { status: 'elaborazione', cut: { from, to }, reason: undefined })
+  const out = programs.episodeFile(id)
+  const tmp = `${out}.tmp`
+  void (async () => {
+    let done: Episode | null = null
+    try {
+      await el.elabora(programs.rawFile(id), tmp, from, to)
+      if (!programs.episode(id)) throw new Error('puntata eliminata durante l\'elaborazione')
+      renameSync(tmp, out)
+      const length = (await (opts.seconds ?? mp3Seconds)(out).catch(() => 0)) || Math.round(to - from)
+      done = programs.published(id, { title: meta.title, description: meta.description, length })
+      el.avvisa?.(`✅ Puntata pubblicata (passata in Stereo Tool): ${done.title}`)
+    } catch (err) {
+      rmSync(tmp, { force: true })
+      const why = err instanceof Error ? err.message : String(err)
+      if (programs.episode(id)) {
+        programs.patchEpisode(id, { status: 'bozza', reason: `pubblicazione non riuscita: ${why}` })
+        el.avvisa?.(`❌ Puntata non pubblicata (${e.title}): ${why}. È rimasta da rivedere nel pannello.`)
+      }
+    } finally {
+      publishing.delete(id)
+      el.fatto?.(done)
+    }
+  })()
+  return started
 }
 
 async function cutAndPublish(

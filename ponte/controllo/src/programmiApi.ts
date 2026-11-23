@@ -17,13 +17,18 @@
  *                                               registrazioni in corso solo per chi può comandare)
  *   POST /api/puntate                           {azione: pubblica|modifica|ritira|ripubblica|elimina} (conduttori)
  *
- * Regia (token): GET /api/programmi/regia   puntate pubblicate di ogni programma (repliche)
+ * Regia (token): GET /api/programmi/regia   puntate pubblicate di ogni programma (repliche), fasce e
+ *                                            "va in onda dallo studio" (registrazione in regia)
+ *                POST /api/programmi/regia/fine            fine della registrazione in regia: si tiene
+ *                                                         quella del ponte o serve il file (puntateRegia.ts)
+ *                PUT  /api/programmi/regia/registrazione?… il file MP3 della registrazione della regia
  */
 import { createReadStream, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { pipeline } from 'node:stream/promises'
 import { apiEpisode, apiPodcast, type Episode, type Program, type Programs } from './programmi.ts'
 import { isPublishing, publishEpisode, type Recorder } from './puntate.ts'
+import { leggiFine, type PuntateRegia } from './puntateRegia.ts'
 import { can, type PublicUser } from './users.ts'
 
 export interface ProgramApiDeps {
@@ -38,6 +43,12 @@ export interface ProgramApiDeps {
   /** "https://dominio" visto dal browser. */
   base: (req: IncomingMessage) => string
   publish?: typeof publishEpisode
+  /** Registrazioni della regia dello studio (assente = funzione spenta). */
+  regia?: PuntateRegia
+  /** Salva il corpo della richiesta in un file (in streaming, con limite di dimensione). */
+  saveUpload?: (req: IncomingMessage, file: string) => Promise<unknown>
+  /** Motivo per rifiutare un file (disco quasi pieno), null se c'è spazio. */
+  noSpace?: () => string | null
   log?: (s: string) => void
 }
 
@@ -175,11 +186,36 @@ export async function handleProgramApi(req: IncomingMessage, res: ServerResponse
           title: p.title,
           // fasce: per {programma} e {prossimo_programma} negli annunci della regia
           slots: p.slots,
+          // registrazione in regia dei programmi fatti dallo studio, con lo stesso margine del ponte
+          studio: p.studio === true,
+          marginMinutes: P.settings().marginMinutes,
           episodes: eps.map((e) => ({ id: e.id, title: e.title, length: e.length, path: `/api/station/${st}/public/podcast/${p.id}/episode/${e.id}/download.mp3` }))
         }
       })
     )
     return true
+  }
+
+  if (path === '/api/programmi/regia/fine' || path === '/api/programmi/regia/registrazione') {
+    if (!d.authorized(req)) return json(res, 401, { error: 'token non valido' }), true
+    if (!d.regia) return json(res, 503, { error: 'server da aggiornare: non riceve le registrazioni della regia' }), true
+    if (req.method === 'POST' && path === '/api/programmi/regia/fine') {
+      json(res, 200, await d.regia.fine(leggiFine(await readJson(req))))
+      return true
+    }
+    if (req.method === 'PUT' && path === '/api/programmi/regia/registrazione') {
+      const f = leggiFine(Object.fromEntries(url.searchParams))
+      if (!P.get(f.programId)) return json(res, 404, { error: 'programma non trovato' }), true
+      const full = d.noSpace?.() ?? null
+      if (full) return json(res, 507, { error: full }), true
+      if (!d.saveUpload) return json(res, 503, { error: 'caricamento non disponibile' }), true
+      const id = d.regia.nuovoId()
+      await d.saveUpload(req, P.rawFile(id))
+      const e = await d.regia.ricevuto(id, f)
+      json(res, 200, { ok: true, id: e.id, status: e.status })
+      return true
+    }
+    return json(res, 405, { error: 'metodo non valido' }), true
   }
 
   // ---------- pannello ----------
@@ -233,7 +269,7 @@ export async function handleProgramApi(req: IncomingMessage, res: ServerResponse
   const e = P.episode(id)
   if (!e) return json(res, 404, { error: 'puntata non trovata' }), true
   if (e.status === 'registrazione') return json(res, 400, { error: 'la puntata si sta ancora registrando' }), true
-  if (isPublishing(id)) return json(res, 409, { error: 'la puntata si sta pubblicando: aspetta qualche secondo' }), true
+  if (e.status === 'elaborazione' || isPublishing(id)) return json(res, 409, { error: 'la puntata si sta pubblicando: aspetta qualche secondo' }), true
   const title = String(b.title ?? '')
   const description = String(b.description ?? '')
   switch (b.azione) {
@@ -269,6 +305,7 @@ function programInput(v: unknown): Partial<Program> {
     description: String(o.description ?? ''),
     author: String(o.author ?? ''),
     record: o.record !== false,
+    studio: o.studio === true,
     published: o.published !== false,
     slots: slots.slice(0, 50).map((s) => ({
       days: Array.isArray(s.days) ? s.days.map(Number).filter(Number.isInteger) : [],
@@ -279,7 +316,7 @@ function programInput(v: unknown): Partial<Program> {
 }
 
 /** Bozza da rivedere o registrazione in corso (non ancora pubblicata). */
-const isDraft = (e: Episode): boolean => e.status === 'bozza' || e.status === 'registrazione'
+const isDraft = (e: Episode): boolean => e.status === 'bozza' || e.status === 'registrazione' || e.status === 'elaborazione'
 
 function panelState(d: ProgramApiDeps, me: PublicUser): Record<string, unknown> {
   const P = d.programs

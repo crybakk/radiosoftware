@@ -1,4 +1,5 @@
 /** Dialogo con il servizio di controllo del ponte (HTTP + token). */
+import type { FineRegia } from './registrazioneProgrammi'
 import type { Report, Sample } from '../../ponte/controllo/src/ascoltatori.ts'
 
 export interface PonteAlarm {
@@ -234,6 +235,26 @@ export class PonteClient {
     return list.map((p) => ({ ...p, episodes: p.episodes.map((e) => ({ ...e, path: this.base + e.path })) }))
   }
 
+  /** Fine della registrazione in regia: il ponte dice se tiene la sua ("ponte") o se serve il file ("regia"). */
+  async fineRegistrazione(f: FineRegia): Promise<{ usa: 'ponte' | 'regia' }> {
+    const r = await this.request('POST', '/api/programmi/regia/fine', JSON.stringify(f), 'application/json', 30_000)
+    return (await r.json()) as { usa: 'ponte' | 'regia' }
+  }
+
+  /** Manda il file della registrazione della regia (in streaming). */
+  async inviaRegistrazione(f: FineRegia, body: ReadableStream<Uint8Array>, signal?: AbortSignal): Promise<void> {
+    const q = new URLSearchParams({
+      programId: f.programId,
+      startedAt: String(f.startedAt),
+      endedAt: String(f.endedAt),
+      startMark: f.startMark === null ? '' : String(f.startMark),
+      endMark: f.endMark === null ? '' : String(f.endMark),
+      startAuto: f.startAuto ? '1' : '0',
+      endAuto: f.endAuto ? '1' : '0'
+    })
+    await this.request('PUT', `/api/programmi/regia/registrazione?${q}`, body, 'audio/mpeg', 6 * 3600_000, signal)
+  }
+
   async downloadBackup(name: string): Promise<Uint8Array> {
     const r = await this.request('GET', `/api/backup/${encodeURIComponent(name)}`, undefined, undefined, 5 * 60_000)
     return new Uint8Array(await r.arrayBuffer())
@@ -252,6 +273,10 @@ export interface PonteProgram {
   title: string
   /** Fasce del palinsesto (giorni 0 = domenica, orari "HH:MM"); assenti con un ponte vecchio. */
   slots?: { days: number[]; start: string; end: string }[]
+  /** Va in onda dallo studio: la regia lo registra anche lei (assente con un ponte vecchio). */
+  studio?: boolean
+  /** Minuti registrati dopo la fascia (impostazione del pannello). */
+  marginMinutes?: number
   /** Puntate pubblicate; path è l'indirizzo completo dell'audio. */
   episodes: { id: string; title: string; length: number; path: string }[]
 }

@@ -339,3 +339,13 @@ button.tiny.on { opacity: 1; background: var(--green); border-color: var(--green
 .novita summary { cursor: pointer; font-weight: 600; margin-top: 6px; }
 .novita ul { margin: 4px 0 4px 18px; padding: 0; }
 .novita li { margin: 3px 0; }
+
+/* registrazione dei programmi dallo studio */
+.registrazione { border: 1px solid var(--line, #334155); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.registrazione.pronta { border-color: #f59e0b; box-shadow: 0 0 12px rgba(245, 158, 11, 0.35); }
+.registrazione.rec { border-color: var(--red); }
+.registrazione .reg-head { font-size: 15px; }
+.registrazione .reg-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--red); animation: reg-blink 1s infinite; }
+.registrazione .reg-avviso { background: #4a3510; color: #fde68a; border-radius: 6px; padding: 6px 8px; }
+.registrazione .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+@keyframes reg-blink { 50% { opacity: 0.2; } }

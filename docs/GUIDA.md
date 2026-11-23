@@ -696,6 +696,8 @@ quadrata. Due interruttori:
 - **Registra da solo le puntate nelle fasce**: il server registra quello che va in onda durante la fascia, con
   qualche minuto in più prima e dopo (di base 2, in **Impostazioni**);
 - **Visibile nella pagina dei podcast e nell'app**: se spento, il programma e le puntate non si vedono.
+- **Va in onda dallo studio**: anche la regia registra il programma (vedi sotto, *Programmi fatti dallo
+  studio*).
 
 **Pubblicare una puntata (conduttori e amministratori).** A fine fascia la registrazione compare in **Puntate da
 rivedere** (e arriva una notifica):
@@ -721,6 +723,42 @@ ascoltare**, non scaricare (la licenza SIAE permette lo streaming, non il downlo
 (`/api/station/<nome breve>/public/podcasts`…) e per il titolo in onda (`/api/nowplaying`), così l'app funziona
 cambiando solo l'indirizzo del server. Il **nome breve della stazione** si imposta in **Impostazioni** (in fondo
 alla pagina Programmi): metti lo stesso che usavi su AzuraCast.
+
+### Programmi fatti dallo studio
+
+Per i programmi segnati **Va in onda dallo studio** la regia registra sul PC lo stesso audio che manda al ponte
+(MP3 320 kbps, nella cartella `registrazioni` dei dati della regia). Così la puntata è completa anche se il 4G
+cade. Il riquadro **Registrazione del programma** nella pagina **In onda**:
+
+- **10 minuti prima** della fascia si accende **⏺ Registra adesso**. Se nessuno lo preme, la registrazione parte da
+  sola all'orario;
+- mentre registra, **📍 Segna inizio programma** segna dove comincia davvero la puntata (si può premere più volte:
+  vale l'ultimo);
+- **5 minuti prima della fine** compare l'avviso con **Non fermare**. Senza, la registrazione si ferma da sola a fine
+  fascia più il margine del pannello. **⏹ Fine programma** la ferma subito e segna la fine;
+- fuori fascia si può registrare a mano: scegli il programma e premi **⏺ Registra**.
+
+A fine registrazione la regia chiede al server se in quel tempo si è mai scollegata dal ponte:
+
+- **nessuna interruzione**: si tiene la registrazione del ponte (già passata dal processore della diretta),
+  tagliata sui segni di inizio e fine, e si **pubblica da sola**. Il file della regia resta sul PC e non consuma 4G;
+- **interruzioni** (o il ponte non ha registrato): il file della regia parte subito verso il server (al massimo
+  3 Mbit/s, per lasciare banda alla diretta) e prende il posto della registrazione del ponte. Va in **Puntate da
+  rivedere** con i **segni rossi** dove il collegamento era caduto: premili per ascoltare da 10 secondi prima.
+  Quando premi **Pubblica**, il server passa la puntata in **Stereo Tool** (stesso preset e licenza della diretta,
+  con la priorità più bassa e un solo core, così la diretta non ne risente) e dopo qualche minuto la pubblica.
+- se **inizio e fine sono stati entrambi automatici** e non hai segnato nulla, la puntata resta **da rivedere**
+  anche senza interruzioni.
+
+Il server si accorge delle interruzioni vere (regia scollegata, o server riavviato), non dei piccoli buchi che il
+collegamento recupera da solo. Se Stereo Tool non c'è (manca la libreria o il preset) la puntata della regia resta
+da rivedere con il motivo scritto, e arriva un avviso.
+
+**Revisione da Telegram.** Se c'è il [bot Telegram della radio](#bot-telegram-della-radio), ogni puntata
+da rivedere arriva anche lì: programma, data, durata, motivo e segni, 20 secondi di audio intorno a ogni
+interruzione e la **registrazione intera** in una copia leggera (sotto il limite di 50 MB di Telegram, divisa in
+parti se il programma è molto lungo). Pulsanti **✅ Pubblica** e **🗑 Elimina** (chiede conferma). Per cambiare
+inizio e fine rispondi al messaggio con, per esempio, `inizio 0:02:10 fine 1:01:30`.
 
 ### Repliche
 
@@ -1217,3 +1255,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 23/11/2026 | Eventi e rotazioni della regia da remoto: dal pannello (anche rotazioni con l'AI) e dal bot Telegram |
 | 23/11/2026 | Pannello impaginato per telefono e PC (tre colonne sugli schermi larghi); libreria della diretta autonoma solo quando la avvii |
 | 23/11/2026 | Due microfoni insieme dal pannello (due microfoni USB o i 2 ingressi di una scheda audio), ognuno con volume e muto |
+| 23/11/2026 | Programmi fatti dallo studio: registrazione in regia da palinsesto o a mano, segni di inizio e fine, interruzioni del collegamento; Stereo Tool sulle registrazioni della regia; revisione delle puntate anche da Telegram |

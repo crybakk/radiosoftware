@@ -69,7 +69,7 @@ function drawProgs(s) {
   // gli ospiti del pannello (solo lettura) non vedono bozze né registrazioni in corso (il server non le manda)
   $('progs-status').hidden = !s.canEdit
   $('drafts-card').hidden = !s.canEdit
-  const drafts = s.episodes.filter((e) => e.status === 'bozza' || e.status === 'registrazione')
+  const drafts = s.episodes.filter((e) => e.status === 'bozza' || e.status === 'registrazione' || e.status === 'elaborazione')
   $('drafts').replaceChildren(...(drafts.length ? drafts.map((e) => draftItem(e, byId[e.programId])) : [el('li', 'hint', 'Nessuna puntata da rivedere.')]))
   $('drafts-badge').textContent = drafts.filter((e) => e.status === 'bozza').length ? `${drafts.filter((e) => e.status === 'bozza').length} da rivedere` : ''
   $('progs-list').replaceChildren(
@@ -90,10 +90,12 @@ function draftItem(e, p) {
   const head = el('div', 'prog-head')
   const main = el('div', 't-main')
   main.append(el('div', 't-title', p ? p.title : e.programId))
-  main.append(el('div', 't-artist', `${dayTime(e.recordedFrom)} · ${e.status === 'registrazione' ? 'registrazione in corso' : hms(e.length)}`))
+  const state = e.status === 'registrazione' ? 'registrazione in corso' : e.status === 'elaborazione' ? 'passa in Stereo Tool, poi si pubblica da sola' : hms(e.length)
+  main.append(el('div', 't-artist', `${dayTime(e.recordedFrom)} · ${state}${e.source === 'regia' ? ' · registrata in regia' : ''}`))
   head.append(main)
   li.append(head)
-  if (e.status === 'registrazione') return li
+  if (e.reason && e.status !== 'registrazione') li.append(el('p', 'hint warn', `⚠️ ${e.reason}`))
+  if (e.status === 'registrazione' || e.status === 'elaborazione') return li
   const audio = el('audio')
   audio.controls = true
   audio.preload = 'metadata'
@@ -109,8 +111,8 @@ function draftItem(e, p) {
     i.autocomplete = 'off'
     return i
   }
-  const from = input('inizio', hms(0), 'Inizio (h:mm:ss)', 'time')
-  const to = input('fine', hms(e.length), 'Fine (h:mm:ss)', 'time')
+  const from = input('inizio', hms(e.cut ? e.cut.from : 0), 'Inizio (h:mm:ss)', 'time')
+  const to = input('fine', hms(e.cut ? Math.min(e.cut.to, e.length || e.cut.to) : e.length), 'Fine (h:mm:ss)', 'time')
   const title = input('title', e.title, 'Titolo della puntata')
   const desc = el('textarea')
   desc.name = 'description'
@@ -131,6 +133,19 @@ function draftItem(e, p) {
     const end = parseHms(to.value)
     if (Number.isFinite(end) && audio.currentTime >= end && audio.currentTime < end + 1) audio.pause()
   })
+  // segni della regia: inizio e fine programma, interruzioni del collegamento (in rosso)
+  const marks = el('div', 'marks')
+  for (const m of e.markers || []) {
+    const label = m.kind === 'interruzione' ? `🔴 ${hms(m.at)} interruzione${m.length ? ` (${m.length} s)` : ''}` : `📍 ${hms(m.at)} ${m.kind === 'inizio' ? 'inizio' : 'fine'}`
+    marks.append(
+      button(label, m.kind === 'interruzione' ? `Ascolta da 10 secondi prima${m.note ? ` (${m.note})` : ''}` : 'Ascolta da qui', (ev) => {
+        ev.preventDefault()
+        audio.currentTime = Math.max(0, m.at - (m.kind === 'interruzione' ? 10 : 0))
+        void audio.play()
+      }, `small ${m.kind === 'interruzione' ? 'danger' : 'ghost'}`)
+    )
+  }
+  if (e.stereotool) marks.append(el('span', 'hint', 'Alla pubblicazione passa in Stereo Tool (qualche minuto).'))
   const row = el('div', 'row')
   row.append(el('button', 'primary', 'Pubblica'))
   row.append(
@@ -144,7 +159,7 @@ function draftItem(e, p) {
       }
     }, 'ghost')
   )
-  form.append(fromBox, toBox, listen, title, desc, row)
+  form.append(fromBox, toBox, listen, ...(marks.childNodes.length ? [marks] : []), title, desc, row)
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault()
     const a = parseHms(from.value)
@@ -155,7 +170,7 @@ function draftItem(e, p) {
     btn.textContent = 'Pubblico...'
     try {
       drawProgs(await progApi('/api/puntate', { azione: 'pubblica', id: e.id, inizio: a, fine: b, title: title.value, description: desc.value }))
-      notice('Puntata pubblicata')
+      notice(e.stereotool ? 'Passa in Stereo Tool: tra qualche minuto sarà pubblicata' : 'Puntata pubblicata')
     } catch (err) {
       btn.disabled = false
       btn.textContent = 'Pubblica'
@@ -174,7 +189,7 @@ function programItem(p, episodes) {
   if (p.art) img.src = `/api/station/${progs.settings.station}/public/podcast/${p.id}/art-${p.artUpdatedAt}.jpg`
   const main = el('div', 't-main')
   main.append(el('div', 't-title', p.title + (p.published ? '' : ' (nascosto)')))
-  const info = [p.author, p.slots.map(slotText).join(', ') || 'nessuna fascia', p.record ? 'registrazione automatica' : 'non si registra']
+  const info = [p.author, p.slots.map(slotText).join(', ') || 'nessuna fascia', p.record ? 'registrazione automatica' : 'non si registra', p.studio ? 'dallo studio' : '']
   main.append(el('div', 't-artist', info.filter(Boolean).join(' · ')))
   head.append(img, main)
   if (progs.canAdmin) {
@@ -310,6 +325,7 @@ function editProgram(p) {
   f.author.value = p?.author ?? ''
   f.description.value = p?.description ?? ''
   f.record.checked = p ? p.record : true
+  f.studio.checked = p ? !!p.studio : false
   f.published.checked = p ? p.published : true
   $('prog-slots').replaceChildren(...(p?.slots ?? [{ days: [1, 2, 3, 4, 5], start: '10:00', end: '11:00' }]).map(slotRow))
   f.scrollIntoView({ behavior: 'smooth' })
@@ -330,7 +346,7 @@ $('prog-form').addEventListener('submit', async (ev) => {
     drawProgs(
       await progApi('/api/programmi', {
         azione: 'salva',
-        programma: { id: f.pid.value || undefined, title: f.title.value, author: f.author.value, description: f.description.value, record: f.record.checked, published: f.published.checked, slots }
+        programma: { id: f.pid.value || undefined, title: f.title.value, author: f.author.value, description: f.description.value, record: f.record.checked, studio: f.studio.checked, published: f.published.checked, slots }
       })
     )
     f.hidden = true

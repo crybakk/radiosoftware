@@ -184,6 +184,9 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding:
 .cut { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .cut .row { grid-column: 1 / -1; }
 .cut input.time { font-variant-numeric: tabular-nums; }
+.cut .marks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+button.danger { background: #7f1d1d; color: #fecaca; border-color: #991b1b; }
+.hint.warn { color: #fde68a; }
 .ep-list { margin-left: 66px !important; }
 .ep-list li { font-size: 14px; }
 .rec { color: var(--red); font-weight: 700; }

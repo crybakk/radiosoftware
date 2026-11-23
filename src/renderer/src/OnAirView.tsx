@@ -6,6 +6,7 @@ import { hhmm, KIND_LABEL, mmss } from './format'
 import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
 import { Riquadri } from './Riquadri'
+import { RegistrazioneBox } from './RegistrazioneBox'
 
 function Meter({ radio }: { radio: Radio }) {
   const [level, setLevel] = useState(0)
@@ -60,6 +61,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
   return (
     <div className="onair-view">
       <Riquadri as="section" className="left" chiave="onair-sinistra" nome="In onda, colonna sinistra">
+        <RegistrazioneBox />
         <div className={`now ${ending ? 'ending' : ''}`} data-sezione="now" data-titolo="Brano in onda">
           {main ? (
             <>
