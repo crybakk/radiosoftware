@@ -1,3 +1,4 @@
+import { ALL_MIX_STYLES, MIX_STYLES } from '../../core/djMix'
 import { useEffect, useState } from 'react'
 import type { Settings, Track } from '../../core/types'
 import type { NewsSource } from '../../core/news'
@@ -269,6 +270,31 @@ export function SettingsView({ radio }: { radio: Radio }) {
               ))}
             </select>
           </label>
+          <div className="dj-styles">
+            <span>
+              Mix DJ: passaggi che la regia può usare <em>· sceglie lei il più adatto; quelli con ★ solo ogni tanto</em>
+            </span>
+            {MIX_STYLES.map((m) => (
+              <label key={m.id} className="check" title={m.help}>
+                <input
+                  type="checkbox"
+                  checked={draft.djStyles.includes(m.id)}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      djStyles: e.target.checked
+                        ? ALL_MIX_STYLES.filter((id) => id === m.id || draft.djStyles.includes(id))
+                        : draft.djStyles.filter((id) => id !== m.id)
+                    })
+                  }
+                />
+                <span>
+                  {m.label}
+                  {m.showy ? ' ★' : ''} <em>· {m.help}</em>
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
       </section>
 

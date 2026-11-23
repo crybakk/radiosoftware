@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planMix, tempoRatio, type MixPlan } from '../src/core/djMix'
+import { planExit, planMix, planTransition, tempoRatio, type MixPlan } from '../src/core/djMix'
 import type { DjAnalysis } from '../src/core/djAnalysis'
 import { PlayoutEngine, type PlayoutHost } from '../src/core/playout'
 import type { Track } from '../src/core/types'
@@ -85,6 +85,56 @@ describe('piano del Mix DJ', () => {
   })
 })
 
+describe('tipi di passaggio', () => {
+  it('a tempo: mix lungo, o filtro se le tonalità stridono; rullo se il nuovo è molto più carico', () => {
+    expect((planTransition(djTrack(), djTrack()) as { plan: MixPlan }).plan.style).toBe('blend')
+    expect((planTransition(djTrack(), djTrack({ dj: { key: '2B' } })) as { plan: MixPlan }).plan.style).toBe('filter')
+    const roll = (planTransition(djTrack(), djTrack({ dj: { energy: 9 } })) as { plan: MixPlan }).plan
+    expect(roll.style).toBe('roll')
+    // il rullo finisce sull'inizio della frase d'uscita (battuta 88) e il nuovo brano entra lì
+    expect(roll.aStart).toBeCloseTo(1 + 86 * BAR_124, 2)
+    expect(roll.bIn).toBeCloseTo(2 * BAR_124, 2)
+    expect(roll.bStart).toBe(1)
+    // ogni tanto, non sempre
+    expect((planTransition(djTrack(), djTrack({ dj: { energy: 9 } }), { sinceShowy: 0 }) as { plan: MixPlan }).plan.style).toBe('blend')
+  })
+
+  it('tempi lontani: stacco se il nuovo parte pieno, frenata se è molto più calmo, altrimenti eco e riverbero alternati', () => {
+    const a = djTrack()
+    const style = (b: Track, ctx = {}): string => (planTransition(a, b, ctx) as { plan: MixPlan }).plan.style
+    expect(style(djTrack({ bpm: 90, intro: 0 }))).toBe('cut')
+    expect(style(djTrack({ bpm: 90, dj: { energy: 4 } }))).toBe('brake')
+    expect(style(djTrack({ bpm: 90, dj: { energy: 4 } }), { last: 'brake' })).toBe('spinback')
+    expect(style(djTrack({ bpm: 90 }))).toBe('echo')
+    expect(style(djTrack({ bpm: 90 }), { last: 'echo' })).toBe('reverb')
+    // anche con un brano senza ritmo regolare (una ballata analizzata)
+    expect(style(djTrack({ dj: { bpm: 0, gridConfidence: 0 } }))).toBe('echo')
+  })
+
+  it('stacco ed eco cadono su un "uno" a inizio frase nell\'outro', () => {
+    const cut = (planTransition(djTrack(), djTrack({ bpm: 90, intro: 0 })) as { plan: MixPlan }).plan
+    expect(cut.aStart).toBeCloseTo(1 + 88 * BAR_124, 2)
+    expect(cut.bIn).toBe(0)
+    const echo = (planExit(djTrack({ outro: 0 }), djTrack(), 'echo') as { plan: MixPlan }).plan
+    // senza outro: l'ultima battuta piena
+    expect(echo.aStart).toBeCloseTo(1 + 95 * BAR_124, 2)
+    expect(echo.bIn).toBeCloseTo(BAR_124, 2)
+  })
+
+  it('passaggi esclusi e passaggio forzato', () => {
+    const b = djTrack({ bpm: 90 })
+    expect((planTransition(djTrack(), b, { allowed: ['reverb', 'cut'] }) as { plan: MixPlan }).plan.style).toBe('reverb')
+    expect(planTransition(djTrack(), b, { allowed: ['blend'] }).ok).toBe(false)
+    expect(planTransition(djTrack(), b, { allowed: [] })).toMatchObject({ ok: false, reason: /nessun passaggio/ })
+    // forzato: vale anche se escluso, ma il mix a tempo resta impossibile con tempi lontani
+    expect((planTransition(djTrack(), b, { force: 'spinback', allowed: [] }) as { plan: MixPlan }).plan.style).toBe('spinback')
+    expect(planTransition(djTrack(), b, { force: 'filter' })).toMatchObject({ ok: false, reason: /Filtro non possibile/ })
+    // jingle e brani senza analisi: dissolvenza normale
+    expect(planTransition(djTrack(), djTrack({ t: { kind: 'jingle' } })).ok).toBe(false)
+    expect(planTransition(makeTrack(), djTrack()).ok).toBe(false)
+  })
+})
+
 class MixBackend extends FakeBackend {
   mixes: { from: FakePlayer; to: FakePlayer; plan: MixPlan }[] = []
   fail = false
@@ -149,17 +199,45 @@ describe('Mix DJ nel motore', () => {
     expect(backend.mixes).toHaveLength(0)
   })
 
-  it('in automatico con il Mix DJ acceso mixa a ogni cambio possibile, gli altri con il punto di mix', async () => {
+  it('in automatico con il Mix DJ acceso: tempi lontani con l\'eco; senza passaggi permessi cambio normale', async () => {
     const a = djTrack()
-    const b = djTrack({ bpm: 90 }) // troppo lento: cambio normale
+    const b = djTrack({ bpm: 90 }) // troppo lento per il mix a tempo
     const { engine, backend, run } = setup([a, b])
     engine.setOptions({ djMix: true })
     engine.setMode('auto')
     await engine.play()
-    expect(engine.snapshot().dj.next).toMatchObject({ ok: false })
+    expect(engine.snapshot().dj.next).toMatchObject({ ok: true, text: 'Eco' })
     await run(a.mixPoint + 1)
-    expect(backend.mixes).toHaveLength(0)
+    expect(backend.mixes).toHaveLength(1)
+    expect(backend.mixes[0].plan.style).toBe('echo')
     expect(engine.snapshot().onAir.at(-1)!.track).toBe(b)
+
+    const c = djTrack()
+    const d = djTrack({ bpm: 90 })
+    const x = setup([c, d])
+    x.engine.setOptions({ djMix: true, djStyles: ['blend', 'filter'] })
+    x.engine.setMode('auto')
+    await x.engine.play()
+    expect(x.engine.snapshot().dj.next).toMatchObject({ ok: false })
+    await x.run(c.mixPoint + 1)
+    expect(x.backend.mixes).toHaveLength(0)
+    expect(x.engine.snapshot().onAir.at(-1)!.track).toBe(d)
+  })
+
+  it('il passaggio scelto a mano vale per un cambio solo; quelli vistosi non tornano subito', async () => {
+    const a = djTrack()
+    const b = djTrack()
+    const c = djTrack({ dj: { energy: 10 } })
+    const { engine, backend, run } = setup([a, b, c])
+    engine.setDjOnce(true, 'brake')
+    await engine.play()
+    expect(engine.snapshot().dj).toMatchObject({ once: true, style: 'brake', next: { ok: true, text: 'Frenata' } })
+    await run(a.cueOut)
+    expect(backend.mixes.map((m) => m.plan.style)).toEqual(['brake'])
+    expect(engine.snapshot().dj).toMatchObject({ once: false, style: null })
+    // B -> C: energia molto più alta, ma il rullo (vistoso) è appena stato usato con la frenata: mix lungo
+    engine.setDjOnce(true)
+    expect(engine.snapshot().dj.next).toMatchObject({ ok: true, text: 'Mix lungo: 16 battute' })
   })
 
   it('se il Mix DJ non riesce il brano resta in coda e vale il cambio normale', async () => {

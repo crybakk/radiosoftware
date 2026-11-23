@@ -455,6 +455,7 @@ export class RadioDb {
     // campi aggiunti nelle versioni successive: completati con i predefiniti
     out.ponte = { ...DEFAULT_PONTE, ...(out.ponte && typeof out.ponte === 'object' ? out.ponte : {}) }
     if (out.playoutMode !== 'auto') out.playoutMode = 'manual'
+    if (!Array.isArray(out.djStyles)) out.djStyles = [...DEFAULT_SETTINGS.djStyles]
     return out
   }
 

@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_STRETCH, planMix, type MixDecision, type MixPlan } from './djMix'
+import { DEFAULT_MAX_STRETCH, describePlan, isShowy, planTransition, type MixDecision, type MixPlan, type MixStyle } from './djMix'
 import { dueEvents } from './events'
 import { airTime } from './rotation'
 import { gainForTrack, type QueueItem, type ScheduledEvent, type Track } from './types'
@@ -58,6 +58,8 @@ export interface PlayoutOptions {
   djMix?: boolean
   /** Variazione massima di velocità nel Mix DJ (0.06 = ±6%). */
   djMaxStretch?: number
+  /** Passaggi permessi nel Mix DJ (assente = tutti). */
+  djStyles?: MixStyle[]
 }
 
 /** Stato del Mix DJ per l'interfaccia. */
@@ -66,6 +68,8 @@ export interface DjState {
   always: boolean
   /** Acceso per il prossimo cambio soltanto. */
   once: boolean
+  /** Passaggio scelto dalla regia per il prossimo cambio (null = lo sceglie la regia da sola). */
+  style: MixStyle | null
   /** Il prossimo cambio: Mix DJ possibile o motivo per cui sarà una dissolvenza. null = niente in coda. */
   next: { ok: boolean; text: string } | null
   /** Un Mix DJ è in corso. */
@@ -146,6 +150,11 @@ export class PlayoutEngine {
   private listeners = new Set<(s: PlayoutSnapshot) => void>()
   /** Mix DJ per il prossimo cambio soltanto (pulsante in regia). */
   private djOnce = false
+  /** Passaggio scelto a mano per il prossimo cambio. */
+  private djStyle: MixStyle | null = null
+  /** Ultimo passaggio fatto e cambi DJ da quello vistoso più recente (per variare). */
+  private djLast: MixStyle | null = null
+  private djSinceShowy = Infinity
 
   constructor(
     private backend: AudioBackend,
@@ -183,9 +192,10 @@ export class PlayoutEngine {
     return this.mode
   }
 
-  /** Mix DJ per il solo prossimo cambio (si spegne da solo dopo il cambio). */
-  setDjOnce(on: boolean): void {
+  /** Mix DJ per il solo prossimo cambio (si spegne da solo dopo il cambio), con un passaggio scelto o automatico. */
+  setDjOnce(on: boolean, style: MixStyle | null = null): void {
     this.djOnce = on
+    this.djStyle = on ? style : null
     this.emit()
   }
 
@@ -455,7 +465,13 @@ export class PlayoutEngine {
   /** Piano del Mix DJ dal brano in onda al primo in coda; null se il Mix DJ non è richiesto. */
   private djPlan(cur: Slot): MixDecision | null {
     if (cur.noDj || !this.djWanted()) return null
-    const d = planMix(cur.item.track, this.queue[0].track, this.options.djMaxStretch ?? DEFAULT_MAX_STRETCH)
+    const d = planTransition(cur.item.track, this.queue[0].track, {
+      maxStretch: this.options.djMaxStretch ?? DEFAULT_MAX_STRETCH,
+      allowed: this.options.djStyles,
+      force: this.djOnce ? this.djStyle : null,
+      sinceShowy: this.djSinceShowy,
+      last: this.djLast
+    })
     // il punto del mix è già passato (Mix DJ chiesto all'ultimo momento): cambio normale
     if (d.ok && cur.player.position() > d.plan.aStart - 0.5) return { ok: false, reason: 'chiesto troppo tardi per questo brano' }
     return d
@@ -466,13 +482,14 @@ export class PlayoutEngine {
     let next: DjState['next'] = null
     if (this.queue[0] && (this.djOnce || this.options.djMix)) {
       const d = cur && !cur.mixTriggered ? this.djPlan(cur) : null
-      if (d?.ok) next = { ok: true, text: `Mix DJ di ${d.plan.bars} battute${d.plan.loop ? ' con loop' : ''}` }
+      if (d?.ok) next = { ok: true, text: describePlan(d.plan) }
       else if (d) next = { ok: false, text: `Dissolvenza normale: ${d.reason}` }
       else if (cur && !this.djWanted()) next = { ok: false, text: 'In manuale il Mix DJ vale solo con "Mixa il prossimo"' }
     }
     return {
       always: !!this.options.djMix,
       once: this.djOnce,
+      style: this.djOnce ? this.djStyle : null,
       next,
       mixing: this.slots.some((s) => s.mixingOut && !s.ended)
     }
@@ -490,6 +507,9 @@ export class PlayoutEngine {
       if (slot) {
         cur.mixingOut = true
         this.djOnce = false
+        this.djStyle = null
+        this.djLast = plan.style
+        this.djSinceShowy = isShowy(plan.style) ? 0 : this.djSinceShowy + 1
       } else if (gen === this.generation) {
         this.queue.unshift(item)
         cur.noDj = true

@@ -38,7 +38,7 @@ export function useRadio() {
         if (event.actions.some((a) => a.type === 'rotation' || a.type === 'djMix')) {
           const s = await api.getSettings()
           setSettings(s)
-          engineRef.current?.setOptions({ djMix: s.djMix, djMaxStretch: s.djMaxStretch })
+          engineRef.current?.setOptions({ djMix: s.djMix, djMaxStretch: s.djMaxStretch, djStyles: s.djStyles })
         }
         return steps
       }
@@ -156,7 +156,8 @@ export function useRadio() {
         targetLoudness: s.targetLoudness,
         autoQueueLength: s.autoQueueLength,
         djMix: s.djMix,
-        djMaxStretch: s.djMaxStretch
+        djMaxStretch: s.djMaxStretch,
+        djStyles: s.djStyles
       })
       try {
         await backend.setOutputDevice(s.outputDeviceId)
