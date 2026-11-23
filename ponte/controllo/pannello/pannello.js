@@ -364,9 +364,72 @@ $('search-form').addEventListener('submit', async (e) => {
 
 let mic = { user: null, onAir: false }
 let pc = null
-let micStream = null
-let meterCtx = null
+let micMix = null // { stream, mic: [{ gain, an }], tot, ctx, stop } da microfoni.js
 let micBusy = false
+
+// Due microfoni (23/11/2026): scelte ricordate in questo browser
+const MIC_KEY = 'radio-microfoni'
+function micDefault() {
+  return [
+    { device: '', channel: 'tutti', vol: 1, muted: false },
+    { device: null, channel: 'tutti', vol: 1, muted: false }
+  ]
+}
+let micSet = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(MIC_KEY))
+    if (Array.isArray(v) && v.length === 2) return v.map((m, i) => ({ ...micDefault()[i], ...m }))
+  } catch {}
+  return micDefault()
+})()
+if (micSet[0].device === null) micSet[0].device = ''
+const micSave = () => { try { localStorage.setItem(MIC_KEY, JSON.stringify(micSet)) } catch {} }
+let micInputs = []
+let micInputsNamed = false
+
+function micChEls(i) {
+  const box = document.querySelector(`.mic-ch[data-mic="${i}"]`)
+  return { box, dev: box.querySelector('.mic-dev'), chan: box.querySelector('.mic-chan'), vol: box.querySelector('.mic-vol'), mute: box.querySelector('.mic-mute'), level: box.querySelector('.mic-ch-level') }
+}
+
+function renderMicChannels() {
+  const open = !!pc
+  for (const i of [0, 1]) {
+    const e = micChEls(i)
+    const m = micSet[i]
+    const opts = []
+    if (i === 1) opts.push(['__none', '— nessuno (un solo microfono) —'])
+    opts.push(['', 'Predefinito del dispositivo'])
+    for (const d of micInputs) opts.push([d.deviceId, d.label])
+    // un ingresso scelto ma non più collegato resta visibile, così non si perde la scelta
+    if (m.device && !micInputs.some((d) => d.deviceId === m.device)) opts.push([m.device, 'Ingresso non trovato (scollegato?)'])
+    e.dev.replaceChildren(...opts.map(([v, t]) => { const o = el('option', null, t); o.value = v; return o }))
+    e.dev.value = m.device === null ? '__none' : m.device
+    e.chan.replaceChildren(...Object.entries(CANALI_MIC).map(([v, t]) => { const o = el('option', null, t); o.value = v; return o }))
+    e.chan.value = m.channel
+    const off = m.device === null
+    e.box.classList.toggle('off', off)
+    // durante la diretta si cambiano solo volume e muto; per cambiare ingresso si chiude e riapre
+    e.dev.disabled = open || micBusy
+    e.chan.disabled = open || micBusy || off
+    e.chan.hidden = off
+    e.vol.disabled = off
+    e.vol.value = String(m.vol)
+    e.mute.hidden = off
+    e.mute.classList.toggle('muted', !!m.muted)
+    e.mute.textContent = m.muted ? '🔇 Muto' : '🎙 Attivo'
+    e.level.parentElement.hidden = off || !open
+  }
+}
+
+async function micLoadInputs(ask) {
+  if (!window.isSecureContext || !navigator.mediaDevices) return
+  try {
+    micInputs = await elencoIngressi(ask)
+    micInputsNamed = micInputs.every((d) => !/^Ingresso \d+$/.test(d.label))
+  } catch {}
+  renderMicChannels()
+}
 
 function renderMic() {
   const card = $('mic-card')
@@ -382,6 +445,10 @@ function renderMic() {
     hint.textContent = 'Il microfono funziona solo con il pannello aperto in HTTPS (vedi la guida, "Pannello in HTTPS").'
   } else if (mic.user && !mine) {
     hint.textContent = `Il microfono remoto è già aperto da ${mic.user}.`
+  } else if (!mine && micSet[1].device !== null && pianoCattura(micSet, $('mic-headphones').checked).doppio) {
+    hint.textContent = 'Microfono 1 e 2 usano lo stesso ingresso e lo stesso canale: scegli un ingresso o un canale diverso per il 2.'
+  } else if (!mine && pianoCattura(micSet, $('mic-headphones').checked).senzaEco) {
+    hint.textContent = 'Con "Solo canale 1/2" il browser non può togliere l\'eco: usa le cuffie.'
   } else if (mine && !mic.onAir) {
     hint.textContent = 'Microfono aperto, ma NON in onda: in cuffia senti il programma. Premi VAI IN ONDA per parlare.'
   } else hint.textContent = ''
@@ -394,6 +461,7 @@ function renderMic() {
   $('mic-air').classList.toggle('live', mic.onAir && mine)
   $('mic-close').hidden = !mine
   $('mic-meter').hidden = !mine
+  renderMicChannels()
 }
 
 function waitIce(conn) {
@@ -415,12 +483,13 @@ async function micOpen() {
   try {
     // con le cuffie niente elaborazioni del browser (voce più naturale); senza cuffie serve togliere l'eco
     const hp = $('mic-headphones').checked
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: !hp, noiseSuppression: !hp, autoGainControl: !hp, channelCount: 1 }
-    })
+    const piano = pianoCattura(micSet, hp)
+    if (piano.doppio) throw new Error('Microfono 1 e 2 sono uguali: scegli un ingresso o un canale diverso per il microfono 2')
+    micMix = await apriMixMicrofoni(piano, micSet.map((m) => m.vol), micSet.map((m) => m.muted))
+    micLoadInputs(false) // dopo il permesso il browser mostra i nomi veri degli ingressi
     pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
     const conn = pc
-    for (const t of micStream.getAudioTracks()) conn.addTrack(t, micStream)
+    for (const t of micMix.stream.getAudioTracks()) conn.addTrack(t, micMix.stream)
     conn.ontrack = (e) => {
       const a = $('mic-ret')
       a.srcObject = e.streams[0] || new MediaStream([e.track])
@@ -437,7 +506,13 @@ async function micOpen() {
     await conn.setRemoteDescription({ type: 'answer', sdp: ans.sdp })
     startMeter()
   } catch (e) {
-    micShutdown(e.name === 'NotAllowedError' ? 'Permesso del microfono negato dal browser' : e.message)
+    micShutdown(
+      e.name === 'NotAllowedError'
+        ? 'Permesso del microfono negato dal browser'
+        : e.name === 'NotFoundError' || e.name === 'OverconstrainedError'
+          ? 'Ingresso del microfono non trovato: controlla che sia collegato e sceglilo di nuovo'
+          : e.message
+    )
   } finally {
     micBusy = false
     renderMic()
@@ -448,36 +523,66 @@ function micShutdown(message) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'rtc-close' }))
   if (pc) pc.close()
   pc = null
-  if (micStream) for (const t of micStream.getTracks()) t.stop()
-  micStream = null
-  if (meterCtx) meterCtx.close().catch(() => {})
-  meterCtx = null
+  if (micMix) micMix.stop()
+  micMix = null
   $('mic-ret').srcObject = null
   if (message) notice(message)
   renderMic()
 }
 
 function startMeter() {
-  meterCtx = new AudioContext()
-  const an = meterCtx.createAnalyser()
-  an.fftSize = 1024
-  meterCtx.createMediaStreamSource(micStream).connect(an)
-  const buf = new Float32Array(an.fftSize)
-  const ctx = meterCtx
-  const draw = () => {
-    if (meterCtx !== ctx) return
-    an.getFloatTimeDomainData(buf)
-    let peak = 0
-    for (const v of buf) peak = Math.max(peak, Math.abs(v))
-    const db = peak > 0 ? 20 * Math.log10(peak) : -60
-    const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100))
-    const bar = $('mic-level')
+  const mix = micMix
+  const buf = new Float32Array(1024)
+  const paint = (bar, an) => {
+    const { db, pct } = livelloMic(an, buf)
     bar.style.width = `${pct}%`
-    bar.className = `meter-fill ${db > -3 ? 'clip' : db > -12 ? 'hot' : ''}`
+    bar.classList.toggle('clip', db > -3)
+    bar.classList.toggle('hot', db <= -3 && db > -12)
+  }
+  const draw = () => {
+    if (micMix !== mix) return
+    paint($('mic-level'), mix.tot)
+    mix.mic.forEach((m, i) => { if (m) paint(micChEls(i).level, m.an) })
     requestAnimationFrame(draw)
   }
   draw()
 }
+
+function micApplyGain(i) {
+  const g = micMix && micMix.mic[i]
+  if (g) g.gain.gain.setTargetAtTime(micSet[i].muted ? 0 : micSet[i].vol, micMix.ctx.currentTime, 0.02)
+}
+
+for (const i of [0, 1]) {
+  const e = micChEls(i)
+  e.dev.addEventListener('focus', () => { if (!micInputsNamed) void micLoadInputs(true) })
+  e.dev.addEventListener('change', () => {
+    micSet[i].device = e.dev.value === '__none' ? null : e.dev.value
+    micSave()
+    renderMic()
+  })
+  e.chan.addEventListener('change', () => {
+    micSet[i].channel = e.chan.value
+    micSave()
+    renderMic()
+  })
+  e.vol.addEventListener('input', () => {
+    micSet[i].vol = Number(e.vol.value)
+    micSave()
+    micApplyGain(i)
+  })
+  e.mute.addEventListener('click', () => {
+    micSet[i].muted = !micSet[i].muted
+    micSave()
+    micApplyGain(i)
+    renderMicChannels()
+  })
+}
+$('mic-headphones').addEventListener('change', () => renderMic())
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => void micLoadInputs(false))
+}
+void micLoadInputs(false)
 
 $('mic-open').addEventListener('click', () => void micOpen())
 $('mic-close').addEventListener('click', () => micShutdown())
