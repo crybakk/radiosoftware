@@ -43,7 +43,9 @@ const emptyProfile = (): RotationProfile => ({
   yearFrom: null,
   yearTo: null,
   artistSeparationMinutes: null,
-  jingleEvery: null
+  jingleEvery: null,
+  energyMin: null,
+  energyMax: null
 })
 
 function newAction(type: EventAction['type']): EventAction {
@@ -121,7 +123,13 @@ function actionSummary(a: EventAction, tracks: Map<number, Track>): string {
     case 'stop':
       return 'ferma tutto'
     case 'rotation':
-      return a.profile ? `profilo "${a.profile.name || 'senza nome'}"` : 'torna alla rotazione normale'
+      return a.profile
+        ? `profilo "${a.profile.name || 'senza nome'}"${
+            a.profile.energyMin != null || a.profile.energyMax != null
+              ? `, energia ${a.profile.energyMin ?? 1}-${a.profile.energyMax ?? 10}`
+              : ''
+          }`
+        : 'torna alla rotazione normale'
     case 'command':
       return a.command
     case 'replay':
@@ -892,6 +900,31 @@ function ActionForm({
                     value={p.yearTo ?? ''}
                     onChange={(e) =>
                       onChange({ ...a, profile: { ...p, yearTo: e.target.value ? Number(e.target.value) : null } })
+                    }
+                  />
+                </span>
+              </label>
+              <label>
+                <span>Energia (da 1 calmo a 10 energico, vuoto = qualsiasi)</span>
+                <span className="row tight">
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    placeholder="da"
+                    value={p.energyMin ?? ''}
+                    onChange={(e) =>
+                      onChange({ ...a, profile: { ...p, energyMin: e.target.value ? Number(e.target.value) : null } })
+                    }
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    placeholder="a"
+                    value={p.energyMax ?? ''}
+                    onChange={(e) =>
+                      onChange({ ...a, profile: { ...p, energyMax: e.target.value ? Number(e.target.value) : null } })
                     }
                   />
                 </span>

@@ -184,6 +184,7 @@ export function AiRotationSection({
                     <th>Alle</th>
                     <th>Generi (vuoto = tutti)</th>
                     <th>Anni</th>
+                    <th title="Energia da 1 (calmo) a 10 (molto energico), dall'analisi per il Mix DJ; vuoto = qualsiasi">Energia</th>
                     <th title="Minuti prima di ripetere lo stesso artista (vuoto = come nelle impostazioni)">Sep. artista</th>
                     <th title="Vuoto = come nelle impostazioni">Jingle ogni</th>
                     <th>Brani</th>
@@ -231,6 +232,11 @@ export function AiRotationSection({
                           <input type="number" value={s.yearFrom ?? ''} onChange={(e) => setSlot(i, { yearFrom: numOrNull(e.target.value) })} onBlur={commit} />
                           –
                           <input type="number" value={s.yearTo ?? ''} onChange={(e) => setSlot(i, { yearTo: numOrNull(e.target.value) })} onBlur={commit} />
+                        </td>
+                        <td className="ai-years">
+                          <input type="number" min={1} max={10} value={s.energyMin ?? ''} onChange={(e) => setSlot(i, { energyMin: numOrNull(e.target.value) })} onBlur={commit} />
+                          –
+                          <input type="number" min={1} max={10} value={s.energyMax ?? ''} onChange={(e) => setSlot(i, { energyMax: numOrNull(e.target.value) })} onBlur={commit} />
                         </td>
                         <td>
                           <input
