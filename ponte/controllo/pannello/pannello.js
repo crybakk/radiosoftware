@@ -164,8 +164,9 @@ function connect() {
     } else if (m.t === 'autonoma') {
       auto = m.state
       renderAuto()
-      // la libreria del server si vede subito, senza dover cercare
-      if (!autoBrowsed && auto && !$('auto-card').hidden) {
+      if (!auto?.active) autoBrowsed = false
+      // la libreria del server si vede solo in diretta autonoma, già piena senza dover cercare
+      if (!autoBrowsed && auto?.active && !$('auto-card').hidden) {
         autoBrowsed = true
         $('auto-search-form').requestSubmit()
       }
@@ -706,9 +707,11 @@ function renderAuto() {
   const badge = $('auto-badge')
   badge.textContent = auto.active ? 'IN ONDA' : ''
   badge.className = `mic-who ${auto.active ? 'auto' : ''}`
-  $('auto-hint').textContent = auto.libraryCount
-    ? `Il ponte suona la libreria del server (${auto.libraryCount} brani) al posto della regia. Con la coda vuota sceglie da solo.`
-    : 'La libreria del server è vuota: carica qualche brano qui sotto o copia la libreria dalla regia.'
+  $('auto-hint').textContent = !auto.libraryCount
+    ? 'La libreria del server è vuota: carica qualche brano qui sotto o copia la libreria dalla regia.'
+    : auto.active
+      ? `Il ponte suona la libreria del server (${auto.libraryCount} brani) al posto della regia. Con la coda vuota sceglie da solo.`
+      : `Il ponte suona la libreria del server (${auto.libraryCount} brani) al posto della regia. Quando la avvii compare la libreria per scegliere i brani.`
   const now = $('auto-now')
   now.replaceChildren()
   if (auto.active && auto.onAir) {
@@ -720,8 +723,11 @@ function renderAuto() {
   $('auto-skip').hidden = !auto.active
   $('auto-stop').hidden = !auto.active
   $('auto-skip').disabled = $('auto-stop').disabled = !ctl
+  // libreria e coda solo quando si è in diretta autonoma (richiesta di cristian, 23/11/2026)
+  $('auto-lib').hidden = !auto.active
   const ul = $('auto-queue')
   ul.replaceChildren()
+  if (!auto.queue.length) ul.append(el('li', 'hint', 'Coda vuota: il server sceglie da solo'))
   for (const t of auto.queue) {
     const li = trackRow(t)
     if (ctl) {
@@ -732,7 +738,8 @@ function renderAuto() {
     ul.append(li)
   }
   $('auto-file').disabled = !ctl
-  $('auto-file').parentElement.hidden = !ctl
+  // il caricamento serve anche prima di partire se la libreria del server è vuota
+  $('auto-upload-btn').hidden = !ctl || !(auto.active || !auto.libraryCount)
 }
 
 for (const [id, type] of [['auto-start', 'start'], ['auto-skip', 'skip'], ['auto-stop', 'stop']]) {

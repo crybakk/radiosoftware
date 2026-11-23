@@ -128,13 +128,17 @@
             <button id="auto-skip" hidden>⏭ Salta</button>
             <button id="auto-stop" class="ghost" hidden>■ Ferma e torna alla regia</button>
           </div>
-          <ul class="list" id="auto-queue"></ul>
-          <form id="auto-search-form" class="search">
-            <input id="auto-q" placeholder="Cerca nella libreria del server" autocomplete="off" />
-            <button type="submit">Cerca</button>
-          </form>
-          <ul class="list" id="auto-results"></ul>
-          <label class="upload">
+          <div id="auto-lib" hidden>
+            <div class="section-title sub">In coda nella diretta autonoma</div>
+            <ul class="list" id="auto-queue"></ul>
+            <div class="section-title sub">Libreria del server</div>
+            <form id="auto-search-form" class="search">
+              <input id="auto-q" placeholder="Cerca nella libreria del server" autocomplete="off" />
+              <button type="submit">Cerca</button>
+            </form>
+            <ul class="list" id="auto-results"></ul>
+          </div>
+          <label class="upload" id="auto-upload-btn">
             <input type="file" id="auto-file" accept="audio/*,.mp3,.m4a,.aac,.flac,.ogg,.opus,.wav" multiple />
             <span>⬆ Carica brani dal dispositivo</span>
           </label>
@@ -389,6 +393,7 @@
     <script src="/impostazioni.js"></script>
     <script src="/navigazione.js"></script>
     <script src="/ordine.js"></script>
+    <script src="/impaginazione.js"></script>
     <script src="/benvenuto.js"></script>
   </body>
 </html>
