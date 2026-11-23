@@ -256,6 +256,26 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding:
 .novita ul { margin: 4px 0 4px 18px; padding: 0; }
 .novita li { margin: 3px 0; }
 
+/* eventi e rotazioni della regia */
+.eventi .mono { font-variant-numeric: tabular-nums; }
+.ev-list li.ev-item { flex-direction: column; align-items: stretch; gap: 4px; }
+.ev-item.off { opacity: 0.6; }
+.ev-head { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+.ev-when { color: var(--amber); }
+.eventi .action-summary { margin: 2px 0 2px 20px; padding: 0; font-size: 14px; }
+.eventi .row select { width: auto; flex: 1; min-width: 160px; }
+.eventi .row input { flex: 1; min-width: 140px; }
+.ev-when-row label, .eventi .row label { flex: 1; min-width: 140px; }
+.ev-days { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.ev-days label.check { display: inline-flex; gap: 4px; align-items: center; color: var(--text); }
+.ev-days input { width: auto; }
+.ev-actions { margin: 0; padding-left: 20px; display: grid; gap: 10px; }
+.ev-action { border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ev-action .row b { font-size: 14px; }
+.ev-profile-fields { display: grid; gap: 6px; grid-template-columns: 1fr; }
+@media (min-width: 600px) { .ev-profile-fields { grid-template-columns: 1fr 1fr; } }
+button.danger { border-color: #b91c1c; color: #fca5a5; }
+.ev-list .action-summary li { display: list-item; border: 0; padding: 1px 0; }
 /* Impaginazione per telefono e PC (richiesta di cristian, 23/11/2026).
    PC largo: tre colonne, il brano in onda accanto ai tasti, i riquadri riempiono i buchi.
    Telefono: margini più stretti, titoli su due righe invece che tagliati, tasti più facili da toccare. */

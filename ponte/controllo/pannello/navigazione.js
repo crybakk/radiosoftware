@@ -3,7 +3,7 @@
 // "indietro" del telefono o del browser torna alla panoramica invece di uscire dal pannello.
 'use strict'
 
-const NAV_SECTIONS = ['progs', 'stats', 'ann', 'users', 'imp']
+const NAV_SECTIONS = ['progs', 'stats', 'ann', 'users', 'imp', 'eventi']
 
 // pagina ricaricata mentre era aperta una sezione: si riparte dalla panoramica, senza passi in cronologia
 if (history.state?.sezione || location.hash) history.replaceState(null, '', location.pathname)

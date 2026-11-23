@@ -3,6 +3,7 @@ import type { FromStudio, RemoteCommand, RemoteState, RemoteTrack, ToStudio } fr
 import { introLeft, introSeconds } from './intro'
 import type { PlayoutEngine, PlayoutSnapshot } from './playout'
 import { ponteControlBase } from './ponteClient'
+import { executeEventCommand, isEventCommand, type RemoteEventsDeps } from './remoteEvents'
 import type { Track } from './types'
 
 export type { RemoteCommand, RemoteState }
@@ -46,10 +47,16 @@ export interface RemoteDeps {
   carts(): (Track | null)[]
   /** Puntata da mandare in replica (dal server). */
   replay(programId: string, episodeId?: string): Promise<Track | null>
+  /** Eventi e rotazioni (gestione da remoto); assente = non disponibile. */
+  events?: RemoteEventsDeps
 }
 
 /** Esegue un comando arrivato dal pannello. Restituisce i dati della risposta o lancia un errore leggibile. */
-export async function executeRemote(engine: PlayoutEngine, cmd: RemoteCommand, deps: RemoteDeps): Promise<unknown> {
+export async function executeRemote(engine: PlayoutEngine, cmd: RemoteCommand, deps: RemoteDeps, by = ''): Promise<unknown> {
+  if (isEventCommand(cmd)) {
+    if (!deps.events) throw new Error('gestione degli eventi da remoto non disponibile')
+    return executeEventCommand(cmd, deps.events, by)
+  }
   switch (cmd.type) {
     case 'play':
       return engine.play()

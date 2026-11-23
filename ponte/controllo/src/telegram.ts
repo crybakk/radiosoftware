@@ -7,7 +7,8 @@
  * si preme "Non è musica". Il comando /sconosciuti rimanda quelli ancora da etichettare.
  *
  * Con /menu (o /start) il bot mostra un menu a pulsanti: le sezioni fisse sui brani da etichettare e già
- * etichettati, più quelle passate dal server (cosa c'è in onda, ascoltatori, puntate...).
+ * etichettati, più quelle passate dal server (cosa c'è in onda, ascoltatori, puntate, eventi e rotazione
+ * della regia...). Le sezioni possono avere pulsanti propri (per esempio accendere o spegnere un evento).
  *
  * I messaggi si leggono con getUpdates (nessuna porta da aprire). Si accettano solo dalla chat configurata.
  */
@@ -37,11 +38,22 @@ export interface TelegramDeps {
   log?: (s: string) => void
 }
 
+/** Testo di una sezione con, se servono, i suoi pulsanti (data: al massimo 40 caratteri). */
+export interface SectionView {
+  text: string
+  buttons?: { text: string; data: string }[][]
+}
+
 /** Una sezione del menu: un pulsante che mostra un testo (con "Aggiorna" e "Menu" sotto). */
 export interface Section {
   key: string
   label: string
-  render: () => Promise<string> | string
+  render: () => Promise<string | SectionView> | string | SectionView
+  /**
+   * Pulsante della sezione premuto (`data` è quello del pulsante). Può restituire un avviso breve e una vista
+   * diversa da mostrare (per esempio una richiesta di conferma); senza vista la sezione si ridisegna.
+   */
+  act?: (data: string, by: string) => Promise<{ toast?: string; view?: SectionView } | void>
 }
 
 type Keyboard = { text: string; callback_data: string }[][]
@@ -155,28 +167,60 @@ export class LabelBot {
   }
 
   /** Testo di una sezione (null se non esiste). */
-  private async sectionText(key: string): Promise<string | null> {
+  private async sectionText(key: string): Promise<SectionView | null> {
     if (key === 'etichettati' && this.d.labelled) {
       const list = this.d.labelled().slice(-15).reverse()
-      if (!list.length) return '✅ Nessun brano etichettato finora.'
-      return `✅ Ultimi brani etichettati:\n${list.map((u) => `• ${u.label!.artist} - ${u.label!.title}${u.label!.composer ? ` (autori: ${u.label!.composer})` : ''}`).join('\n')}`
+      if (!list.length) return { text: '✅ Nessun brano etichettato finora.' }
+      return { text: `✅ Ultimi brani etichettati:\n${list.map((u) => `• ${u.label!.artist} - ${u.label!.title}${u.label!.composer ? ` (autori: ${u.label!.composer})` : ''}`).join('\n')}` }
     }
     const sec = this.d.sections?.find((x) => x.key === key)
     if (!sec) return null
     try {
-      return await sec.render()
+      const v = await sec.render()
+      return typeof v === 'string' ? { text: v } : v
     } catch (e) {
-      return `${sec.label}: non disponibile (${e instanceof Error ? e.message : String(e)})`
+      return { text: `${sec.label}: non disponibile (${e instanceof Error ? e.message : String(e)})` }
     }
   }
 
-  private sectionKeyboard(key: string): Keyboard {
-    return [[{ text: '🔄 Aggiorna', callback_data: `sez:${key}` }, { text: '⬅ Menu', callback_data: 'menu' }]]
+  /** Pulsanti della sezione (prefisso az:sezione:) più "Aggiorna" e "Menu". */
+  private sectionKeyboard(key: string, view?: SectionView): Keyboard {
+    const own: Keyboard = (view?.buttons ?? []).map((row) => row.map((b) => ({ text: b.text, callback_data: `az:${key}:${b.data}`.slice(0, 64) })))
+    return [...own, [{ text: '🔄 Aggiorna', callback_data: `sez:${key}` }, { text: '⬅ Menu', callback_data: 'menu' }]]
+  }
+
+  /** Pulsante di una sezione premuto. */
+  private async sectionAction(cb: NonNullable<Update['callback_query']>, answer: (text?: string, alert?: boolean) => Promise<unknown>): Promise<void> {
+    const rest = cb.data!.slice(3)
+    const sep = rest.indexOf(':')
+    const key = sep < 0 ? rest : rest.slice(0, sep)
+    const data = sep < 0 ? '' : rest.slice(sep + 1)
+    const sec = this.d.sections?.find((x) => x.key === key)
+    if (!sec?.act) return void (await answer('Pulsante non più valido', true))
+    let res: { toast?: string; view?: SectionView } | void
+    try {
+      res = await sec.act(data, who(cb.from))
+    } catch (e) {
+      return void (await answer(`Non fatto: ${e instanceof Error ? e.message : String(e)}`, true))
+    }
+    await answer(res?.toast)
+    if (!cb.message) return
+    const view = res?.view ?? (await this.sectionText(key))
+    if (view) await this.edit(cb.message.message_id, view.text, this.sectionKeyboard(key, view))
   }
 
   /** Manda il menu come nuovo messaggio. */
   async sendMenu(): Promise<void> {
     await this.call('sendMessage', { chat_id: this.d.chatId, text: this.menuText(), reply_markup: { inline_keyboard: this.menuKeyboard() } })
+  }
+
+  /** Manda una sezione come nuovo messaggio. */
+  async sendSection(key: string): Promise<void> {
+    const view = await this.sectionText(key)
+    if (!view) return
+    await this.call('sendMessage', { chat_id: this.d.chatId, text: view.text, reply_markup: { inline_keyboard: this.sectionKeyboard(key, view) } }).catch((e: unknown) =>
+      this.log(`sezione non inviata: ${e instanceof Error ? e.message : String(e)}`)
+    )
   }
 
   /** Manda i brani da etichettare (al massimo 20). */
@@ -242,7 +286,8 @@ export class LabelBot {
     const cb = up.callback_query
     if (cb) {
       if (String(cb.message?.chat.id) !== String(this.d.chatId)) return
-      const answer = (text?: string): Promise<unknown> => this.call('answerCallbackQuery', { callback_query_id: cb.id, ...(text ? { text } : {}) }).catch(() => {})
+      const answer = (text?: string, alert = false): Promise<unknown> =>
+        this.call('answerCallbackQuery', { callback_query_id: cb.id, ...(text ? { text: text.slice(0, 200), show_alert: alert } : {}) }).catch(() => {})
       if (cb.data === 'menu') {
         await answer()
         if (cb.message) await this.edit(cb.message.message_id, this.menuText(), this.menuKeyboard())
@@ -254,11 +299,12 @@ export class LabelBot {
           await answer()
           return void (await this.sendPending())
         }
-        const text = await this.sectionText(key)
-        await answer(text === null ? 'Sezione non più disponibile' : undefined)
-        if (text !== null && cb.message) await this.edit(cb.message.message_id, text, this.sectionKeyboard(key))
+        const view = await this.sectionText(key)
+        await answer(view === null ? 'Sezione non più disponibile' : undefined)
+        if (view !== null && cb.message) await this.edit(cb.message.message_id, view.text, this.sectionKeyboard(key, view))
         return
       }
+      if (cb.data?.startsWith('az:')) return void (await this.sectionAction(cb, answer))
       let id = cb.data?.startsWith('scarta:') ? cb.data.slice(7) : ''
       // il pulsante vale solo per il brano del suo messaggio (un numero potrebbe essere stato riusato)
       if (id && cb.message && this.state.messages[String(cb.message.message_id)] !== undefined && this.target(cb.message.message_id) !== id) id = ''
@@ -288,6 +334,9 @@ export class LabelBot {
     if (!m || String(m.chat.id) !== String(this.d.chatId) || !m.text) return
     if (/^\/(start|menu)(@\w+)?\b/.test(m.text)) return void (await this.sendMenu().catch((e: unknown) => this.log(`menu non inviato: ${e instanceof Error ? e.message : String(e)}`)))
     if (/^\/sconosciuti(@\w+)?\b/.test(m.text)) return void (await this.sendPending(m.message_id))
+    // /eventi, /rotazione...: apre direttamente la sezione con quel nome
+    const direct = /^\/(\w+?)(@\w+)?(\s|$)/.exec(m.text)?.[1]
+    if (direct && this.d.sections?.some((x) => x.key === direct && x.act)) return void (await this.sendSection(direct))
     if (!m.reply_to_message || this.state.messages[String(m.reply_to_message.message_id)] === undefined) return
     const target = this.target(m.reply_to_message.message_id)
     if (!target) return void (await this.reply('Questo brano non è più in archivio.', m.message_id))
@@ -311,7 +360,8 @@ export class LabelBot {
     void this.call('setMyCommands', {
       commands: [
         { command: 'menu', description: 'Apri il menu della radio' },
-        { command: 'sconosciuti', description: 'Brani da etichettare' }
+        { command: 'sconosciuti', description: 'Brani da etichettare' },
+        ...(this.d.sections ?? []).filter((x) => x.act).map((x) => ({ command: x.key, description: x.label.replace(/^\P{L}+/u, '') }))
       ]
     }).catch((e: unknown) => this.log(`comandi non impostati: ${e instanceof Error ? e.message : String(e)}`))
     void this.loop()
