@@ -1,5 +1,5 @@
 import type { RadioDb } from './db'
-import { DEFAULT_ENERGY_JUMP, pickJingle, pickMusic, type RotationRules } from './rotation'
+import { DEFAULT_ENERGY_JUMP, pickJingle, pickMusic, sameTempo, type RotationRules } from './rotation'
 import { genreText } from './aiRotation'
 import type { RotationProfile, Track } from './types'
 
@@ -32,15 +32,29 @@ export function profileEnergy(p: RotationProfile | null): { min: number; max: nu
   return { min, max }
 }
 
+/** Con il Mix DJ acceso, dopo quanti brani sullo stesso tempo si cambia tempo (a caso tra i due valori). */
+export const TEMPO_CHANGE_AFTER = { min: 4, max: 6 }
+
 /** Riempie la coda automatica: musica con separazioni + un jingle ogni N brani. */
 export class RotationService {
   private musicSinceJingle = 0
   private lastJingleId: number | null = null
+  /** Brani di fila sullo stesso tempo e dopo quanti cambiarlo. */
+  private sameTempoRun = 0
+  private tempoChangeAt: number
 
   constructor(
     private db: RadioDb,
-    private now: () => Date = () => new Date()
-  ) {}
+    private now: () => Date = () => new Date(),
+    private random: () => number = Math.random
+  ) {
+    this.tempoChangeAt = this.nextTempoChange()
+  }
+
+  private nextTempoChange(): number {
+    const { min, max } = TEMPO_CHANGE_AFTER
+    return min + Math.floor(this.random() * (max - min + 1))
+  }
 
   fill(upcoming: { track: Track; at: Date }[], count: number): Track[] {
     const s = this.db.getSettings()
@@ -80,15 +94,21 @@ export class RotationService {
         }
       }
       if (!next) {
-        next = pickMusic(music, recent, planned, at, rules, Math.random, {
+        next = pickMusic(music, recent, planned, at, rules, this.random, {
           prev,
           djMix: s.djMix,
           maxStretch: s.djMaxStretch,
           maxEnergyJump: DEFAULT_ENERGY_JUMP,
-          energyRange: profileEnergy(profile)
+          energyRange: profileEnergy(profile),
+          tempoChange: s.djMix && this.sameTempoRun + 1 >= this.tempoChangeAt
         })
         if (next) {
           this.musicSinceJingle++
+          if (prev && sameTempo(prev, next, s.djMaxStretch)) this.sameTempoRun++
+          else {
+            this.sameTempoRun = 0
+            this.tempoChangeAt = this.nextTempoChange()
+          }
           prev = next
         }
       }

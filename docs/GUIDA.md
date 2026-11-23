@@ -6,8 +6,7 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 23/11/2026, tutti i passaggi da DJ nel Mix DJ (filtro, eco, riverbero, stacco, rullo, frenata,
-riavvolto) scelti dalla regia o a mano.
+**Ultimo aggiornamento:** 23/11/2026, con il Mix DJ acceso la rotazione cambia tempo ogni 4-6 brani.
 
 ## Indice
 
@@ -152,7 +151,10 @@ Si usa in due modi:
   **Impostazioni** → **Mix DJ nei cambi automatici**.
 
 Con il Mix DJ acceso, la rotazione automatica **sceglie di preferenza brani mixabili** con quello prima (BPM
-entro il limite e tonalità compatibile). Non è un obbligo: se nessun brano va bene sceglie come sempre.
+entro il limite e tonalità compatibile). Non è un obbligo: se nessun brano va bene sceglie come sempre. Per non
+restare sempre sullo stesso tempo, **ogni 4-6 brani cambia tempo**: sceglie un brano con BPM diversi (sempre dentro
+la fascia di energia del profilo e senza salti di energia), e il passaggio sarà eco, riverbero, stacco o uno di
+quelli vistosi.
 
 Il Mix DJ funziona solo con la musica già analizzata (riga "Analisi per il Mix DJ" in Libreria). Il mix lungo e il
 filtro chiedono due brani con ritmo regolare e tempi vicini (entro il ±6%, si cambia in **Impostazioni**); gli altri
@@ -1159,3 +1161,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 23/11/2026 | Energia dei brani nella rotazione (salti massimi di 2 punti, fascia di energia nei profili e nelle rotazioni con l'AI); con il Mix DJ acceso precedenza ai brani mixabili |
 | 23/11/2026 | Conto alla rovescia dell'intro del brano in onda ed etichetta "intro N s" in coda, in regia e nel pannello |
 | 23/11/2026 | Passaggi del Mix DJ: filtro, eco, riverbero, stacco, rullo, frenata e riavvolto, scelti dalla regia o a mano; passaggi permessi nelle Impostazioni |
+| 23/11/2026 | Con il Mix DJ acceso la rotazione cambia tempo ogni 4-6 brani, dentro la fascia di energia |

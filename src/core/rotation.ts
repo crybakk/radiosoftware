@@ -14,10 +14,20 @@ export interface FlowRules {
   maxEnergyJump: number
   /** Energia ammessa (es. 3-6), null = qualsiasi. */
   energyRange?: { min: number; max: number } | null
+  /** Con il Mix DJ acceso: questa volta cambiare tempo (BPM fuori dal limite del mix a tempo) invece di restare sullo stesso. */
+  tempoChange?: boolean
 }
 
 /** Salto massimo di energia predefinito tra un brano e il successivo. */
 export const DEFAULT_ENERGY_JUMP = 2
+
+/** Tempi vicini: il mix a tempo li aggancia (metà e doppio contano). */
+export function sameTempo(a: Track, b: Track, maxStretch: number): boolean {
+  const da = a.dj
+  const db = b.dj
+  if (!da || !db || !(da.bpm > 0) || !(db.bpm > 0)) return false
+  return Math.abs(tempoRatio(da.bpm, db.bpm) - 1) <= maxStretch + 1e-9
+}
 
 /** Due brani si possono mixare a tempo: ritmo regolare, BPM vicini, tonalità compatibile. */
 export function mixable(a: Track, b: Track, maxStretch: number): boolean {
@@ -38,7 +48,11 @@ function flowFilters(flow: FlowRules | undefined): ((t: Track) => boolean)[] {
   const pe = flow.prev?.dj?.energy ?? 0
   if (flow.maxEnergyJump > 0 && pe > 0) out.push((t) => !(t.dj?.energy) || Math.abs(t.dj.energy - pe) <= flow.maxEnergyJump)
   const prev = flow.prev
-  if (flow.djMix && prev) out.push((t) => mixable(prev, t, flow.maxStretch))
+  if (flow.djMix && prev) {
+    // ogni tanto si cambia tempo (il passaggio sarà eco, riverbero, stacco…), altrimenti brani mixabili a tempo
+    if (flow.tempoChange && prev.dj?.bpm) out.push((t) => !!t.dj?.bpm && !sameTempo(prev, t, flow.maxStretch))
+    else out.push((t) => mixable(prev, t, flow.maxStretch))
+  }
   return out
 }
 

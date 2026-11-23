@@ -53,6 +53,18 @@ describe('rotazione: brani mixabili ed energia', () => {
     expect(preferFlow([mixabileForte, calmoLento], flow({ prev, djMix: true }))).toEqual([calmoLento])
   })
 
+  it('cambio di tempo: brani con BPM fuori dal limite, sempre dentro la fascia di energia', () => {
+    const prev = makeTrack({ dj: dj({}) })
+    const stesso = makeTrack({ dj: dj({ bpm: 125 }) })
+    const lento = makeTrack({ dj: dj({ bpm: 98 }) })
+    const lentoForte = makeTrack({ dj: dj({ bpm: 98, energy: 9 }) })
+    const ignoto = makeTrack()
+    const f = flow({ prev, djMix: true, tempoChange: true, energyRange: { min: 4, max: 7 } })
+    expect(preferFlow([stesso, lento, lentoForte, ignoto], f)).toEqual([lento])
+    // nessun tempo diverso: resta sullo stesso
+    expect(preferFlow([stesso], f)).toEqual([stesso])
+  })
+
   it('fascia di energia', () => {
     const t = [2, 4, 6, 8].map((e) => makeTrack({ dj: dj({ energy: e }) }))
     expect(preferFlow(t, flow({ energyRange: { min: 3, max: 6 } })).map((x) => x.dj!.energy)).toEqual([4, 6])
