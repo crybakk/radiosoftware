@@ -6,6 +6,7 @@ import type { ScanProgress } from '../core/scanner'
 import type { ListenerStats, PonteBackup, PonteProgram, PonteState } from '../core/ponteClient'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { PonteStatus, StudioReport } from '../main/ponte'
+import type { StatoRegistrazioneProgrammi } from '../core/registrazioneProgrammi'
 import type { ServerSyncStatus, ServerTrackRow } from '../main/serverSync'
 import type { MbStatus } from '../main/musicbrainz'
 import type { TagService, TagStatus } from '../main/tagServices'
@@ -191,6 +192,13 @@ export interface RadioApi {
   ponteTestNotification(): Promise<{ ok: boolean; results: { channel: string; ok: boolean; error?: string }[] }>
   /** Scarica il backup e riavvia il programma per ripristinarlo. */
   ponteRestore(name: string): Promise<void>
+  // registrazione dei programmi dallo studio
+  registrazioneStato(): Promise<StatoRegistrazioneProgrammi>
+  /** "Registra adesso", "Segna inizio" o registrazione a mano del programma scelto. */
+  registrazioneRegistra(programId?: string): Promise<StatoRegistrazioneProgrammi>
+  registrazioneNonFermare(): Promise<StatoRegistrazioneProgrammi>
+  registrazioneFine(): Promise<StatoRegistrazioneProgrammi>
+  onRegistrazioneStato(cb: (s: StatoRegistrazioneProgrammi) => void): () => void
   /** Se all'avvio è stato ripristinato un backup: dove è stata messa la versione precedente. */
   restoredFrom(): Promise<string | null>
   /** Eventi con un comando esterno spenti dopo il ripristino. */

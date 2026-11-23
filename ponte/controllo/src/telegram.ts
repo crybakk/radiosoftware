@@ -33,6 +33,8 @@ export interface TelegramDeps {
   sections?: Section[]
   label: (id: string, label: UnknownLabel, by: string) => void
   discard: (id: string, by: string) => void
+  /** Altre funzioni del bot con pulsanti e risposte proprie (es. revisione delle puntate). */
+  extensions?: BotExtension[]
   fetch?: Fetch
   log?: (s: string) => void
 }
@@ -45,6 +47,12 @@ export interface Section {
 }
 
 type Keyboard = { text: string; callback_data: string }[][]
+
+/** Funzione in più del bot: risponde true se il pulsante o la risposta erano suoi. */
+export interface BotExtension {
+  callback?: (data: string, ctx: { by: string; messageId?: number; answer: (text?: string, alert?: boolean) => Promise<unknown> }) => Promise<boolean>
+  reply?: (replyTo: number, text: string, ctx: { by: string; messageId: number; reply: (text: string) => Promise<unknown> }) => Promise<boolean>
+}
 
 /** "Artista - Titolo" (anche con – o —) e, sulla riga sotto, gli autori. */
 export function parseLabel(text: string): UnknownLabel | null {
@@ -109,6 +117,13 @@ export class LabelBot {
   private save(): void {
     writeFileSync(`${this.d.stateFile}.tmp`, JSON.stringify(this.state))
     renameSync(`${this.d.stateFile}.tmp`, this.d.stateFile)
+  }
+
+  /** Chiamata diretta alle API di Telegram (per le estensioni); la chat è sempre quella configurata. */
+  api(method: string, body: Record<string, unknown> | FormData, timeoutMs = 15_000): Promise<any> {
+    if (body instanceof FormData) body.set('chat_id', this.d.chatId)
+    else body = { ...body, chat_id: this.d.chatId }
+    return this.call(method, body, timeoutMs)
   }
 
   private async call(method: string, body: unknown, timeoutMs = 15_000, signal?: AbortSignal): Promise<any> {
@@ -259,6 +274,10 @@ export class LabelBot {
         if (text !== null && cb.message) await this.edit(cb.message.message_id, text, this.sectionKeyboard(key))
         return
       }
+      for (const x of this.d.extensions ?? []) {
+        const ctx = { by: who(cb.from), messageId: cb.message?.message_id, answer: (text?: string, alert = false) => this.call('answerCallbackQuery', { callback_query_id: cb.id, ...(text ? { text, show_alert: alert } : {}) }).catch(() => {}) }
+        if (cb.data && (await x.callback?.(cb.data, ctx))) return
+      }
       let id = cb.data?.startsWith('scarta:') ? cb.data.slice(7) : ''
       // il pulsante vale solo per il brano del suo messaggio (un numero potrebbe essere stato riusato)
       if (id && cb.message && this.state.messages[String(cb.message.message_id)] !== undefined && this.target(cb.message.message_id) !== id) id = ''
@@ -288,6 +307,12 @@ export class LabelBot {
     if (!m || String(m.chat.id) !== String(this.d.chatId) || !m.text) return
     if (/^\/(start|menu)(@\w+)?\b/.test(m.text)) return void (await this.sendMenu().catch((e: unknown) => this.log(`menu non inviato: ${e instanceof Error ? e.message : String(e)}`)))
     if (/^\/sconosciuti(@\w+)?\b/.test(m.text)) return void (await this.sendPending(m.message_id))
+    if (m.reply_to_message) {
+      for (const x of this.d.extensions ?? []) {
+        const ctx = { by: who(m.from), messageId: m.message_id, reply: (text: string) => this.reply(text, m.message_id) }
+        if (await x.reply?.(m.reply_to_message.message_id, m.text, ctx)) return
+      }
+    }
     if (!m.reply_to_message || this.state.messages[String(m.reply_to_message.message_id)] === undefined) return
     const target = this.target(m.reply_to_message.message_id)
     if (!target) return void (await this.reply('Questo brano non è più in archivio.', m.message_id))

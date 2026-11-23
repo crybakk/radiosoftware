@@ -70,7 +70,11 @@ import { VideoLive } from './video.ts'
 import { PlayLog, type PlaySource } from './registro.ts'
 import { FpStore, parseFpFile, UnknownStore, type UnknownLabel } from './riconoscimento.ts'
 import { EsterneRecognition } from './esterne.ts'
-import { LabelBot, type Section } from './telegram.ts'
+import { LabelBot, type BotExtension, type Section } from './telegram.ts'
+import { CollegamentoStudio } from './collegamentoStudio.ts'
+import { PuntateRegia } from './puntateRegia.ts'
+import { RevisioneTelegram } from './revisioneTelegram.ts'
+import { elaboraConStereoTool } from './stereotoolFile.ts'
 import { findGuideDir, guideImageName, guidePage } from './guida.ts'
 import { AnnounceScheduler, AnnounceStore } from './annunciRadio.ts'
 import { programContext, Synth } from './sintesi.ts'
@@ -80,7 +84,7 @@ import { CoverArt, isImage } from './copertine.ts'
 import { ListenerLog, period, readSecondary, report, type SecondaryConfig } from './ascoltatori.ts'
 import { MAX_PRESET_BYTES, StereoTool } from './stereotool.ts'
 import { HlsListeners, hlsPlaylistName, isVariantPlaylist, readHlsPlaylist } from './hls.ts'
-import { fixInterrupted, Recorder } from './puntate.ts'
+import { configuraElaborazione, fixInterrupted, mp3Seconds, publishEpisode, Recorder } from './puntate.ts'
 import { DEFAULT_MIN_FREE_MB, DiskGuard } from './disco.ts'
 import { handleProgramApi } from './programmiApi.ts'
 import { Impostazioni, NOMI_PARTI } from './impostazioni.ts'
@@ -404,6 +408,13 @@ function botSections(): Section[] {
   ]
 }
 
+// revisione delle puntate da Telegram (vedi revisioneTelegram.ts): si crea più sotto, dopo i programmi
+let revisione: RevisioneTelegram | null = null
+const revisioneBot: BotExtension = {
+  callback: (data, ctx) => (revisione ? revisione.callback(data, ctx) : Promise.resolve(false)),
+  reply: (to, text, ctx) => (revisione ? revisione.reply(to, text, ctx) : Promise.resolve(false))
+}
+
 // bot Telegram per etichettare (diverso da quello degli allarmi)
 let labelBot: LabelBot | null = null
 if (env('TELEGRAM_ETICHETTE_TOKEN') && env('TELEGRAM_ETICHETTE_CHAT_ID')) {
@@ -418,7 +429,8 @@ if (env('TELEGRAM_ETICHETTE_TOKEN') && env('TELEGRAM_ETICHETTE_CHAT_ID')) {
     sections: botSections(),
     clipFile: (id) => unknowns.clipFile(id),
     label: labelUnknown,
-    discard: discardUnknown
+    discard: discardUnknown,
+    extensions: [revisioneBot]
   })
   labelBot.start()
 }
@@ -448,6 +460,7 @@ setTimeout(() => {
     .then((r) => r.json() as Promise<{ studio?: boolean; esterna?: boolean; stereotool?: string }>)
     .then((st) => {
       alarms.sync(!!st?.studio, !!st?.esterna)
+      if (st) collegamentoStudio.collegata(!!st.studio)
       // Stereo Tool non partito prima del riavvio del controllo: l'allarme torna aperto
       if (st?.stereotool && st.stereotool !== 'attivo' && st.stereotool !== 'spento') alarms.onEvent('stereotool_errore', st.stereotool)
       // anche la diretta esterna in corso torna "live" per /api/nowplaying
@@ -473,6 +486,42 @@ setInterval(rescan, 30 * 60_000)
 // ---------- programmi e puntate on demand ----------
 
 const programs = new Programs(join(DATA_DIR, 'programmi'))
+
+// collegamenti della regia dello studio: a fine programma dicono se la registrazione del ponte è completa
+const collegamentoStudio = new CollegamentoStudio(join(DATA_DIR, 'collegamento-studio.json'))
+collegamentoStudio.avvio()
+// Stereo Tool sulle registrazioni della regia, ultimo passaggio prima della pubblicazione
+configuraElaborazione({
+  elabora: (input, output, from, to) =>
+    elaboraConStereoTool(input, output, from, to, {
+      dir: env('STEREOTOOL_CARTELLA', '/stereotool'),
+      key: impostazioni.valore('STEREOTOOL_CHIAVE') ?? '',
+      bitrate: env('PUNTATE_BITRATE', '128k')
+    }),
+  avvisa: (text) => void notifier.send(text)
+})
+const publishDraft = (id: string, meta: { from: number; to: number; title: string; description: string }) => publishEpisode(programs, id, meta)
+if (labelBot) {
+  revisione = new RevisioneTelegram({
+    bot: labelBot,
+    programs,
+    stateFile: join(DATA_DIR, 'telegram-revisione.json'),
+    tmpDir: join(DATA_DIR, 'programmi'),
+    publish: publishDraft
+  })
+}
+/** Puntata da rivedere: avviso e, se c'è il bot, revisione da Telegram. */
+function daRivedere(title: string, e: Parameters<RevisioneTelegram['invia']>[0]): void {
+  void notifier.send(`🎙️ Puntata di "${title}" da rivedere${e.reason ? ` (${e.reason})` : ''}: dal pannello (Programmi e puntate)${revisione ? ' o qui sotto nel bot' : ''}.`)
+  void revisione?.invia(e).catch(() => {})
+}
+const puntateRegia = new PuntateRegia({
+  programs,
+  studio: collegamentoStudio,
+  publish: publishDraft,
+  daRivedere: (e) => daRivedere(programs.get(e.programId)?.title ?? e.programId, e),
+  seconds: mp3Seconds
+})
 
 // ---------- annunci con la voce sintetica (solo quando trasmette il server) ----------
 
@@ -524,8 +573,9 @@ if (env('REGISTRAZIONE_PUNTATE', 'si') !== 'no') {
     bitrate: env('PUNTATE_BITRATE', '128k'),
     noSpace: () => disk.check(DATA_DIR),
     onDraft: (e) => {
-      const p = programs.get(e.programId)
-      void notifier.send(`🎙️ Nuova puntata registrata di "${p?.title ?? e.programId}": da rivedere e pubblicare dal pannello (Programmi e puntate).`)
+      // programma dallo studio: ci pensa la regia (pubblicazione diretta, sostituzione o revisione)
+      if (puntateRegia.dopoRegistrazione(e)) return
+      daRivedere(programs.get(e.programId)?.title ?? e.programId, e)
     }
   })
   recorder.start()
@@ -1062,6 +1112,14 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       await handleProgramApi(req, res, url, {
         programs,
         recorder,
+        regia: puntateRegia,
+        // registrazione della regia: fino a 2 GB (6 ore in MP3 320 kbit/s sono circa 860 MB)
+        saveUpload: async (r, file) => {
+          const tmp = `${file}.${randomBytes(6).toString('hex')}.part`
+          await receiveFile(r, tmp, 2 * 1024 * 1024 * 1024, 'registrazione troppo grande (massimo 2 GB)')
+          await rename(tmp, file)
+        },
+        noSpace: () => disk.check(DATA_DIR),
         stationName: env('NOME_RADIO', 'Radio'),
         listenUrl: LISTEN_URL,
         nowPlaying: () => {
@@ -1686,6 +1744,7 @@ const internalServer = createServer(async (req, res) => {
         // la sorgente del server non è più in onda: il brano in corso finisce qui
         if (kind === 'esterna_collegata') playLog.end()
         if (kind === 'studio_connesso') playLog.end(['riserva'])
+        if (kind === 'studio_connesso' || kind === 'studio_scollegato') collegamentoStudio.collegata(kind === 'studio_connesso')
         if (kind === 'esterna_scollegata') esternaSince = null
         alarms.onEvent(kind, String(body.detail ?? ''))
       }

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { PonteStatus } from '../main/ponte'
+import type { StatoRegistrazioneProgrammi } from '../core/registrazioneProgrammi'
 import type { ServerSyncStatus } from '../main/serverSync'
 import type { MbStatus } from '../main/musicbrainz'
 import type { AiTitoliStatus } from '../main/aiTitoli'
@@ -113,6 +114,15 @@ const api: RadioApi = {
   ponteReplay: call('ponteReplay'),
   ponteTestNotification: call('ponteTestNotification'),
   ponteRestore: call('ponteRestore'),
+  registrazioneStato: call('registrazioneStato'),
+  registrazioneRegistra: call('registrazioneRegistra'),
+  registrazioneNonFermare: call('registrazioneNonFermare'),
+  registrazioneFine: call('registrazioneFine'),
+  onRegistrazioneStato: (cb: (s: StatoRegistrazioneProgrammi) => void) => {
+    const listener = (_e: unknown, s: StatoRegistrazioneProgrammi): void => cb(s)
+    ipcRenderer.on('registrazioneStato', listener)
+    return () => ipcRenderer.removeListener('registrazioneStato', listener)
+  },
   restoredFrom: call('restoredFrom'),
   restoredEventsOff: call('restoredEventsOff'),
   serverSyncStatus: call('serverSyncStatus'),
