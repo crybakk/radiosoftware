@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Track } from '../../core/types'
+import { MIX_STYLES, type MixStyle } from '../../core/djMix'
 import { introLeft, introSeconds } from '../../core/intro'
 import { hhmm, KIND_LABEL, mmss } from './format'
 import { TrackSearch } from './TrackSearch'
@@ -54,6 +55,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
   const progress = main ? Math.min(100, (main.position / Math.max(1, main.track.cueOut || main.track.duration)) * 100) : 0
   const ending = main && main.remaining < 10
   const intro = main ? introLeft(main.track, main.position) : null
+  const [djStyle, setDjStyle] = useState<MixStyle | ''>('')
 
   return (
     <div className="onair-view">
@@ -106,10 +108,27 @@ export function OnAirView({ radio }: { radio: Radio }) {
               className={`dj-once ${s.dj.once ? 'on' : ''}`}
               disabled={!main || !s.queue.length}
               title="Il prossimo cambio sarà a tempo, come un DJ (una volta sola)"
-              onClick={() => engine.setDjOnce(!s.dj.once)}
+              onClick={() => engine.setDjOnce(!s.dj.once, djStyle || null)}
             >
               🎧 {s.dj.once ? 'Mix DJ prenotato (annulla)' : 'Mixa il prossimo'}
             </button>
+            <select
+              className="dj-style"
+              title="Tipo di passaggio per il prossimo cambio"
+              value={djStyle}
+              onChange={(e) => {
+                const v = e.target.value as MixStyle | ''
+                setDjStyle(v)
+                if (s.dj.once) engine.setDjOnce(true, v || null)
+              }}
+            >
+              <option value="">Passaggio automatico</option>
+              {MIX_STYLES.map((m) => (
+                <option key={m.id} value={m.id} title={m.help}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
             <span className={`dj-info ${s.dj.next && !s.dj.next.ok ? 'warn' : ''}`}>
               {s.dj.mixing
                 ? 'Mix DJ in corso'

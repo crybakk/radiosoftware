@@ -108,6 +108,8 @@ main { flex: 1; overflow: hidden; }
 .dj-row { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
 .dj-once { font-weight: 700; padding: 10px 14px; border-radius: 10px; background: #3b0764; border-color: #a855f7; }
 .dj-once.on { background: #a855f7; color: #12021f; }
+.dj-style { padding: 8px; border-radius: 8px; }
+.dj-styles { display: flex; flex-direction: column; gap: 4px; }
 .dj-info { font-size: 13px; color: var(--muted, #9ca3af); }
 .dj-info.warn { color: #fde68a; }
 

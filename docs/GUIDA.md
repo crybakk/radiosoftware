@@ -6,7 +6,8 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 23/11/2026, conto alla rovescia dell'intro per chi parla, in regia e nel pannello.
+**Ultimo aggiornamento:** 23/11/2026, tutti i passaggi da DJ nel Mix DJ (filtro, eco, riverbero, stacco, rullo, frenata,
+riavvolto) scelti dalla regia o a mano.
 
 ## Indice
 
@@ -114,20 +115,49 @@ Invece della solita dissolvenza, il **Mix DJ** passa al brano successivo come un
 - se il finale del brano che esce è troppo corto, ripete in **loop** le sue ultime 4 battute piene finché il mix
   non è finito.
 
+Oltre al mix lungo, il Mix DJ conosce gli altri **passaggi** di un DJ:
+
+| Passaggio | Come suona |
+|---|---|
+| Mix lungo | i due brani a tempo per 8 o 16 battute, con lo scambio dei bassi (quello descritto sopra) |
+| Filtro | a tempo come il mix lungo, ma il brano che esce si chiude in un filtro e quello che entra si apre |
+| Eco | il brano che esce si ripete in eco sul battito e si spegne; il nuovo entra sulla battuta dopo |
+| Riverbero | il brano che esce si scioglie in un riverbero lungo e il nuovo entra subito dopo |
+| Stacco | stacco secco sul primo tempo di una battuta: il nuovo brano parte pieno |
+| Rullo ★ | il primo battito si ripete in un loop sempre più corto (1, 1/2, 1/4, 1/8) e il nuovo brano "esplode" |
+| Frenata ★ | il brano rallenta fino a fermarsi, come un giradischi spento |
+| Riavvolto ★ | il disco gira all'indietro (spinback) e parte il nuovo |
+
+**La regia sceglie da sola** il passaggio adatto, come farebbe un DJ:
+
+- BPM vicini: **mix lungo**, oppure **filtro** se le tonalità stridono, oppure ogni tanto **rullo** se il nuovo
+  brano è molto più carico;
+- BPM lontani (dove prima c'era la dissolvenza normale): **stacco** se il nuovo brano parte pieno, ogni tanto
+  **frenata** o **riavvolto** se è molto più calmo, ogni tanto **rullo** se è molto più carico, altrimenti **eco** e
+  **riverbero** alternati.
+
+I passaggi con ★ sono vistosi: la regia li usa al massimo una volta ogni 4 cambi. I passaggi che non mettono i
+brani a tempo cadono comunque sul battito del brano che esce, all'inizio di una frase del finale, e funzionano anche
+con i brani lenti senza ritmo regolare (basta che sia regolare quello che esce).
+
+In **Impostazioni** → **Mix DJ: passaggi che la regia può usare** togli la spunta a quelli che non vuoi.
+
 Si usa in due modi:
 
 - **🎧 Mixa il prossimo** (sotto PLAY / AVANTI / STOP): solo il prossimo cambio sarà un Mix DJ, anche in manuale.
-  Ripremilo per annullare. Accanto la regia dice cosa farà ("Mix DJ di 16 battute", "con loop") oppure perché userà
-  la dissolvenza normale.
+  Ripremilo per annullare. Nel menu accanto scegli il passaggio (**Passaggio automatico** = lo sceglie la regia):
+  quello scelto a mano vale anche se l'hai tolto nelle Impostazioni. Accanto la regia dice cosa farà ("Mix lungo:
+  16 battute", "Eco", "Frenata") oppure perché userà la dissolvenza normale.
 - **Sempre, in automatico**: con l'azione **Mix DJ** di un evento (per esempio acceso dalle 22 alle 2) oppure in
   **Impostazioni** → **Mix DJ nei cambi automatici**.
 
 Con il Mix DJ acceso, la rotazione automatica **sceglie di preferenza brani mixabili** con quello prima (BPM
 entro il limite e tonalità compatibile). Non è un obbligo: se nessun brano va bene sceglie come sempre.
 
-Il Mix DJ funziona solo con la musica già analizzata (riga "Analisi per il Mix DJ" in Libreria) e con ritmo
-regolare. Se i tempi dei due brani sono troppo diversi (oltre il ±6%, si cambia in **Impostazioni**), con jingle,
-notiziari e brani parlati, la regia usa la dissolvenza normale. **AVANTI** e **STOP** funzionano come sempre.
+Il Mix DJ funziona solo con la musica già analizzata (riga "Analisi per il Mix DJ" in Libreria). Il mix lungo e il
+filtro chiedono due brani con ritmo regolare e tempi vicini (entro il ±6%, si cambia in **Impostazioni**); gli altri
+passaggi solo che il brano che esce abbia un ritmo regolare. Con jingle, notiziari e brani parlati, o se il brano
+che esce non ha un ritmo regolare, la regia usa la dissolvenza normale. **AVANTI** e **STOP** funzionano come sempre.
 
 ## 3. Fare una diretta esterna
 
@@ -1128,3 +1158,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 20/11/2026 | Mix DJ in regia: pulsante "Mixa il prossimo", azione "Mix DJ" negli eventi e impostazione per i cambi automatici |
 | 23/11/2026 | Energia dei brani nella rotazione (salti massimi di 2 punti, fascia di energia nei profili e nelle rotazioni con l'AI); con il Mix DJ acceso precedenza ai brani mixabili |
 | 23/11/2026 | Conto alla rovescia dell'intro del brano in onda ed etichetta "intro N s" in coda, in regia e nel pannello |
+| 23/11/2026 | Passaggi del Mix DJ: filtro, eco, riverbero, stacco, rullo, frenata e riavvolto, scelti dalla regia o a mano; passaggi permessi nelle Impostazioni |

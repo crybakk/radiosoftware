@@ -1,4 +1,4 @@
-import { rateRampSeconds, type MixPlan } from '../../core/djMix'
+import { rateRampSeconds, SPINBACK_SECONDS, type MixPlan, type MixStyle } from '../../core/djMix'
 import type { AudioBackend, Player } from '../../core/playout'
 import type { Track } from '../../core/types'
 
@@ -37,13 +37,15 @@ export class WebAudioBackend implements AudioBackend {
   async startMix(from: Player, to: Player, plan: MixPlan): Promise<void> {
     if (!(from instanceof WebPlayer) || !(to instanceof WebPlayer)) throw new Error('lettori non adatti al Mix DJ')
     let loopBuf: AudioBuffer | null = null
-    if (plan.loop) {
+    if (plan.loop || BUFFER_STYLES.includes(plan.style)) {
       const data = await (await fetch(from.url)).arrayBuffer()
       loopBuf = await this.ctx.decodeAudioData(data)
     }
     const rateA = from.rate()
     const t0 = this.ctx.currentTime + (plan.aStart - from.position()) / rateA
-    if (t0 - this.ctx.currentTime < 0.5) throw new Error('troppo tardi per agganciare il battito')
+    // il riverbero comincia a "bagnare" il brano una battuta prima
+    const lead = plan.style === 'reverb' ? plan.barSeconds / rateA : 0
+    if (t0 - lead - this.ctx.currentTime < 0.5) throw new Error('troppo tardi per agganciare il battito')
     from.mixOut(plan, t0, rateA, loopBuf)
     try {
       await to.startMix(plan, t0, rateA)
@@ -71,6 +73,26 @@ const BASS_HZ = 200
 /** Quanto si abbassano i bassi del brano che non li "tiene" nel Mix DJ (dB). */
 const BASS_CUT_DB = -30
 
+/** Passaggi che suonano il brano che esce dalla memoria (loop, rullo, frenata, riavvolto). */
+const BUFFER_STYLES: MixStyle[] = ['roll', 'brake', 'spinback']
+/** Passaggi a tempo: il brano che entra segue quello che esce. */
+const SYNCED_STYLES: MixStyle[] = ['blend', 'filter']
+
+/** Risposta all'impulso di un riverbero ampio: rumore che si spegne in `seconds`. */
+function reverbImpulse(ctx: BaseAudioContext, seconds = 3.5): AudioBuffer {
+  const n = Math.floor(ctx.sampleRate * seconds)
+  const buf = ctx.createBuffer(2, n, ctx.sampleRate)
+  let seed = 7
+  for (let c = 0; c < 2; c++) {
+    const d = buf.getChannelData(c)
+    for (let i = 0; i < n; i++) {
+      seed = (seed * 16807) % 2147483647
+      d[i] = (seed / 2147483647 - 0.5) * 2 * Math.pow(1 - i / n, 3)
+    }
+  }
+  return buf
+}
+
 /** Converte un istante del contesto audio in millisecondi da adesso. */
 const msUntil = (ctx: AudioContext, t: number): number => Math.max(0, (t - ctx.currentTime) * 1000)
 
@@ -81,16 +103,21 @@ export class WebPlayer implements Player {
   private mediaGain: GainNode
   /** Bassi (Mix DJ). */
   private bass: BiquadFilterNode
+  /** Filtri del Mix DJ: passa-basso e passa-alto (trasparenti finché non servono). */
+  private lp: BiquadFilterNode
+  private hp: BiquadFilterNode
   private gain: GainNode
+  /** Effetti (eco, riverbero): mandata e ritorno, fuori dal volume del brano così la coda resta. */
+  private fx: AudioNode[] = []
+  private bufSources: AudioBufferSourceNode[] = []
   private endedCbs: (() => void)[] = []
   private done = false
   private fadeTimer: ReturnType<typeof setTimeout> | null = null
   private timers: ReturnType<typeof setTimeout | typeof setInterval>[] = []
-  private loopSource: AudioBufferSourceNode | null = null
 
   constructor(
     private ctx: AudioContext,
-    destination: AudioNode,
+    private destination: AudioNode,
     readonly url: string,
     private track: Track,
     private level: number
@@ -104,10 +131,18 @@ export class WebPlayer implements Player {
     this.bass.type = 'lowshelf'
     this.bass.frequency.value = BASS_HZ
     this.bass.gain.value = 0
+    this.lp = ctx.createBiquadFilter()
+    this.lp.type = 'lowpass'
+    this.lp.frequency.value = ctx.sampleRate / 2
+    this.hp = ctx.createBiquadFilter()
+    this.hp.type = 'highpass'
+    this.hp.frequency.value = 0
     this.gain = ctx.createGain()
     this.gain.gain.value = level
     this.mediaGain.connect(this.bass)
-    this.bass.connect(this.gain)
+    this.bass.connect(this.lp)
+    this.lp.connect(this.hp)
+    this.hp.connect(this.gain)
     this.gain.connect(destination)
     this.audio.addEventListener('ended', () => this.finish())
     this.audio.addEventListener('timeupdate', () => {
@@ -175,21 +210,39 @@ export class WebPlayer implements Player {
    * Si risolve a `t0`, quando il brano comincia a sentirsi.
    */
   async startMix(plan: MixPlan, t0: number, rateA: number): Promise<void> {
-    const rate = plan.rate * rateA
-    const target = (t: number): number => plan.bStart + rate * (t - t0)
+    const synced = SYNCED_STYLES.includes(plan.style)
+    const rate = synced ? plan.rate * rateA : 1
+    // istante in cui il brano comincia a sentirsi
+    const tB = t0 + plan.bIn / rateA
+    const target = (t: number): number => plan.bStart + rate * (t - tB)
     try {
       await this.load()
       this.audio.preservesPitch = true
       this.audio.playbackRate = rate
+      const now = this.ctx.currentTime
       const g = this.gain.gain
       g.cancelScheduledValues(0)
-      g.setValueAtTime(0, this.ctx.currentTime)
-      g.setValueAtTime(0, t0)
-      g.linearRampToValueAtTime(this.level, t0 + plan.seconds / 4)
-      const b = this.bass.gain
-      b.setValueAtTime(BASS_CUT_DB, this.ctx.currentTime)
-      b.setValueAtTime(BASS_CUT_DB, t0 + plan.bassSwapAt)
-      b.linearRampToValueAtTime(0, t0 + plan.bassSwapAt + plan.barSeconds / 4)
+      g.setValueAtTime(0, now)
+      if (synced) {
+        g.setValueAtTime(0, t0)
+        g.linearRampToValueAtTime(this.level, t0 + plan.seconds / 4)
+        const b = this.bass.gain
+        b.setValueAtTime(BASS_CUT_DB, now)
+        b.setValueAtTime(BASS_CUT_DB, t0 + plan.bassSwapAt)
+        b.linearRampToValueAtTime(0, t0 + plan.bassSwapAt + plan.barSeconds / 4)
+        if (plan.style === 'filter') {
+          // entra "aprendosi": passa-alto che scende fino a metà mix
+          const h = this.hp.frequency
+          h.setValueAtTime(1000, now)
+          h.setValueAtTime(1000, t0)
+          h.exponentialRampToValueAtTime(20, t0 + plan.seconds / 2)
+          h.setValueAtTime(0, t0 + plan.seconds / 2 + 0.01)
+        }
+      } else {
+        // entra pieno, sul battito (un soffio prima, per non tagliare il colpo del primo tempo)
+        g.setValueAtTime(0, tB - 0.07)
+        g.linearRampToValueAtTime(this.level, tB - 0.05)
+      }
       // se il punto di partenza è prima dell'inizio del file si aspetta
       const wait = Math.max(0, -target(this.ctx.currentTime + 0.1) / rate)
       if (wait > 0) await new Promise((r) => setTimeout(r, wait * 1000))
@@ -202,18 +255,20 @@ export class WebPlayer implements Player {
     }
     this.audio.addEventListener('error', () => this.finish())
 
-    // aggancio: corregge la posizione con la velocità finché dura il mix
-    const mixEnd = t0 + plan.seconds
+    // aggancio: corregge la posizione con la velocità finché dura il mix (o poco dopo l'entrata)
+    const mixEnd = synced ? t0 + plan.seconds : tB + 2
     const lock = setInterval(() => {
       if (this.done) return clearInterval(lock)
       const now = this.ctx.currentTime
       if (now >= mixEnd) {
         clearInterval(lock)
-        this.rampRate(rate, rateRampSeconds(plan))
+        if (synced) this.rampRate(rate, rateRampSeconds(plan))
+        else this.audio.playbackRate = 1
         return
       }
       const err = this.audio.currentTime - target(now)
-      if (Math.abs(err) > 0.25 && now < t0 - 0.5) {
+      // prima di sentirsi può saltare al punto giusto; dopo, solo piccole correzioni di velocità (un salto fa un buco)
+      if (Math.abs(err) > (synced ? 0.25 : 0.1) && now < tB - 0.5) {
         this.audio.currentTime = Math.max(0, target(now + 0.05))
         return
       }
@@ -241,42 +296,213 @@ export class WebPlayer implements Player {
   }
 
   /**
-   * Mix DJ, brano che esce: dall'istante `t0` toglie i bassi a metà mix, sfuma nella seconda metà e si ferma
-   * alla fine. Con il loop, arrivato alla fine della zona da ripetere continua dal buffer `loopBuf` in loop.
+   * Mix DJ, brano che esce, secondo il tipo di passaggio. Nei passaggi a tempo dall'istante `t0` toglie i bassi a metà
+   * mix e sfuma nella seconda metà (con il filtro si chiude anche in un passa-basso); con il loop, arrivato alla
+   * fine della zona da ripetere continua dal buffer in loop. Negli altri passaggi: eco, riverbero, stacco, rullo,
+   * frenata o riavvolto a partire da `t0`. In ogni caso finisce da solo alla fine.
    */
-  mixOut(plan: MixPlan, t0: number, rateA: number, loopBuf: AudioBuffer | null): void {
-    const end = t0 + plan.seconds
+  mixOut(plan: MixPlan, t0: number, rateA: number, buf: AudioBuffer | null): void {
+    const k = 1 / rateA
+    const now = this.ctx.currentTime
+    const end = t0 + plan.seconds * (SYNCED_STYLES.includes(plan.style) ? 1 : k)
+    const beat = (plan.barSeconds / 4) * k
     const g = this.gain.gain
     g.cancelScheduledValues(0)
-    g.setValueAtTime(g.value, this.ctx.currentTime)
-    g.setValueAtTime(this.level, t0 + plan.seconds / 2)
-    g.linearRampToValueAtTime(0, end)
-    const b = this.bass.gain
-    b.setValueAtTime(0, t0 + plan.bassSwapAt)
-    b.linearRampToValueAtTime(BASS_CUT_DB, t0 + plan.bassSwapAt + plan.barSeconds / 4)
-    if (plan.loop && loopBuf) {
-      const tSwitch = t0 + (plan.loop.end - plan.loop.start) / rateA
-      const src = this.ctx.createBufferSource()
-      src.buffer = loopBuf
-      src.loop = true
-      src.loopStart = plan.loop.start
-      src.loopEnd = plan.loop.end
-      src.playbackRate.value = rateA
-      const lg = this.ctx.createGain()
-      lg.gain.setValueAtTime(0, this.ctx.currentTime)
-      lg.gain.setValueAtTime(0, tSwitch - 0.004)
-      lg.gain.linearRampToValueAtTime(1, tSwitch + 0.004)
-      src.connect(lg)
-      lg.connect(this.bass)
-      src.start(tSwitch - 0.004, plan.loop.start - 0.004 * rateA)
-      src.stop(end + 0.1)
-      this.loopSource = src
-      const m = this.mediaGain.gain
-      m.setValueAtTime(1, tSwitch - 0.004)
-      m.linearRampToValueAtTime(0, tSwitch + 0.004)
-      this.timers.push(setTimeout(() => this.audio.pause(), msUntil(this.ctx, tSwitch) + 50))
+    g.setValueAtTime(g.value, now)
+    /** Toglie il brano (volume a zero) all'istante `t`, senza scatti. */
+    const cutAt = (t: number, ramp = 0.006): void => {
+      g.setValueAtTime(this.level, t - ramp)
+      g.linearRampToValueAtTime(0, t)
+    }
+    switch (plan.style) {
+      case 'blend':
+      case 'filter': {
+        g.setValueAtTime(this.level, t0 + plan.seconds / 2)
+        g.linearRampToValueAtTime(0, end)
+        const b = this.bass.gain
+        b.setValueAtTime(0, t0 + plan.bassSwapAt)
+        b.linearRampToValueAtTime(BASS_CUT_DB, t0 + plan.bassSwapAt + plan.barSeconds / 4)
+        if (plan.style === 'filter') {
+          const f = this.lp.frequency
+          f.setValueAtTime(this.ctx.sampleRate / 2, now)
+          f.setValueAtTime(16000, t0)
+          f.exponentialRampToValueAtTime(250, end)
+        }
+        if (plan.loop && buf) {
+          const tSwitch = t0 + (plan.loop.end - plan.loop.start) * k
+          this.playBuffer(buf, rateA, tSwitch, plan.loop.start, end + 0.1, { start: plan.loop.start, end: plan.loop.end })
+          this.muteMediaAt(tSwitch)
+        }
+        break
+      }
+      case 'cut':
+        cutAt(t0)
+        break
+      case 'echo': {
+        // l'eco "cattura" il primo battito e lo ripete a ogni battito, sempre più piano
+        const send = this.effect((input, output) => {
+          const delay = this.ctx.createDelay(4)
+          delay.delayTime.value = beat
+          const fb = this.ctx.createGain()
+          fb.gain.value = 0.55
+          const tone = this.ctx.createBiquadFilter()
+          tone.type = 'lowpass'
+          tone.frequency.value = 3500
+          input.connect(delay)
+          delay.connect(tone)
+          tone.connect(fb)
+          fb.connect(delay)
+          tone.connect(output)
+          return [delay, fb, tone]
+        }, t0 + plan.bIn * k, end)
+        send.setValueAtTime(0, now)
+        send.setValueAtTime(1, t0)
+        send.setValueAtTime(1, t0 + beat - 0.01)
+        send.linearRampToValueAtTime(0, t0 + beat)
+        cutAt(t0 + beat, 0.02)
+        break
+      }
+      case 'reverb': {
+        const send = this.effect((input, output) => {
+          const conv = this.ctx.createConvolver()
+          conv.buffer = reverbImpulse(this.ctx)
+          // la coda normalizzata è piano: la si alza perché il "lavaggio" si senta
+          const boost = this.ctx.createGain()
+          boost.gain.value = 2.5
+          input.connect(conv)
+          conv.connect(boost)
+          boost.connect(output)
+          return [conv, boost]
+        }, t0 + plan.bIn * k, end)
+        send.setValueAtTime(0, now)
+        send.setValueAtTime(0, t0 - plan.barSeconds * k)
+        send.linearRampToValueAtTime(1.2, t0)
+        send.setValueAtTime(1.2, t0 + beat / 2)
+        send.linearRampToValueAtTime(0, t0 + beat)
+        g.setValueAtTime(this.level, t0)
+        g.linearRampToValueAtTime(0, t0 + beat / 2)
+        break
+      }
+      case 'roll': {
+        if (!buf) break
+        // loop del primo battito che si accorcia: 1, 1/2, 1/4, 1/8 di battito
+        const b = plan.barSeconds / 4
+        let t = t0
+        for (const [len, beats] of [
+          [1, 4],
+          [1 / 2, 2],
+          [1 / 4, 1],
+          [1 / 8, 1]
+        ]) {
+          const stop = t + beats * beat
+          this.playBuffer(buf, rateA, t, plan.aStart, stop, { start: plan.aStart, end: plan.aStart + len * b })
+          t = stop
+        }
+        this.muteMediaAt(t0)
+        const h = this.hp.frequency
+        h.setValueAtTime(0, now)
+        h.setValueAtTime(30, t0)
+        h.exponentialRampToValueAtTime(1500, t)
+        cutAt(t)
+        break
+      }
+      case 'brake': {
+        if (!buf) break
+        const src = this.playBuffer(buf, rateA, t0, plan.aStart, end + 0.1)
+        const stopAt = t0 + 2 * beat
+        src.playbackRate.setValueAtTime(rateA, t0)
+        src.playbackRate.linearRampToValueAtTime(0.02, stopAt)
+        this.muteMediaAt(t0)
+        g.setValueAtTime(this.level, stopAt - beat / 2)
+        g.linearRampToValueAtTime(0, stopAt)
+        break
+      }
+      case 'spinback': {
+        if (!buf) break
+        // gli ultimi secondi prima del punto, al contrario: il disco gira all'indietro, veloce e poi si ferma
+        const sr = buf.sampleRate
+        const endIdx = Math.min(buf.length, Math.floor(plan.aStart * sr))
+        const startIdx = Math.max(0, endIdx - Math.floor(8 * sr))
+        const len = endIdx - startIdx
+        if (len < sr / 2) {
+          cutAt(t0)
+          break
+        }
+        const rev = this.ctx.createBuffer(buf.numberOfChannels, len, sr)
+        for (let c = 0; c < buf.numberOfChannels; c++) {
+          const src = buf.getChannelData(c)
+          const dst = rev.getChannelData(c)
+          for (let i = 0; i < len; i++) dst[i] = src[endIdx - 1 - i]
+        }
+        const src = this.playBuffer(rev, 0.3, t0, 0, t0 + SPINBACK_SECONDS + 0.1)
+        src.playbackRate.setValueAtTime(0.3, t0)
+        src.playbackRate.linearRampToValueAtTime(3, t0 + 0.15)
+        src.playbackRate.exponentialRampToValueAtTime(0.1, t0 + SPINBACK_SECONDS)
+        this.muteMediaAt(t0)
+        g.setValueAtTime(this.level, t0 + SPINBACK_SECONDS * 0.6)
+        g.linearRampToValueAtTime(0, t0 + SPINBACK_SECONDS)
+        break
+      }
     }
     this.timers.push(setTimeout(() => this.finish(), msUntil(this.ctx, end) + 30))
+  }
+
+  /** Suona un pezzo del brano dalla memoria (dentro i bassi e i filtri del brano), da `when` a `until`. */
+  private playBuffer(
+    buf: AudioBuffer,
+    rate: number,
+    when: number,
+    offset: number,
+    until: number,
+    loop?: { start: number; end: number }
+  ): AudioBufferSourceNode {
+    const src = this.ctx.createBufferSource()
+    src.buffer = buf
+    if (loop) {
+      src.loop = true
+      src.loopStart = loop.start
+      src.loopEnd = loop.end
+    }
+    src.playbackRate.value = rate
+    const lg = this.ctx.createGain()
+    lg.gain.setValueAtTime(0, this.ctx.currentTime)
+    lg.gain.setValueAtTime(0, when - 0.004)
+    lg.gain.linearRampToValueAtTime(1, when + 0.004)
+    lg.gain.setValueAtTime(1, until - 0.006)
+    lg.gain.linearRampToValueAtTime(0, until)
+    src.connect(lg)
+    lg.connect(this.bass)
+    src.start(when - 0.004, Math.max(0, offset - 0.004 * rate))
+    src.stop(until + 0.01)
+    this.bufSources.push(src)
+    this.fx.push(lg)
+    return src
+  }
+
+  /** Dall'istante `t` il file non si sente più (suona la memoria al suo posto). */
+  private muteMediaAt(t: number): void {
+    const m = this.mediaGain.gain
+    m.setValueAtTime(1, t - 0.004)
+    m.linearRampToValueAtTime(0, t + 0.004)
+    this.timers.push(setTimeout(() => this.audio.pause(), msUntil(this.ctx, t) + 50))
+  }
+
+  /**
+   * Collega un effetto (eco, riverbero) dopo i filtri del brano. Restituisce il volume della mandata; il ritorno
+   * sfuma da `fadeFrom` a `fadeTo` (la coda continua anche quando il brano è già a volume zero).
+   */
+  private effect(build: (input: AudioNode, output: AudioNode) => AudioNode[], fadeFrom: number, fadeTo: number): AudioParam {
+    const send = this.ctx.createGain()
+    send.gain.value = 0
+    const ret = this.ctx.createGain()
+    ret.gain.value = this.level
+    const nodes = build(send, ret)
+    this.hp.connect(send)
+    ret.connect(this.destination)
+    ret.gain.setValueAtTime(this.level, fadeFrom)
+    ret.gain.linearRampToValueAtTime(0, fadeTo)
+    this.fx.push(send, ret, ...nodes)
+    return send.gain
   }
 
   /** Annulla un Mix DJ preparato con mixOut (il brano che entra non è partito). */
@@ -284,18 +510,14 @@ export class WebPlayer implements Player {
     if (this.done) return
     for (const t of this.timers) clearTimeout(t as ReturnType<typeof setTimeout>)
     this.timers = []
-    try {
-      this.loopSource?.stop()
-    } catch {
-      // già fermo
-    }
-    this.loopSource?.disconnect()
-    this.loopSource = null
+    this.dropEffects()
     const now = this.ctx.currentTime
     for (const [p, v] of [
       [this.gain.gain, this.level],
       [this.bass.gain, 0],
-      [this.mediaGain.gain, 1]
+      [this.mediaGain.gain, 1],
+      [this.lp.frequency, this.ctx.sampleRate / 2],
+      [this.hp.frequency, 0]
     ] as const) {
       p.cancelScheduledValues(now)
       p.setValueAtTime(v, now)
@@ -328,21 +550,33 @@ export class WebPlayer implements Player {
     for (const cb of this.endedCbs) cb()
   }
 
+  /** Ferma i pezzi suonati dalla memoria e stacca gli effetti. */
+  private dropEffects(): void {
+    for (const src of this.bufSources) {
+      try {
+        src.stop()
+      } catch {
+        // già fermo
+      }
+      src.disconnect()
+    }
+    this.bufSources = []
+    for (const n of this.fx) n.disconnect()
+    this.fx = []
+  }
+
   private release(): void {
     this.done = true
     if (this.fadeTimer) clearTimeout(this.fadeTimer)
     for (const t of this.timers) clearTimeout(t as ReturnType<typeof setTimeout>)
     this.timers = []
-    try {
-      this.loopSource?.stop()
-    } catch {
-      // già fermo
-    }
-    this.loopSource?.disconnect()
+    this.dropEffects()
     this.audio.pause()
     this.source?.disconnect()
     this.mediaGain.disconnect()
     this.bass.disconnect()
+    this.lp.disconnect()
+    this.hp.disconnect()
     this.gain.disconnect()
     this.audio.removeAttribute('src')
     this.audio.load()

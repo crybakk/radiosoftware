@@ -1,4 +1,5 @@
 import type { DjAnalysis } from './djAnalysis'
+import type { MixStyle } from './djMix'
 /** Tipo di elemento audio: decide come viene usato in rotazione e nella cartwall. */
 import type { NewsSource } from './news'
 import { DEFAULT_VOICE, type VoiceSettings } from '../../ponte/controllo/src/annunci.ts'
@@ -86,6 +87,8 @@ export interface Settings {
   djMix: boolean
   /** Variazione massima di velocità del brano che entra nel Mix DJ (0.06 = ±6%). */
   djMaxStretch: number
+  /** Passaggi che il Mix DJ può usare (mix lungo, filtro, eco…). */
+  djStyles: MixStyle[]
   /** Collegamento con il server ponte (invio del programma, allarmi, backup). */
   ponte: PonteSettings
   /** Fonti dei notiziari (feed dei podcast o link diretti). */
@@ -189,6 +192,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rotationProfile: null,
   djMix: false,
   djMaxStretch: 0.06,
+  djStyles: ['blend', 'filter', 'echo', 'reverb', 'cut', 'roll', 'brake', 'spinback'],
   ponte: DEFAULT_PONTE,
   news: [],
   voice: DEFAULT_VOICE,
