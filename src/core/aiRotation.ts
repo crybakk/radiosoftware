@@ -23,6 +23,9 @@ export interface AiSlot {
   yearTo: number | null
   artistSeparationMinutes: number | null
   jingleEvery: number | null
+  /** Energia voluta da-a (1-10). */
+  energyMin?: number | null
+  energyMax?: number | null
 }
 
 export interface AiPlan {
@@ -113,7 +116,9 @@ export function planSchema(genres: string[]): object {
             yearFrom: optInt,
             yearTo: optInt,
             artistSeparationMinutes: optInt,
-            jingleEvery: optInt
+            jingleEvery: optInt,
+            energyMin: optInt,
+            energyMax: optInt
           }
         }
       }
@@ -136,6 +141,7 @@ export function buildPrompt(description: string, s: LibrarySummary): { system: s
     '- genres: SOLO generi presi dall\'elenco della libreria, scritti esattamente così; scegli quelli che corrispondono alla descrizione (anche simili: "musica tranquilla" → generi lenti o acustici). Lista vuota = tutta la musica.',
     '- yearFrom / yearTo: solo se la descrizione parla di anni o decenni ("anni 80" = 1980-1989), altrimenti null.',
     '- artistSeparationMinutes e jingleEvery: solo se la descrizione li chiede, altrimenti null.',
+    '- energyMin / energyMax (da 1 = molto calmo a 10 = molto energico): solo se la descrizione parla di energia o ritmo ("tranquilla" = 1-4, "media" = 4-7, "carica" o "energica" = 6-10), altrimenti null.',
     '- non inventare fasce che la descrizione non chiede; le fasce dello stesso giorno non si sovrappongono.',
     '- name: nome breve e chiaro della fascia, in italiano.',
     '',
@@ -219,7 +225,9 @@ export function cleanPlan(input: unknown, s: LibrarySummary): { plan: AiPlan; wa
       yearFrom,
       yearTo,
       artistSeparationMinutes: intOrNull(o.artistSeparationMinutes, 0, 600),
-      jingleEvery: intOrNull(o.jingleEvery, 0, 20)
+      jingleEvery: intOrNull(o.jingleEvery, 0, 20),
+      energyMin: intOrNull(o.energyMin, 1, 10),
+      energyMax: intOrNull(o.energyMax, 1, 10)
     })
   }
   slots.sort((a, b) => a.start.localeCompare(b.start) || a.days[0] - b.days[0])
@@ -240,7 +248,9 @@ export function slotProfile(s: AiSlot): RotationProfile {
     yearFrom: s.yearFrom,
     yearTo: s.yearTo,
     artistSeparationMinutes: s.artistSeparationMinutes,
-    jingleEvery: s.jingleEvery
+    jingleEvery: s.jingleEvery,
+    // l'energia solo se la fascia la chiede (i profili senza energia restano come prima)
+    ...(s.energyMin != null || s.energyMax != null ? { energyMin: s.energyMin ?? null, energyMax: s.energyMax ?? null } : {})
   }
 }
 

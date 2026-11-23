@@ -6,8 +6,8 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 20/11/2026, Mix DJ: cambi di brano a tempo, come un DJ, dal pulsante "Mixa il prossimo"
-o dagli eventi; la regia analizza la musica (BPM, battiti, tonalità, energia, intro e outro).
+**Ultimo aggiornamento:** 23/11/2026, rotazione per energia (nei profili di rotazione e nelle rotazioni con l'AI) e,
+con il Mix DJ acceso, precedenza ai brani che si possono mixare a tempo.
 
 ## Indice
 
@@ -116,6 +116,9 @@ Si usa in due modi:
   la dissolvenza normale.
 - **Sempre, in automatico**: con l'azione **Mix DJ** di un evento (per esempio acceso dalle 22 alle 2) oppure in
   **Impostazioni** → **Mix DJ nei cambi automatici**.
+
+Con il Mix DJ acceso, la rotazione automatica **sceglie di preferenza brani mixabili** con quello prima (BPM
+entro il limite e tonalità compatibile). Non è un obbligo: se nessun brano va bene sceglie come sempre.
 
 Il Mix DJ funziona solo con la musica già analizzata (riga "Analisi per il Mix DJ" in Libreria) e con ritmo
 regolare. Se i tempi dei due brani sono troppo diversi (oltre il ±6%, si cambia in **Impostazioni**), con jingle,
@@ -317,7 +320,7 @@ Un evento fa una serie di cose, in ordine, a un orario. Scheda **Eventi** → **
 | Automatico / manuale | cambia modalità |
 | Svuota coda | toglie i brani in coda |
 | Ferma tutto | ferma la messa in onda |
-| Regole di rotazione | da quel momento la rotazione usa solo certi generi o anni (es. "dalle 22 musica tranquilla"); "Torna alla rotazione normale" la riporta come prima |
+| Regole di rotazione | da quel momento la rotazione usa solo certi generi, anni o una fascia di **energia** (es. "dalle 22 musica tranquilla, energia 2-5"); "Torna alla rotazione normale" la riporta come prima |
 | Comando esterno | avvia un programma o uno script sul PC |
 | Replica di un programma | l'ultima puntata pubblicata del programma ([sezione 13](#13-programmi-puntate-e-repliche)) |
 | Notiziario | l'ultima edizione di un notiziario scaricato da internet ([Notiziari](#notiziari)) |
@@ -491,6 +494,20 @@ prepara l'AI. L'AI gira sul PC di regia, senza internet e gratis: serve solo sca
 L'AI sceglie **solo tra i generi della tua libreria** (del file e dei servizi della [sezione 9](#9-libreria-e-scheda-brano)):
 per avere più generi fai prima la ricerca su MusicBrainz. Se propone qualcosa che non c'è, l'anteprima lo toglie e
 lo scrive in giallo. Le rotazioni con l'AI valgono solo in regia: la musica di riserva del server resta a caso.
+
+### Energia dei brani
+
+Ogni brano analizzato ha un'**energia** da 1 (molto calmo) a 10 (molto energico), visibile in fondo alla scheda del
+brano. La rotazione la usa in due modi:
+
+- **sempre**: tra un brano e il successivo l'energia non salta di più di 2 punti, così non si passa di colpo da una
+  ballata a un pezzo da discoteca;
+- **per fascia oraria**: nell'azione **Regole di rotazione** di un evento scrivi l'**Energia** da-a (per esempio
+  dalle 22 "energia 2-5", dalle 7 "energia 5-8"). Nelle rotazioni con l'AI basta scriverlo nel palinsesto
+  ("musica tranquilla", "musica carica") oppure correggerlo nella colonna **Energia** dell'anteprima.
+
+Sono preferenze, non divieti: se in una fascia non ci sono abbastanza brani adatti, la regia sceglie lo stesso e la
+radio non resta mai muta. I brani non ancora analizzati vanno sempre bene.
 
 ## 11. Registro e report SIAE
 
@@ -1067,7 +1084,6 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 ## 25. In arrivo
 
 - Mix DJ anche sul server (diretta autonoma e musica di emergenza) e dal pannello.
-- Rotazione anche in base all'energia dei brani.
 - FluidStream, se un giorno servirà.
 
 ## 26. Modifiche alla guida
@@ -1105,3 +1121,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 19/11/2026 | Schede di benvenuto al primo accesso nel pannello, adatte al ruolo; si rivedono dal menu ☰ → 👋 Benvenuto |
 | 20/11/2026 | Analisi per il Mix DJ in Libreria: BPM, battiti, tonalità, energia, intro e outro di ogni brano |
 | 20/11/2026 | Mix DJ in regia: pulsante "Mixa il prossimo", azione "Mix DJ" negli eventi e impostazione per i cambi automatici |
+| 23/11/2026 | Energia dei brani nella rotazione (salti massimi di 2 punti, fascia di energia nei profili e nelle rotazioni con l'AI); con il Mix DJ acceso precedenza ai brani mixabili |

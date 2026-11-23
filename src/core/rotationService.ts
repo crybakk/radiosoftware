@@ -1,5 +1,5 @@
 import type { RadioDb } from './db'
-import { pickJingle, pickMusic, type RotationRules } from './rotation'
+import { DEFAULT_ENERGY_JUMP, pickJingle, pickMusic, type RotationRules } from './rotation'
 import { genreText } from './aiRotation'
 import type { RotationProfile, Track } from './types'
 
@@ -21,6 +21,15 @@ export function applyProfile(tracks: Track[], profile: RotationProfile | null): 
     return true
   })
   return filtered.length >= 10 ? filtered : tracks
+}
+
+/** Fascia di energia del profilo (1-10), null se non impostata. */
+export function profileEnergy(p: RotationProfile | null): { min: number; max: number } | null {
+  if (!p || (p.energyMin == null && p.energyMax == null)) return null
+  let min = Math.max(1, Math.min(10, p.energyMin ?? 1))
+  let max = Math.max(1, Math.min(10, p.energyMax ?? 10))
+  if (min > max) [min, max] = [max, min]
+  return { min, max }
 }
 
 /** Riempie la coda automatica: musica con separazioni + un jingle ogni N brani. */
@@ -48,6 +57,18 @@ export class RotationService {
     const planned = [...upcoming]
     let at = planned.length ? planned[planned.length - 1].at : this.now()
     const out: Track[] = []
+    // ultimo brano di musica (in coda, oppure l'ultimo andato in onda): serve per BPM, tonalità ed energia
+    let prev: Track | null = [...planned].reverse().find((p) => p.track.kind === 'music')?.track ?? null
+    if (!prev) {
+      const last = recent.filter((r) => r.trackId != null).sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
+      for (const r of last.slice(0, 5)) {
+        const t = this.db.getTrack(r.trackId!)
+        if (t?.kind === 'music') {
+          prev = t
+          break
+        }
+      }
+    }
 
     for (let i = 0; i < count; i++) {
       let next: Track | null = null
@@ -59,8 +80,17 @@ export class RotationService {
         }
       }
       if (!next) {
-        next = pickMusic(music, recent, planned, at, rules)
-        if (next) this.musicSinceJingle++
+        next = pickMusic(music, recent, planned, at, rules, Math.random, {
+          prev,
+          djMix: s.djMix,
+          maxStretch: s.djMaxStretch,
+          maxEnergyJump: DEFAULT_ENERGY_JUMP,
+          energyRange: profileEnergy(profile)
+        })
+        if (next) {
+          this.musicSinceJingle++
+          prev = next
+        }
       }
       if (!next) break
       out.push(next)

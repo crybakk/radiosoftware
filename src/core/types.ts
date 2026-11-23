@@ -212,6 +212,9 @@ export interface RotationProfile {
   /** Se impostati, sostituiscono quelli delle impostazioni generali. */
   artistSeparationMinutes: number | null
   jingleEvery: number | null
+  /** Energia voluta da-a (1-10, dall'analisi per il Mix DJ). null o assente = qualsiasi. */
+  energyMin?: number | null
+  energyMax?: number | null
 }
 
 /** Una singola azione di un evento. Le azioni vengono eseguite in ordine. */
