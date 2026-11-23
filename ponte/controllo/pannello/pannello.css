@@ -111,6 +111,17 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding:
 .meter-fill { height: 100%; width: 0; background: var(--green); transition: width 0.06s linear; }
 .meter-fill.hot { background: var(--amber); }
 .meter-fill.clip { background: var(--red); }
+.mics { display: grid; gap: 10px; margin-top: 12px; }
+@media (min-width: 700px) { .mics { grid-template-columns: 1fr 1fr; } }
+.mic-ch { background: var(--panel2); border-radius: 10px; padding: 10px; display: grid; gap: 8px; min-width: 0; }
+.mic-ch.off { opacity: 0.75; }
+.mic-ch-head { display: flex; align-items: center; gap: 8px; }
+.mic-ch-head .mic-mute { margin-left: auto; }
+.mic-ch-sel { display: flex; gap: 8px; flex-wrap: wrap; }
+.mic-ch-sel select { flex: 1; min-width: 140px; }
+@media (max-width: 600px) { .mic-ch-sel select { flex-basis: 100%; } }
+.mic-mute.muted { background: var(--red); border-color: var(--red); color: white; }
+.meter.small { height: 8px; margin-top: 0; }
 .mic-opts { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-top: 10px; color: var(--muted); font-size: 14px; }
 .check { display: flex; gap: 6px; align-items: center; }
 .check input { width: auto; }

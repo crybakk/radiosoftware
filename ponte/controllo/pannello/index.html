@@ -71,6 +71,30 @@
             <button id="mic-close" class="ghost" hidden>Chiudi microfono</button>
           </div>
           <div class="meter" id="mic-meter" hidden><div id="mic-level" class="meter-fill"></div></div>
+          <div class="mics" id="mic-list">
+            <div class="mic-ch" data-mic="0">
+              <div class="mic-ch-head"><b>Microfono 1</b>
+                <button type="button" class="ghost small mic-mute" title="Muto: questo microfono non va in onda">🔇 Muto</button>
+              </div>
+              <div class="mic-ch-sel">
+                <select class="mic-dev" aria-label="Ingresso del microfono 1"></select>
+                <select class="mic-chan" aria-label="Canale del microfono 1"></select>
+              </div>
+              <label class="vol">Volume <input type="range" class="mic-vol" min="0" max="2" step="0.05" value="1" /></label>
+              <div class="meter small"><div class="meter-fill mic-ch-level"></div></div>
+            </div>
+            <div class="mic-ch" data-mic="1">
+              <div class="mic-ch-head"><b>Microfono 2</b>
+                <button type="button" class="ghost small mic-mute" title="Muto: questo microfono non va in onda">🔇 Muto</button>
+              </div>
+              <div class="mic-ch-sel">
+                <select class="mic-dev" aria-label="Ingresso del microfono 2"></select>
+                <select class="mic-chan" aria-label="Canale del microfono 2"></select>
+              </div>
+              <label class="vol">Volume <input type="range" class="mic-vol" min="0" max="2" step="0.05" value="1" /></label>
+              <div class="meter small"><div class="meter-fill mic-ch-level"></div></div>
+            </div>
+          </div>
           <div class="mic-opts">
             <label class="check"><input type="checkbox" id="mic-headphones" checked /> Uso le cuffie</label>
             <label class="vol">Ritorno <input type="range" id="mic-return" min="0" max="1" step="0.05" value="0.8" /></label>
@@ -357,6 +381,7 @@
         </div>
       </div>
     </div>
+    <script src="/microfoni.js"></script>
     <script src="/pannello.js"></script>
     <script src="/programmi.js"></script>
     <script src="/ascoltatori.js"></script>
