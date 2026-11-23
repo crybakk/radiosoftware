@@ -60,6 +60,7 @@ import { randomBytes } from 'node:crypto'
 import { Alarms, DEFAULT_ALARM_CONFIG, type AlarmKey } from './alarms.ts'
 import { Notifier } from './notifier.ts'
 import { Relay } from './relay.ts'
+import { eventSections } from './eventiBot.ts'
 import { can, ROLES, sameSecret, Users, type PublicUser, type Role } from './users.ts'
 import { INVITE_DAYS, UserInvites } from './invitiUtenti.ts'
 import { VoiceHub, voiceSockets, weriftFactory } from './voce.ts'
@@ -426,7 +427,8 @@ if (env('TELEGRAM_ETICHETTE_TOKEN') && env('TELEGRAM_ETICHETTE_CHAT_ID')) {
     get: (id) => unknowns.get(id),
     pending: () => unknowns.list().filter((u) => !u.label),
     labelled: () => unknowns.list().filter((u) => u.label),
-    sections: botSections(),
+    // eventi e rotazione della regia: chi è nella chat li comanda come dal pannello
+    sections: [...botSections(), ...eventSections((cmd, by) => relay.command(cmd, by))],
     clipFile: (id) => unknowns.clipFile(id),
     label: labelUnknown,
     discard: discardUnknown,

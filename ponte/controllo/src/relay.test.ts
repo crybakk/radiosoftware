@@ -178,3 +178,38 @@ describe('smistamento tra pannello e regia', () => {
   })
 })
 
+
+describe('eventi e rotazioni da remoto', () => {
+  it('elenco per tutti, esegui ora per chi comanda, modifiche solo agli amministratori', () => {
+    const r = new Relay('tok')
+    const s = connectStudio(r)
+    const try_ = (role: string, cmd: object) => {
+      const panel = new FakePeer()
+      const ph = r.attachPanel(panel, { name: role, role } as PublicUser)
+      const before = s.p.sent.length
+      ph.message(JSON.stringify({ t: 'cmd', id: 'x', cmd }))
+      return s.p.sent.length > before ? 'inviato' : panel.last('reply').error
+    }
+    expect(try_('ospite', { type: 'events' })).toBe('inviato')
+    expect(try_('ospite', { type: 'eventRun', id: 1 })).toContain('ruolo')
+    expect(try_('conduttore', { type: 'eventRun', id: 1 })).toBe('inviato')
+    expect(try_('conduttore', { type: 'rotationSet', profile: null })).toBe('inviato')
+    expect(try_('conduttore', { type: 'eventSave', event: {} })).toContain('amministratori')
+    expect(try_('conduttore', { type: 'eventEnable', id: 1, on: false })).toContain('amministratori')
+    expect(try_('amministratore', { type: 'eventDelete', id: 1 })).toBe('inviato')
+  })
+
+  it('comandi dal server (bot Telegram) con risposta come promessa', async () => {
+    const r = new Relay('tok')
+    await expect(r.command({ type: 'events' }, 'Telegram')).rejects.toThrow('scollegata')
+    const s = connectStudio(r)
+    const p = r.command({ type: 'events' }, 'Telegram: @cri')
+    const cmd = s.p.last('cmd')
+    expect(cmd).toMatchObject({ cmd: { type: 'events' }, by: 'Telegram: @cri' })
+    s.h.message(JSON.stringify({ t: 'reply', id: cmd.id, ok: true, data: { events: [] } }))
+    await expect(p).resolves.toEqual({ events: [] })
+    const q = r.command({ type: 'eventRun', id: 9 }, 'Telegram')
+    s.h.message(JSON.stringify({ t: 'reply', id: s.p.last('cmd').id, ok: false, error: 'evento non trovato' }))
+    await expect(q).rejects.toThrow('evento non trovato')
+  })
+})

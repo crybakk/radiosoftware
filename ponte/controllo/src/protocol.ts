@@ -39,6 +39,142 @@ export type RemoteCommand =
   | { type: 'search'; q: string }
   /** Replica: una puntata pubblicata del programma (la più recente se manca episodeId). */
   | { type: 'replay'; programId: string; episodeId?: string; where: 'next' | 'end' }
+  /** Eventi e rotazioni della regia (gestione da remoto): tutti rispondono con RemoteEventsInfo aggiornato. */
+  | { type: 'events' }
+  | { type: 'eventSave'; event: RemoteEventDraft }
+  | { type: 'eventDelete'; id: number }
+  | { type: 'eventEnable'; id: number; on: boolean }
+  | { type: 'eventRun'; id: number }
+  /** Cambia la rotazione attiva (null = rotazione normale, tutta la musica). */
+  | { type: 'rotationSet'; profile: RemoteRotationProfile | null }
+  /** Regole generali della rotazione. */
+  | { type: 'rotationRules'; rules: Partial<RemoteRotationRules> }
+  /** Rotazioni con l'AI della regia: la generazione può durare minuti, quindi parte e si controlla con aiStatus. */
+  | { type: 'aiStatus' }
+  | { type: 'aiGenerate'; description: string }
+  | { type: 'aiCancel' }
+  /** Ricontrolla un piano modificato a mano (risponde con il risultato aggiornato). */
+  | { type: 'aiPreview'; plan: RemoteAiPlan }
+  /** Crea gli eventi del piano (replace = toglie prima quelli creati dall'AI): risponde con RemoteEventsInfo. */
+  | { type: 'aiApply'; plan: RemoteAiPlan; replace: boolean }
+
+/** Profilo di rotazione (uguale a quello della regia). */
+export interface RemoteRotationProfile {
+  name: string
+  genres: string[]
+  yearFrom: number | null
+  yearTo: number | null
+  artistSeparationMinutes: number | null
+  jingleEvery: number | null
+  energyMin?: number | null
+  energyMax?: number | null
+}
+
+export interface RemoteRotationRules {
+  artistSeparationMinutes: number
+  titleSeparationMinutes: number
+  jingleEvery: number
+}
+
+/** Azioni di un evento (uguali a quelle della regia). */
+export type RemoteEventAction =
+  | { type: 'play'; trackId: number }
+  | { type: 'random'; kind: RemoteKind | ''; folder: string; genre: string }
+  | { type: 'playlist'; path: string; placement: 'front' | 'append' | 'replace' }
+  | { type: 'stream'; url: string; minutes: number; title: string }
+  | { type: 'mode'; mode: 'auto' | 'manual' }
+  | { type: 'clear' }
+  | { type: 'stop' }
+  | { type: 'rotation'; profile: RemoteRotationProfile | null }
+  /** Il testo del comando non esce dalla regia: arriva vuoto. */
+  | { type: 'command'; command: string }
+  | { type: 'replay'; programId: string; title: string }
+  | { type: 'news'; sourceId: string; title: string }
+  | { type: 'voice'; text: string }
+  | { type: 'djMix'; on: boolean }
+
+export interface RemoteEvent {
+  id: number
+  label: string
+  time: string
+  days: number[]
+  repeatMinutes: number
+  untilTime: string | null
+  validFrom: string | null
+  validTo: string | null
+  mode: 'soft' | 'hard'
+  toleranceSeconds: number
+  actions: RemoteEventAction[]
+  enabled: boolean
+  /** Contiene un comando esterno: da remoto si vede soltanto (si gestisce dalla regia). */
+  locked?: boolean
+}
+
+export type RemoteEventDraft = Omit<RemoteEvent, 'id' | 'locked'> & { id?: number }
+
+/** Fascia oraria proposta dall'AI (uguale a quella della regia). */
+export interface RemoteAiSlot {
+  name: string
+  days: number[]
+  start: string
+  end: string
+  genres: string[]
+  yearFrom: number | null
+  yearTo: number | null
+  artistSeparationMinutes: number | null
+  jingleEvery: number | null
+  energyMin?: number | null
+  energyMax?: number | null
+}
+
+export interface RemoteAiPlan {
+  slots: RemoteAiSlot[]
+}
+
+export interface RemoteAiResult {
+  plan: RemoteAiPlan
+  warnings: string[]
+  /** Brani di musica per ogni fascia. */
+  counts: number[]
+  music: number
+  seconds: number
+}
+
+/** Stato delle rotazioni con l'AI nella regia. */
+export interface RemoteAiInfo {
+  /** Modello scaricato nella regia (si scarica dalla regia: sono circa 2,5 GB). */
+  installed: boolean
+  modelName: string
+  /** Ultimo palinsesto scritto. */
+  description: string
+  job: {
+    state: 'libero' | 'in_corso' | 'pronto' | 'errore'
+    by: string | null
+    startedAt: string | null
+    result: RemoteAiResult | null
+    error: string | null
+  }
+}
+
+/** Eventi e rotazioni della regia, per il pannello e per Telegram. */
+export interface RemoteEventsInfo {
+  events: RemoteEvent[]
+  /** Prossime partenze (ora della regia). */
+  next: { id: number; at: string }[]
+  /** Rotazione attiva (null = normale). */
+  rotation: RemoteRotationProfile | null
+  /** Profili di rotazione usati negli eventi, da scegliere al volo. */
+  profiles: RemoteRotationProfile[]
+  rules: RemoteRotationRules
+  djMix: boolean
+  /** Fonti dei notiziari della regia. */
+  news: { id: string; name: string }[]
+  /** Brani usati negli eventi (azione "Brano"). */
+  tracks: RemoteTrack[]
+  /** Generi e categorie della libreria (per le rotazioni). */
+  genres: string[]
+  at: string
+}
 
 /** Diretta autonoma dal server (senza regia). */
 export interface AutoTrack {

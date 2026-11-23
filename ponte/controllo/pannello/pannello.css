@@ -52,7 +52,7 @@ input, select, textarea { background: var(--bg); border: 1px solid var(--line); 
 .banner.warn { background: #4a3510; color: #fde68a; }
 .banner.info { background: #1e2a44; color: #bfdbfe; }
 
-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px; max-width: 1100px; margin: 0 auto; }
+main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px; max-width: 1100px; margin: 0 auto; align-items: start; }
 @media (min-width: 900px) { main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .now, .transport { grid-column: 1 / -1; } }
 .now-kind { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
 .now-title { font-size: 28px; font-weight: 700; line-height: 1.15; margin-top: 4px; }
@@ -88,7 +88,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding:
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--amber); color: var(--amber); margin-left: 6px; }
 .search { display: flex; gap: 8px; margin-bottom: 6px; }
 .carts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-@media (min-width: 600px) { .carts { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 360px) { .carts { grid-template-columns: repeat(4, 1fr); } }
 .cart { height: 62px; text-align: left; background: #2b2140; border-color: #5b3f8f; overflow: hidden; }
 .cart.empty { background: var(--panel2); border-style: dashed; color: var(--muted); }
 .cart.playing { background: #7c3aed; border-color: #a78bfa; }
@@ -111,6 +111,17 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding:
 .meter-fill { height: 100%; width: 0; background: var(--green); transition: width 0.06s linear; }
 .meter-fill.hot { background: var(--amber); }
 .meter-fill.clip { background: var(--red); }
+.mics { display: grid; gap: 10px; margin-top: 12px; }
+@media (min-width: 700px) { .mics { grid-template-columns: 1fr 1fr; } }
+.mic-ch { background: var(--panel2); border-radius: 10px; padding: 10px; display: grid; gap: 8px; min-width: 0; }
+.mic-ch.off { opacity: 0.75; }
+.mic-ch-head { display: flex; align-items: center; gap: 8px; }
+.mic-ch-head .mic-mute { margin-left: auto; }
+.mic-ch-sel { display: flex; gap: 8px; flex-wrap: wrap; }
+.mic-ch-sel select { flex: 1; min-width: 140px; }
+@media (max-width: 600px) { .mic-ch-sel select { flex-basis: 100%; } }
+.mic-mute.muted { background: var(--red); border-color: var(--red); color: white; }
+.meter.small { height: 8px; margin-top: 0; }
 .mic-opts { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-top: 10px; color: var(--muted); font-size: 14px; }
 .check { display: flex; gap: 6px; align-items: center; }
 .check input { width: auto; }
@@ -247,3 +258,59 @@ button.danger { background: #7f1d1d; color: #fecaca; border-color: #991b1b; }
 .novita summary { cursor: pointer; font-weight: 600; margin-top: 4px; }
 .novita ul { margin: 4px 0 4px 18px; padding: 0; }
 .novita li { margin: 3px 0; }
+
+/* eventi e rotazioni della regia */
+.eventi .mono { font-variant-numeric: tabular-nums; }
+.ev-list li.ev-item { flex-direction: column; align-items: stretch; gap: 4px; }
+.ev-item.off { opacity: 0.6; }
+.ev-head { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+.ev-when { color: var(--amber); }
+.eventi .action-summary { margin: 2px 0 2px 20px; padding: 0; font-size: 14px; }
+.eventi .row select { width: auto; flex: 1; min-width: 160px; }
+.eventi .row input { flex: 1; min-width: 140px; }
+.ev-when-row label, .eventi .row label { flex: 1; min-width: 140px; }
+.ev-days { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.ev-days label.check { display: inline-flex; gap: 4px; align-items: center; color: var(--text); }
+.ev-days input { width: auto; }
+.ev-actions { margin: 0; padding-left: 20px; display: grid; gap: 10px; }
+.ev-action { border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ev-action .row b { font-size: 14px; }
+.ev-profile-fields { display: grid; gap: 6px; grid-template-columns: 1fr; }
+@media (min-width: 600px) { .ev-profile-fields { grid-template-columns: 1fr 1fr; } }
+button.danger { border-color: #b91c1c; color: #fca5a5; }
+.ev-list .action-summary li { display: list-item; border: 0; padding: 1px 0; }
+/* Impaginazione per telefono e PC (richiesta di cristian, 23/11/2026).
+   PC largo: tre colonne, il brano in onda accanto ai tasti, i riquadri riempiono i buchi.
+   Telefono: margini più stretti, titoli su due righe invece che tagliati, tasti più facili da toccare. */
+.section-title.sub { margin-top: 12px; font-size: 12px; }
+@media (min-width: 1280px) {
+  main { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 1680px; padding: 16px 20px; gap: 14px; grid-auto-flow: row dense; grid-auto-rows: 4px; align-items: start; }
+  /* la riga di 4 px e il mosaico li gestisce impaginazione.js; il gap verticale lo fanno le righe */
+  main { row-gap: 0; }
+  main > * { margin-bottom: 14px; }
+  .now { grid-column: span 2; }
+  .transport { grid-column: span 1; grid-template-columns: minmax(0, 1fr); }
+  .transport .big { padding: 14px 6px; }
+  .mic, .auto { grid-column: span 1; }
+  .auto.live { grid-column: span 2; }
+  .now-title { font-size: 34px; }
+  .now-artist { font-size: 22px; }
+  .progs, .users.stats { max-width: 1100px; }
+  .top, .menu { padding-left: 20px; padding-right: 20px; }
+}
+@media (max-width: 480px) {
+  main { padding: 8px; gap: 10px; }
+  .card { padding: 12px; border-radius: 12px; }
+  .users { margin: 8px; }
+  .now-title { font-size: 24px; }
+  .now-artist { font-size: 17px; }
+  .list li { gap: 6px; }
+  .t-eta, .t-dur { font-size: 12px; }
+  .t-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+  .t-actions button { padding: 6px 8px; }
+  .search input { min-width: 0; }
+}
+/* schermi touch: tasti piccoli comunque grandi abbastanza per il dito */
+@media (pointer: coarse) {
+  .t-actions button { min-width: 36px; min-height: 36px; }
+}

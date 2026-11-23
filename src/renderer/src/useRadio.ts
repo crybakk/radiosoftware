@@ -82,19 +82,6 @@ export function useRadio() {
       clearInterval(t)
     }
   }, [engine])
-  useEffect(
-    () =>
-      api.onRemoteCommand((cmd) =>
-        executeRemote(engine, cmd, {
-          getTrack: (id) => api.getTrack(id),
-          search: async (q) => (await api.search({ text: q, limit: 50 })).tracks,
-          carts: () => cartsRef.current,
-          replay: (programId, episodeId) => api.ponteReplay(programId, episodeId)
-        })
-      ),
-    [engine]
-  )
-
   // cattura dell'audio da inviare: segue le impostazioni del ponte
   const captureKey = JSON.stringify([settings.ponte.enabled, settings.ponte.source, settings.ponte.inputDeviceId])
   useEffect(() => {
@@ -206,6 +193,51 @@ export function useRadio() {
       return applySettings(await api.saveSettings(rest))
     },
     [applySettings]
+  )
+
+  // comandi dal pannello remoto e da Telegram, eseguiti sul motore (anche eventi e rotazioni)
+  useEffect(
+    () =>
+      api.onRemoteCommand((cmd, by) =>
+        executeRemote(engine, cmd, {
+          getTrack: (id) => api.getTrack(id),
+          search: async (q) => (await api.search({ text: q, limit: 50 })).tracks,
+          carts: () => cartsRef.current,
+          replay: (programId, episodeId) => api.ponteReplay(programId, episodeId),
+          events: {
+            listEvents: () => api.listEvents(),
+            saveEvent: async (e) => {
+              const list = await api.saveEvent(e)
+              await reloadEvents(list)
+              return list
+            },
+            deleteEvent: async (id) => {
+              const list = await api.deleteEvent(id)
+              await reloadEvents(list)
+              return list
+            },
+            getSettings: () => api.getSettings(),
+            saveSettings: async (patch) => {
+              await saveSettings(patch)
+            },
+            runEvent: (e) => engine.runEvent(e),
+            getTracks: (ids) => api.getTracks(ids),
+            listGenres: () => api.listGenres(),
+            ai: {
+              status: () => api.aiStatus(),
+              generate: (description) => api.aiGenerate(description),
+              cancel: () => api.aiCancelGenerate(),
+              preview: (plan) => api.aiPreview(plan),
+              apply: async (plan, replace) => {
+                const list = await api.aiApply(plan, replace)
+                await reloadEvents(list)
+                return list
+              }
+            }
+          }
+        }, by)
+      ),
+    [engine, reloadEvents, saveSettings]
   )
 
   return { engine, backend, preview, snapshot, settings, saveSettings, events, reloadEvents, cartTracks, audioError, ponte, captureError }
