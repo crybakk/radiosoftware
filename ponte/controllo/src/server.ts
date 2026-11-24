@@ -89,6 +89,7 @@ import { HlsListeners, hlsPlaylistName, isVariantPlaylist, readHlsPlaylist } fro
 import { configuraElaborazione, fixInterrupted, mp3Seconds, publishEpisode, Recorder } from './puntate.ts'
 import { DEFAULT_MIN_FREE_MB, DiskGuard } from './disco.ts'
 import { handleProgramApi } from './programmiApi.ts'
+import { appTitle, SpokenText, SpokenTitles, spokenTitle, TESTO_MAX, type SpokenSong, type SpokenTarget } from './titoloParlato.ts'
 import { Impostazioni, NOMI_PARTI } from './impostazioni.ts'
 import { Attivazione, PAGINA_ATTIVAZIONE } from './attivazione.ts'
 import { AggiornamentoServer } from './aggiornamentoServer.ts'
@@ -318,7 +319,8 @@ const covers = new CoverArt(join(DATA_DIR, 'copertine'))
 const setNowPlaying = (s: Song): void => {
   nowPlaying.set(s)
   const cur = nowPlaying.current()
-  if (cur) void covers.lookup(cur.artist, cur.title)
+  // il titolo parlato non è un brano: niente copertina (si usa quella del programma o il logo)
+  if (cur && cur.source !== 'parlato') void covers.lookup(cur.artist, cur.title)
 }
 playLog.onAdd = (e) => {
   setNowPlaying({ artist: e.artist, title: e.title, duration: e.duration, at: Date.parse(e.at), source: e.source })
@@ -342,6 +344,8 @@ const appEsterna = new AppEsterna({
   onAir: (on, user, titolo) => {
     esternaTitolo = on ? titolo : null
     onLqEvent(on ? 'esterna_collegata' : 'esterna_scollegata', user)
+    // l'app manda sempre il suo titolo (programma – riga): niente titolo parlato sopra
+    if (on) spoken.esternaAppTitle()
   },
   onTitle: (titolo) => {
     esternaTitolo = titolo
@@ -349,6 +353,53 @@ const appEsterna = new AppEsterna({
   },
   onChange: (st) => relay.setEsterna(st)
 })
+
+
+// ---------- titolo parlato: cosa va come titolo quando non suona nessun brano (vedi titoloParlato.ts) ----------
+const currentProgram = (now = Date.now()): ReturnType<Programs['list']>[number] | null =>
+  programs.list().find((x) => activeSlot(x.slots, new Date(now))) ?? null
+const spokenText = new SpokenText()
+const spokenNow = (): SpokenSong => {
+  const prog = currentProgram()
+  return spokenTitle({
+    program: prog ? { id: prog.id, title: prog.title, author: prog.author } : null,
+    text: spokenText.get(prog?.id ?? null),
+    radioName: env('NOME_RADIO', 'Radio'),
+    slogan: env('DESCRIZIONE_RADIO')
+  })
+}
+const spoken = new SpokenTitles({
+  compute: spokenNow,
+  send: async (target: SpokenTarget, s) => {
+    const r = await fetch(`${LIQUIDSOAP}/${target === 'esterna' ? 'metadata_esterna' : 'metadata'}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ artist: s.artist, title: s.title }),
+      signal: AbortSignal.timeout(5000)
+    }).catch(() => null)
+    if (r?.ok) console.log(`[titolo parlato] ${target}: ${s.artist ? `${s.artist} - ` : ''}${s.title}`)
+    if (r?.ok && target === 'studio') lastMetadata = { artist: s.artist, title: s.title, at: new Date().toISOString() }
+    return !!r?.ok
+  },
+  show: (s) => {
+    const cur = nowPlaying.current()
+    if (cur && cur.artist === s.artist && cur.title === s.title) return
+    setNowPlaying({ artist: s.artist, title: s.title, duration: 0, at: Date.now(), source: 'parlato' })
+  }
+})
+const spokenContext = (): Parameters<SpokenTitles['tick']>[0] => {
+  const cur = nowPlaying.current()
+  return {
+    now: Date.now(),
+    autonoma: auto.state().active,
+    studio: alarms.status().studioConnected,
+    // brano riconosciuto in un'esterna: finché suona resta il suo titolo
+    recognizedUntil: cur && cur.source === 'esterna' && cur.duration > 0 ? cur.at + cur.duration * 1000 : 0
+  }
+}
+const spokenTick = (): void => void spoken.tick(spokenContext()).catch(() => {})
+// ogni 5 secondi: cambio di programma, brano riconosciuto finito, esterna senza titolo
+setInterval(spokenTick, 5000).unref()
 // gli annunci non vanno nel registro, ma chiudono il brano di prima
 auto.onPlay = (t) => void (t.id.startsWith('.annunci/') ? playLog.end() : playLog.begin({ source: 'autonoma', id: t.id, title: t.title, artist: t.artist, duration: t.duration }))
 // ---------- riconoscimento dei brani nelle dirette esterne ----------
@@ -503,6 +554,11 @@ setTimeout(() => {
       if (st?.stereotool && st.stereotool !== 'attivo' && st.stereotool !== 'spento') alarms.onEvent('stereotool_errore', st.stereotool)
       // anche la diretta esterna in corso torna "live" per /api/nowplaying
       if (st?.esterna) esternaSince ??= Date.now()
+      // esterna già in onda: non si sa se l'app manda il titolo, quindi non lo si copre
+      if (st?.esterna) {
+        spoken.esternaConnected(Date.now())
+        spoken.esternaAppTitle()
+      }
       if (riconoscimentoAttivo) esterne.setActive(!!st?.esterna)
     })
     .catch(() => {})
@@ -1524,6 +1580,33 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       return json(res, 404, { error: 'non trovato' })
     }
 
+    // --- titolo parlato: anteprima e testo libero (pannello da conduttore in su, regia con il token) ---
+    if (url.pathname === '/api/titolo-parlato') {
+      const me = sessionUser(req)
+      const regia = !me && authorized(req)
+      if (!me && !regia) return json(res, 401, { error: 'accesso richiesto' })
+      const stato = (): Record<string, unknown> => {
+        const prog = currentProgram()
+        return {
+          testo: spokenText.get(prog?.id ?? null),
+          programma: prog?.title ?? null,
+          ...spokenNow(),
+          // in onda adesso (regia senza brani o esterna senza titolo dall'app)
+          inOnda: spoken.target(spokenContext()) !== null,
+          max: TESTO_MAX
+        }
+      }
+      if (req.method === 'GET') return json(res, 200, stato())
+      if (req.method !== 'POST') return json(res, 405, { error: 'metodo non permesso' })
+      if (me && !sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+      if (me && !can(me.role, 'comandare')) return json(res, 403, { error: 'il tuo ruolo non permette di cambiare il titolo' })
+      const body = await readJson(req)
+      spokenText.set(String(body.testo ?? ''), currentProgram()?.id ?? null)
+      console.log(`[titolo parlato] ${me ? me.name : 'regia'}: testo "${spokenText.get(currentProgram()?.id ?? null)}"`)
+      await spoken.tick(spokenContext())
+      return json(res, 200, stato())
+    }
+
     // --- regia (token) ---
     if (!authorized(req)) return json(res, 401, { error: 'token non valido' })
 
@@ -1537,6 +1620,13 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       const body = await readJson(req)
       const artist = String(body.artist ?? '').slice(0, 300)
       const title = String(body.title ?? '').slice(0, 300)
+      // la regia non suona niente da 5 secondi: titolo parlato (programma e conduttore, o nome della radio)
+      if (body.parlato === true) {
+        spoken.setRegia(true)
+        await spoken.tick(spokenContext())
+        return json(res, 200, { ok: true, ...spokenNow() })
+      }
+      spoken.setRegia(false)
       lastMetadata = { artist, title, at: new Date().toISOString() }
       // con la diretta esterna o la autonoma in onda la regia non si sente: il suo brano non è "in onda"
       if (esternaSince === null && !auto.state().active) {
@@ -1861,6 +1951,21 @@ publicServer.on('upgrade', (req, socket, head) => {
 function onLqEvent(kind: string, detail: string): void {
   if (kind === 'autonoma_brano') return auto.onTrackStart(detail)
   if (kind === 'riserva_brano') return logPlay('riserva', detail)
+  if (kind === 'esterna_titolo') {
+    // titolo mandato dall'app dell'esterna (BUTT, Larix…): da qui in poi vale il suo
+    let m: Parameters<typeof appTitle>[0] = {}
+    try {
+      m = JSON.parse(detail || '{}') as typeof m
+    } catch {
+      // titolo non leggibile: si ignora
+    }
+    const t = appTitle(m)
+    if (t && esternaSince !== null) {
+      spoken.esternaAppTitle()
+      setNowPlaying({ ...t, duration: 0, at: Date.now(), source: 'esterna' })
+    }
+    return
+  }
   // audio dell'app Radio Esterna collegato o caduto (non vuol dire in onda: lo decide chi è fuori)
   if (kind === 'app_collegata' || kind === 'app_scollegata') {
     collegamentoEsterna.collegata(kind === 'app_collegata')
@@ -1875,7 +1980,11 @@ function onLqEvent(kind: string, detail: string): void {
   if (kind === 'studio_connesso') playLog.end(['riserva'])
   if (kind === 'studio_connesso' || kind === 'studio_scollegato') collegamentoStudio.collegata(kind === 'studio_connesso')
   if (kind === 'esterna_scollegata') esternaSince = null
+  if (kind === 'esterna_collegata') spoken.esternaConnected(Date.now())
+  if (kind === 'esterna_scollegata') spoken.esternaDisconnected()
+  if (kind === 'studio_connesso') spoken.studioConnected()
   alarms.onEvent(kind, detail)
+  spokenTick()
 }
 
 const internalServer = createServer(async (req, res) => {

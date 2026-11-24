@@ -356,3 +356,9 @@ button.tiny.on { opacity: 1; background: var(--green); border-color: var(--green
 .esterna-box .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .esterna-box .esterna-errore { color: #fca5a5; font-size: 13px; }
 .esterna-box .muted { opacity: 0.7; }
+
+/* titolo parlato */
+.titolo-parlato { border: 1px solid var(--line, #334155); border-radius: 10px; padding: 8px 12px; }
+.titolo-parlato .tp-anteprima { font-weight: 600; margin: 4px 0 6px; }
+.titolo-parlato .tp-onda { background: var(--red); color: #fff; border-radius: 4px; padding: 1px 6px; font-size: 11px; margin-left: 6px; }
+.titolo-parlato form input { flex: 1; min-width: 0; }

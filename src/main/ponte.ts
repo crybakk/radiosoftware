@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { sanitizeRestoredFile, type RadioDb } from '../core/db'
-import { backupDue, parsePonteHost, PonteClient, ponteControlBase, type PonteAlarm, type PonteBackup, type ListenerStats, type PonteProgram, type PonteState } from '../core/ponteClient'
+import { backupDue, parsePonteHost, PonteClient, ponteControlBase, type PonteAlarm, type PonteBackup, type ListenerStats, type PonteProgram, type PonteState, type SpokenTitleState } from '../core/ponteClient'
+import { SpokenTrigger } from '../core/titoloParlato'
 import { pickReplay } from '../core/eventActions'
 import type { PonteSettings, Track } from '../core/types'
 import { Uplink, type UplinkStatus } from '../core/uplink'
@@ -183,6 +184,28 @@ export class PonteService {
 
   setReport(r: StudioReport): void {
     this.report = r
+    this.spoken.update(r.onAir)
+  }
+
+  /** Dopo 5 secondi senza brani il ponte manda il titolo parlato (programma e conduttore). */
+  private spoken = new SpokenTrigger(async () => {
+    const c = this.client()
+    if (!c || !this.settings?.sendMetadata || !this.settings.enabled) return true
+    await c.spoken()
+    return true
+  })
+
+  /** Titolo parlato: anteprima e testo libero (null = ponte non configurato o non raggiungibile). */
+  async spokenTitle(): Promise<SpokenTitleState | null> {
+    const c = this.client()
+    if (!c) return null
+    return c.spokenTitle().catch(() => null)
+  }
+
+  async setSpokenText(testo: string): Promise<SpokenTitleState> {
+    const c = this.client()
+    if (!c) throw new Error('ponte non configurato')
+    return c.setSpokenText(testo)
   }
 
   /** Stato della regia per il pannello remoto. */
@@ -201,6 +224,8 @@ export class PonteService {
   }
 
   private async tick(): Promise<void> {
+    // titolo parlato non arrivato al ponte: si riprova
+    this.spoken.update(this.report.onAir)
     const c = this.client()
     if (!c) {
       if (this.status.controlOk !== null) {

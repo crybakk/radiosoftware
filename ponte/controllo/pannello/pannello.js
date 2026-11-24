@@ -92,6 +92,7 @@ function showApp() {
   showRole()
   connect()
   loadUnknowns()
+  loadSpokenTitle()
   // benvenuto.js si carica dopo: al primo avvio la funzione c'è già quando arriva la risposta di /api/io
   setTimeout(() => typeof checkWelcome === 'function' && checkWelcome(), 0)
 }
@@ -1185,3 +1186,51 @@ $('esterna-ascolta').addEventListener('click', () => {
     .then(() => ($('esterna-ascolta').textContent = '■ Smetti di ascoltare'))
     .catch(() => ($('esterna-nota').textContent = "L'audio dell'esterna non arriva ancora: riprova tra poco."))
 })
+
+// ---------- titolo parlato (scelte di cristian, 24/11/2026) ----------
+// Quando non suona nessun brano il ponte manda come titolo il programma e il conduttore (o il nome della radio).
+// Qui si vede cosa va in onda e si scrive un testo libero (es. "Ospite: Mario Rossi").
+
+let tpTimer = null
+let tpEditing = false
+
+function renderSpokenTitle(s) {
+  $('tp-card').hidden = false
+  $('tp-onda').hidden = !s.inOnda
+  $('tp-anteprima').textContent = `${s.artist ? `${s.artist} – ` : ''}${s.title}`
+  if (!tpEditing) $('tp-testo').value = s.testo
+  $('tp-testo').maxLength = s.max
+  $('tp-testo').placeholder = s.programma ? 'Testo in più, es. Ospite: Mario Rossi' : 'Testo al posto dello slogan'
+  $('tp-togli').hidden = !s.testo || !canCommand()
+  $('tp-form').hidden = !canCommand()
+  $('tp-hint').textContent = s.programma
+    ? `Va in onda dopo 5 secondi senza brani. Il testo vale fino alla fine di "${s.programma}".`
+    : 'Va in onda dopo 5 secondi senza brani. Nessun programma in palinsesto adesso: va il nome della radio.'
+}
+
+async function loadSpokenTitle() {
+  clearTimeout(tpTimer)
+  if (!me) return
+  try {
+    renderSpokenTitle(await api('/api/titolo-parlato'))
+  } catch {
+    $('tp-card').hidden = true
+  }
+  tpTimer = setTimeout(loadSpokenTitle, 15000)
+}
+
+async function saveSpokenText(testo) {
+  try {
+    tpEditing = false
+    renderSpokenTitle(await api('/api/titolo-parlato', { method: 'POST', body: JSON.stringify({ testo }) }))
+  } catch (e) {
+    notice(e.message)
+  }
+}
+
+$('tp-testo').addEventListener('input', () => (tpEditing = true))
+$('tp-form').addEventListener('submit', (e) => {
+  e.preventDefault()
+  void saveSpokenText($('tp-testo').value)
+})
+$('tp-togli').addEventListener('click', () => void saveSpokenText(''))

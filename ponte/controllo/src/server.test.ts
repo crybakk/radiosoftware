@@ -473,6 +473,46 @@ describe('titolo in onda (/api/nowplaying)', () => {
   }, 20_000)
 })
 
+describe('titolo parlato (quando non suona nessun brano)', () => {
+  it('la regia dice "nessun brano": va nome e slogan della radio, con il testo libero dal pannello; mai nel registro', async () => {
+    const { port, internal } = await startServer({ RICONOSCIMENTO: 'no', NOME_RADIO: 'Radio Prova', DESCRIZIONE_RADIO: 'La radio di prova' })
+    const base = `http://127.0.0.1:${port}`
+    const auth = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
+    await fetch(`http://127.0.0.1:${internal}/internal/event`, { method: 'POST', body: JSON.stringify({ kind: 'studio_connesso' }) })
+    await fetch(`${base}/api/metadata`, { method: 'POST', headers: auth, body: JSON.stringify({ artist: 'Lucio Dalla', title: 'Caruso', duration: 200 }) })
+    let np = await (await fetch(`${base}/api/nowplaying/1`)).json()
+    expect(np.now_playing.song.title).toBe('Caruso')
+    const r = await fetch(`${base}/api/metadata`, { method: 'POST', headers: auth, body: JSON.stringify({ parlato: true }) })
+    expect(await r.json()).toMatchObject({ artist: 'Radio Prova', title: 'La radio di prova' })
+    np = await (await fetch(`${base}/api/nowplaying/1`)).json()
+    expect(np.now_playing.song).toMatchObject({ artist: 'Radio Prova', title: 'La radio di prova' })
+    expect(np.now_playing.playlist).toBe('parlato')
+
+    // testo libero dal pannello (conduttore o amministratore): va subito in onda
+    const { cookie } = await login(port, 'admin', 'adminadmin')
+    const set = await fetch(`${base}/api/titolo-parlato`, {
+      method: 'POST',
+      headers: { Cookie: cookie!, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ testo: 'Speciale elezioni' })
+    })
+    expect(await set.json()).toMatchObject({ testo: 'Speciale elezioni', title: 'Speciale elezioni', inOnda: true, programma: null })
+    np = await (await fetch(`${base}/api/nowplaying/1`)).json()
+    expect(np.now_playing.song.title).toBe('Speciale elezioni')
+    // la regia lo legge con il suo token
+    const g = await fetch(`${base}/api/titolo-parlato`, { headers: { Authorization: `Bearer ${TOKEN}` } })
+    expect((await g.json()).testo).toBe('Speciale elezioni')
+    // senza accesso no
+    expect((await fetch(`${base}/api/titolo-parlato`)).status).toBe(401)
+
+    // parte un brano: torna il suo titolo
+    await fetch(`${base}/api/metadata`, { method: 'POST', headers: auth, body: JSON.stringify({ artist: 'Mina', title: 'Se telefonando', duration: 180 }) })
+    const st = await (await fetch(`${base}/api/titolo-parlato`, { headers: { Authorization: `Bearer ${TOKEN}` } })).json()
+    expect(st.inOnda).toBe(false)
+    np = await (await fetch(`${base}/api/nowplaying/1`)).json()
+    expect(np.now_playing.song.title).toBe('Se telefonando')
+  }, 20_000)
+})
+
 describe('limiti e percorsi dei caricamenti', () => {
   it('file oltre i 300 MB dichiarati: risposta 413 col motivo, non connessione chiusa', async () => {
     const { port, exited } = await startServer()

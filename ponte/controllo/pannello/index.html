@@ -67,6 +67,17 @@
           <audio id="esterna-audio" preload="none"></audio>
         </section>
 
+        <section class="card tp" id="tp-card" hidden data-sezione="titolo-parlato" data-titolo="Titolo quando si parla">
+          <div class="section-title">Titolo quando si parla <span id="tp-onda" class="mic-who tp-onda" hidden>IN ONDA</span></div>
+          <div class="tp-anteprima" id="tp-anteprima" title="Va in onda dopo 5 secondi senza brani"></div>
+          <form id="tp-form" class="row">
+            <input id="tp-testo" maxlength="120" autocomplete="off" />
+            <button type="submit" id="tp-usa">Usa</button>
+            <button type="button" class="ghost" id="tp-togli" hidden>Togli</button>
+          </form>
+          <div class="hint" id="tp-hint"></div>
+        </section>
+
         <section class="transport" data-sezione="transport" data-titolo="PLAY / AVANTI / STOP">
           <button class="big play" data-cmd="play">▶ PLAY</button>
           <button class="big next" data-cmd="next">⏭ AVANTI</button>

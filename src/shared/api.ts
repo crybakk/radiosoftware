@@ -3,7 +3,7 @@ import type { NewsSource } from '../core/news'
 import type { TrackEdit, TrackSearch } from '../core/db'
 import type { EngineStep } from '../core/playout'
 import type { ScanProgress } from '../core/scanner'
-import type { ListenerStats, PonteBackup, PonteProgram, PonteState } from '../core/ponteClient'
+import type { ListenerStats, PonteBackup, PonteProgram, PonteState, SpokenTitleState } from '../core/ponteClient'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { PonteStatus, StudioReport } from '../main/ponte'
 import type { StatoRegistrazioneProgrammi } from '../core/registrazioneProgrammi'
@@ -186,6 +186,9 @@ export interface RadioApi {
   ponteBackupNow(): Promise<string>
   ponteListBackups(): Promise<PonteBackup[]>
   ponteState(): Promise<PonteState>
+  /** Titolo parlato (quando non suona nessun brano): anteprima e testo libero; null = ponte non raggiungibile. */
+  ponteSpokenTitle(): Promise<SpokenTitleState | null>
+  ponteSetSpokenText(testo: string): Promise<SpokenTitleState>
   ponteListPrograms(): Promise<PonteProgram[]>
   ponteListeners(periodo: 'giorno' | 'settimana', data: string): Promise<ListenerStats>
   ponteReplay(programId: string, episodeId?: string): Promise<Track | null>
