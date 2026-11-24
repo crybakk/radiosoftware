@@ -65,6 +65,15 @@ export function checkMemory(need: number, free: number): void {
   )
 }
 
+/**
+ * Passi del motore scritti sull'uscita del processo: se il processo dell'AI cade, la regia mette le
+ * ultime righe nel registro (logs\\regia.log) e si vede dove si è fermato e con quanta memoria.
+ */
+function step(msg: string): void {
+  const mb = (b: number): string => `${Math.round(b / 1e6)} MB`
+  console.log(`[AI] ${msg} · memoria usata ${mb(process.memoryUsage().rss)}, libera ${mb(freemem())}`)
+}
+
 export function llamaEngine(): LlmEngine {
   return {
     async open({ modelPath, system, schema }) {
@@ -98,7 +107,9 @@ export function llamaEngine(): LlmEngine {
       // il modulo (nativo, grande) si carica solo alla prima generazione
       const { getLlama, LlamaChatSession } = await import('node-llama-cpp')
       // niente compilazione sul PC di regia: solo i binari già pronti del pacchetto
+      step('avvio')
       const llama = await getLlama({ gpu: false, build: 'never' })
+      step(`motore pronto (${llama.systemInfo})`)
       // controllo prima di caricare (pezzi stimati: circa 3 caratteri l'uno)
       checkMemory(memoryNeeded(statSync(modelPath).size, planContextSize(Math.ceil((system.length + user.length) / 3))), freemem())
       const model = await llama.loadModel({ modelPath }).catch((e: unknown) => {
@@ -108,11 +119,24 @@ export function llamaEngine(): LlmEngine {
         // lascia almeno due core liberi per l'audio
         const threads = Math.max(1, Math.min(8, cpus().length - 2))
         const contextSize = planContextSize(model.tokenize(system).length + model.tokenize(user).length + 100)
+        step(`modello caricato, creo il contesto da ${contextSize} con ${threads} thread`)
         const context = await model.createContext({ contextSize, threads })
         try {
+          step('contesto pronto')
           const session = new LlamaChatSession({ contextSequence: context.getSequence(), systemPrompt: system })
           const grammar = await jsonGrammar(llama, schema)
-          const answer = await session.prompt(user, { grammar, temperature: 0.2, maxTokens: PLAN_MAX_TOKENS, signal })
+          step('grammatica pronta, comincio a scrivere')
+          let n = 0
+          const answer = await session.prompt(user, {
+            grammar,
+            temperature: 0.2,
+            maxTokens: PLAN_MAX_TOKENS,
+            signal,
+            onTextChunk: () => {
+              if (++n % 200 === 0) step(`${n} pezzi scritti`)
+            }
+          })
+          step(`finito: ${n} pezzi`)
           return answer
         } finally {
           await context.dispose()
