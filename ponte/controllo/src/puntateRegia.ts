@@ -61,7 +61,7 @@ const hms = (s: number): string => {
 }
 
 /** Segni di inizio, fine e interruzioni, in secondi dall'inizio del file che comincia a `base` (ms). */
-export function segni(f: FineRegia, base: number, interr: Interruzione[]): Marker[] {
+export function segni(f: FineRegia, base: number, interr: Interruzione[], chi: 'regia' | 'esterna' = 'regia'): Marker[] {
   const out: Marker[] = []
   const t = taglio(f)
   if (f.startMark !== null || !f.startAuto) out.push({ at: Math.max(0, (t.from - base) / 1000), kind: 'inizio' })
@@ -70,7 +70,7 @@ export function segni(f: FineRegia, base: number, interr: Interruzione[]): Marke
       at: Math.max(0, (i.from - base) / 1000),
       kind: 'interruzione',
       length: Math.round((i.to - i.from) / 1000),
-      note: i.kind === 'avvio' ? 'il server è ripartito' : 'regia scollegata dal ponte'
+      note: i.kind === 'avvio' ? 'il server è ripartito' : chi === 'esterna' ? 'Radio Esterna scollegata dal ponte' : 'regia scollegata dal ponte'
     })
   }
   if (f.endMark !== null || !f.endAuto) out.push({ at: Math.max(0, (t.to - base) / 1000), kind: 'fine' })
@@ -92,6 +92,8 @@ export interface PuntateRegiaDeps {
   daRivedere: (e: Episode) => void
   /** Durata del file in secondi. */
   seconds: (file: string) => Promise<number>
+  /** Chi registra: la regia dello studio o l'app Radio Esterna (cambia solo le note dei segni). */
+  chi?: 'regia' | 'esterna'
   log?: (s: string) => void
 }
 
@@ -189,7 +191,7 @@ export class PuntateRegia {
     const length = (await this.d.seconds(this.d.programs.rawFile(id)).catch(() => 0)) || Math.round((f.endedAt - f.startedAt) / 1000)
     const t = taglio(f)
     const cut = { from: Math.max(0, (t.from - f.startedAt) / 1000), to: Math.min(length, (t.to - f.startedAt) / 1000) }
-    const e = this.d.programs.addStudioEpisode({ id, programId: f.programId, from: f.startedAt, to: f.endedAt, length, markers: segni(f, f.startedAt, interr), cut, reason: why })
+    const e = this.d.programs.addStudioEpisode({ id, programId: f.programId, from: f.startedAt, to: f.endedAt, length, markers: segni(f, f.startedAt, interr, this.d.chi), cut, reason: why })
     // la registrazione del ponte dello stesso programma non serve più
     for (const old of this.d.programs.episodes(f.programId)) {
       if (old.source === 'regia' || old.id === id) continue

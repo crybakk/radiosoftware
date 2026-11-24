@@ -22,6 +22,13 @@
  *                POST /api/programmi/regia/fine            fine della registrazione in regia: si tiene
  *                                                         quella del ponte o serve il file (puntateRegia.ts)
  *                PUT  /api/programmi/regia/registrazione?… il file MP3 della registrazione della regia
+ *
+ * App Radio Esterna (sessione, da conduttore in su): stesse regole della regia dello studio, con i collegamenti
+ * dell'app al posto di quelli della regia.
+ *                GET  /api/programmi/esterna                elenco dei programmi (id e nome)
+ *                POST /api/programmi/esterna/inizio         {programId}: il ponte registra il programma da adesso
+ *                POST /api/programmi/esterna/fine           come /api/programmi/regia/fine (e ferma la registrazione)
+ *                PUT  /api/programmi/esterna/registrazione?… il file MP3 registrato dall'app
  */
 import { createReadStream, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -33,7 +40,7 @@ import { can, type PublicUser } from './users.ts'
 
 export interface ProgramApiDeps {
   programs: Programs
-  recorder: Pick<Recorder, 'recording'> | null
+  recorder: Pick<Recorder, 'recording' | 'startManual' | 'stopManual'> | null
   stationName: string
   listenUrl: string
   nowPlaying: () => { artist: string; title: string } | null
@@ -45,6 +52,8 @@ export interface ProgramApiDeps {
   publish?: typeof publishEpisode
   /** Registrazioni della regia dello studio (assente = funzione spenta). */
   regia?: PuntateRegia
+  /** Registrazioni dell'app Radio Esterna (assente = funzione spenta). */
+  esterna?: PuntateRegia
   /** Salva il corpo della richiesta in un file (in streaming, con limite di dimensione). */
   saveUpload?: (req: IncomingMessage, file: string) => Promise<unknown>
   /** Motivo per rifiutare un file (disco quasi pieno), null se c'è spazio. */
@@ -212,6 +221,54 @@ export async function handleProgramApi(req: IncomingMessage, res: ServerResponse
       const id = d.regia.nuovoId()
       await d.saveUpload(req, P.rawFile(id))
       const e = await d.regia.ricevuto(id, f)
+      json(res, 200, { ok: true, id: e.id, status: e.status })
+      return true
+    }
+    return json(res, 405, { error: 'metodo non valido' }), true
+  }
+
+  if (path === '/api/programmi/esterna' || path.startsWith('/api/programmi/esterna/')) {
+    const me = d.user(req)
+    if (!me) return json(res, 401, { error: 'accesso richiesto' }), true
+    if (!can(me.role, 'comandare')) return json(res, 403, { error: 'il tuo ruolo non permette di andare in onda' }), true
+    if (req.method !== 'GET' && !d.sameOrigin(req)) return json(res, 403, { error: 'origine non valida' }), true
+    if (req.method === 'GET' && path === '/api/programmi/esterna') {
+      json(res, 200, P.list().map((p) => ({ id: p.id, title: p.title })), { 'Cache-Control': 'no-store' })
+      return true
+    }
+    if (!d.esterna) return json(res, 503, { error: 'server da aggiornare: non riceve le registrazioni di Radio Esterna' }), true
+    if (req.method === 'POST' && path === '/api/programmi/esterna/inizio') {
+      const programId = String((await readJson(req)).programId ?? '')
+      if (!P.get(programId)) return json(res, 404, { error: 'programma non trovato' }), true
+      if (!d.recorder) return json(res, 200, { ok: false, motivo: 'registrazione delle puntate spenta sul server' }), true
+      try {
+        const id = d.recorder.startManual(programId)
+        d.log?.(`${me.name} registra ${P.get(programId)?.title} da Radio Esterna`)
+        json(res, 200, { ok: true, id })
+      } catch (e) {
+        json(res, 200, { ok: false, motivo: e instanceof Error ? e.message : String(e) })
+      }
+      return true
+    }
+    if (req.method === 'POST' && path === '/api/programmi/esterna/fine') {
+      const f = leggiFine(await readJson(req))
+      // prima si decide (la registrazione del ponte è ancora "in corso": si pubblica appena si chiude), poi si ferma
+      const r = await d.esterna.fine(f)
+      await d.recorder?.stopManual(f.programId)
+      json(res, 200, r)
+      return true
+    }
+    if (req.method === 'PUT' && path === '/api/programmi/esterna/registrazione') {
+      const f = leggiFine(Object.fromEntries(url.searchParams))
+      if (!P.get(f.programId)) return json(res, 404, { error: 'programma non trovato' }), true
+      const full = d.noSpace?.() ?? null
+      if (full) return json(res, 507, { error: full }), true
+      if (!d.saveUpload) return json(res, 503, { error: 'caricamento non disponibile' }), true
+      // se il ponte stava ancora registrando lo stesso programma a mano, si ferma: si usa il file dell'app
+      await d.recorder?.stopManual(f.programId)
+      const id = d.esterna.nuovoId()
+      await d.saveUpload(req, P.rawFile(id))
+      const e = await d.esterna.ricevuto(id, f)
       json(res, 200, { ok: true, id: e.id, status: e.status })
       return true
     }

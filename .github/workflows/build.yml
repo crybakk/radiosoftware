@@ -31,6 +31,9 @@ jobs:
       - run: npm ci --prefix ponte/controllo
       - run: npm run typecheck
       - run: npm test
+      # lo script del mixer del ponte (Liquidsoap) deve essere valido: si controlla con la stessa versione del server
+      - name: Controllo dello script di Liquidsoap
+        run: docker run --rm -v "$PWD/ponte/liquidsoap:/cfg:ro" savonet/liquidsoap:v2.3.3 liquidsoap --check /cfg/ponte.liq
       # il servizio di controllo del ponte deve compilarsi come immagine Docker
       - run: docker build -t radio-ponte-controllo ponte/controllo
       # prova rapida dell'immagine: parte, scrive nel volume dati e serve il pannello

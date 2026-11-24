@@ -258,6 +258,27 @@ export type VideoCommand =
   | { type: 'stop' }
   | { type: 'config'; youtubeKey?: string; facebookUrl?: string; facebookKey?: string; delayMs?: number }
 
+/** App "Radio Esterna" (dirette da fuori): stato per regia, pannello e app. */
+export interface EsternaStatus {
+  /** L'app è collegata al server. */
+  collegata: boolean
+  /** L'audio dell'app arriva al mixer del ponte. */
+  audio: boolean
+  /** Chi usa l'app. */
+  user: string | null
+  /** Chi è fuori ha premuto IN ONDA. */
+  inOnda: boolean
+  /** In onda e con l'audio che arriva: si sente alla radio. */
+  inOndaDavvero: boolean
+  /** Titolo in onda: "Programma – riga libera". */
+  titolo: string
+  programId: string | null
+  /** In onda dalle (ISO). */
+  since: string | null
+  /** Token per ascoltare l'app (GET /api/esterna/ascolta?t=…), null se non è collegata. */
+  ascolto: string | null
+}
+
 /** Regia → ponte */
 export type FromStudio =
   | { t: 'auth'; token: string }
@@ -270,6 +291,8 @@ export type ToStudio =
   | { t: 'cmd'; id: string; cmd: RemoteCommand; by: string }
   /** Segnale di vita ogni 15 secondi: la regia lo può ignorare (le versioni vecchie ignorano i tipi sconosciuti). */
   | { t: 'ping' }
+  /** App Radio Esterna collegata, in onda o no (le regie vecchie ignorano i tipi sconosciuti). */
+  | { t: 'esterna'; esterna: EsternaStatus }
 
 /** Pannello → ponte */
 export type FromPanel =
@@ -304,3 +327,4 @@ export type ToPanel =
   | { t: 'autonoma'; state: AutoState }
   | { t: 'ospiti'; guests: GuestInfo[] }
   | { t: 'video'; video: VideoStatus }
+  | { t: 'esterna'; esterna: EsternaStatus }

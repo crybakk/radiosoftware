@@ -349,3 +349,10 @@ button.tiny.on { opacity: 1; background: var(--green); border-color: var(--green
 .registrazione .reg-avviso { background: #4a3510; color: #fde68a; border-radius: 6px; padding: 6px 8px; }
 .registrazione .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 @keyframes reg-blink { 50% { opacity: 0.2; } }
+
+/* app Radio Esterna */
+.esterna-box { border: 1px solid var(--line, #334155); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.esterna-box.live { border-color: var(--red); box-shadow: 0 0 12px rgba(239, 68, 68, 0.35); }
+.esterna-box .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.esterna-box .esterna-errore { color: #fca5a5; font-size: 13px; }
+.esterna-box .muted { opacity: 0.7; }

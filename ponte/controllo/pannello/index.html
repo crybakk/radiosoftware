@@ -57,6 +57,16 @@
           <div id="now-intro" class="now-intro" hidden></div>
         </section>
 
+        <section class="card esterna-card" id="esterna-card" hidden data-sezione="esterna" data-titolo="Radio Esterna">
+          <div class="esterna-head"><span id="esterna-stato" class="esterna-stato">📡 Esterna pronta</span> <span id="esterna-chi" class="hint"></span></div>
+          <div id="esterna-titolo" class="esterna-titolo"></div>
+          <div class="row">
+            <button id="esterna-ascolta" class="ghost" type="button">🎧 Ascolta l'esterna</button>
+            <span id="esterna-nota" class="hint">Si sente qui, non alla radio. Usa le cuffie per non fare eco.</span>
+          </div>
+          <audio id="esterna-audio" preload="none"></audio>
+        </section>
+
         <section class="transport" data-sezione="transport" data-titolo="PLAY / AVANTI / STOP">
           <button class="big play" data-cmd="play">▶ PLAY</button>
           <button class="big next" data-cmd="next">⏭ AVANTI</button>
