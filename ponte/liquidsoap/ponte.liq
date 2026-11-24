@@ -92,7 +92,7 @@ programma = titoli
 # Quando un'app si collega qui ha la precedenza sulla regia; quando si scollega
 # si torna da soli alla regia.
 esterna_attiva = esterna_password != ""
-esterna =
+esterna_ingresso =
   if
     esterna_attiva
   then
@@ -111,6 +111,18 @@ esterna =
     log.important("ESTERNA_PASSWORD vuota: ingresso per le dirette esterne disattivato")
     source.fail()
   end
+
+# Titolo dell'esterna: se l'app (BUTT, Larix…) manda il suo, vale quello e il controllo lo sa da qui.
+# Se non lo manda, il controllo inserisce il "titolo parlato" (programma e conduttore) con titoli_esterna.
+esterna_ingresso.on_metadata(
+  fun (m) ->
+    notify(
+      "esterna_titolo",
+      json.stringify({artist=m["artist"], title=m["title"], song=m["song"]})
+    )
+)
+titoli_esterna = insert_metadata(esterna_ingresso)
+esterna = titoli_esterna
 
 # --- diretta autonoma: musica dalla libreria del server, scelta dal pannello ---
 # Il controllo decide i brani e li mette in questa coda.
@@ -461,6 +473,18 @@ def set_metadata(req) =
   end
 end
 harbor.http.register.simple(port=8092, method="POST", "/metadata", set_metadata)
+
+# titolo parlato durante un'esterna senza titolo dall'app (vedi titoloParlato.ts del controllo)
+def set_metadata_esterna(req) =
+  try
+    let json.parse (m : {artist: string, title: string}) = req.body()
+    titoli_esterna.insert_metadata([("artist", m.artist), ("title", m.title)])
+    http.response(content_type="application/json", data="{\"ok\":true}")
+  catch _ do
+    http.response(status_code=400, content_type="application/json", data="{\"ok\":false}")
+  end
+end
+harbor.http.register.simple(port=8092, method="POST", "/metadata_esterna", set_metadata_esterna)
 
 def set_voce(req) =
   try
