@@ -10,6 +10,11 @@ if [[ -f .env ]] && ! grep -q '^ICECAST_PASSWORD_RELAY=.' .env; then
   sed -i '/^ICECAST_PASSWORD_RELAY=/d' .env
   echo "ICECAST_PASSWORD_RELAY=$(openssl rand -hex 12)" >> .env
 fi
+# password interna (solo rete Docker) con cui il controllo passa a Liquidsoap l'audio dell'app Radio Esterna
+if [[ -f .env ]] && ! grep -q '^APP_ESTERNA_PASSWORD_INTERNA=.' .env; then
+  sed -i '/^APP_ESTERNA_PASSWORD_INTERNA=/d' .env
+  echo "APP_ESTERNA_PASSWORD_INTERNA=$(openssl rand -hex 16)" >> .env
+fi
 # frase segreta del video da OBS (installazioni vecchie): senza, la diretta da OBS non parte
 if [[ -f .env ]] && ! grep -q '^VIDEO_OBS_PASSPHRASE=.' .env; then
   sed -i '/^VIDEO_OBS_PASSPHRASE=/d' .env

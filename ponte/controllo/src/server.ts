@@ -74,6 +74,7 @@ import { EsterneRecognition } from './esterne.ts'
 import { LabelBot, type BotExtension, type Section } from './telegram.ts'
 import { CollegamentoStudio } from './collegamentoStudio.ts'
 import { PuntateRegia } from './puntateRegia.ts'
+import { AppEsterna } from './appEsterna.ts'
 import { RevisioneTelegram } from './revisioneTelegram.ts'
 import { elaboraConStereoTool } from './stereotoolFile.ts'
 import { findGuideDir, guideImageName, guidePage } from './guida.ts'
@@ -166,7 +167,11 @@ const alarms = new Alarms(
 setInterval(() => alarms.tick(), 2000)
 
 const relay = new Relay(TOKEN)
-relay.onStudioChange = (c) => console.log(`[regia] canale di controllo ${c ? 'collegato' : 'scollegato'}`)
+relay.onStudioChange = (c) => {
+  console.log(`[regia] canale di controllo ${c ? 'collegato' : 'scollegato'}`)
+  // l'app Radio Esterna mostra se la regia c'è (va dichiarata più sotto: si usa solo dopo l'avvio)
+  setImmediate(() => appEsterna.studioChanged())
+}
 // segnale di vita a livello di applicazione: la regia capisce se il canale è ancora vivo
 setInterval(() => relay.pingStudio(), 15_000)
 
@@ -317,8 +322,38 @@ const setNowPlaying = (s: Song): void => {
   // il titolo parlato non è un brano: niente copertina (si usa quella del programma o il logo)
   if (cur && cur.source !== 'parlato') void covers.lookup(cur.artist, cur.title)
 }
-playLog.onAdd = (e) => setNowPlaying({ artist: e.artist, title: e.title, duration: e.duration, at: Date.parse(e.at), source: e.source })
+playLog.onAdd = (e) => {
+  setNowPlaying({ artist: e.artist, title: e.title, duration: e.duration, at: Date.parse(e.at), source: e.source })
+  // con l'app Radio Esterna in onda il brano riconosciuto va nel titolo per la sua durata, poi torna il programma
+  if (e.source === 'esterna' && e.duration > 0) appEsterna.brano(e.artist, e.title, e.duration - (Date.now() - Date.parse(e.at)) / 1000)
+}
 let esternaSince: number | null = null
+/** Titolo dell'app Radio Esterna in onda (per /api/nowplaying), null se non è in onda. */
+let esternaTitolo: string | null = null
+
+// ---------- app Radio Esterna (dirette da fuori in HTTPS, vedi appEsterna.ts) ----------
+const APP_PASSWORD = env('APP_ESTERNA_PASSWORD_INTERNA')
+const appEsterna = new AppEsterna({
+  lq: (path, body) => lqPost(path, body),
+  icecastUrl: APP_PASSWORD
+    ? `icecast://source:${encodeURIComponent(APP_PASSWORD)}@${env('APP_ESTERNA_HOST_INTERNO', 'liquidsoap')}:${num('APP_ESTERNA_PORTA_INTERNA', 9011)}/app`
+    : null,
+  programTitle: (id) => programs.get(id)?.title ?? null,
+  stationName: env('NOME_RADIO', 'Radio'),
+  studioConnected: () => relay.studioConnected(),
+  onAir: (on, user, titolo) => {
+    esternaTitolo = on ? titolo : null
+    onLqEvent(on ? 'esterna_collegata' : 'esterna_scollegata', user)
+    // l'app manda sempre il suo titolo (programma – riga): niente titolo parlato sopra
+    if (on) spoken.esternaAppTitle()
+  },
+  onTitle: (titolo) => {
+    esternaTitolo = titolo
+    setNowPlaying({ artist: '', title: titolo, duration: 0, at: Date.now(), source: 'esterna' })
+  },
+  onChange: (st) => relay.setEsterna(st)
+})
+
 
 // ---------- titolo parlato: cosa va come titolo quando non suona nessun brano (vedi titoloParlato.ts) ----------
 const currentProgram = (now = Date.now()): ReturnType<Programs['list']>[number] | null =>
@@ -401,10 +436,11 @@ function botSections(): Section[] {
       render: async () => {
         const ls = (await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
           .then((r) => r.json())
-          .catch(() => null)) as { studio?: boolean; esterna?: boolean; autonoma?: boolean; voce?: [string, boolean][] } | null
+          .catch(() => null)) as { studio?: boolean; esterna?: boolean; app_onda?: boolean; autonoma?: boolean; voce?: [string, boolean][] } | null
         const st = alarms.status()
         const lines: string[] = []
         if (!ls) lines.push('⚠️ Il mixer del ponte non risponde.')
+        else if (ls.app_onda) lines.push(`📡 In onda: diretta esterna con Radio Esterna (${appEsterna.status().user ?? '?'}): ${appEsterna.titolo()}`)
         else if (ls.esterna) lines.push('📡 In onda: diretta esterna')
         else if (ls.autonoma) lines.push('🤖 In onda: diretta autonoma')
         else if (ls.studio) lines.push('🎚 In onda: regia dello studio')
@@ -507,9 +543,12 @@ const riconoscimentoAttivo = env('RICONOSCIMENTO', 'si') !== 'no'
 // non sono "scollegate" (Liquidsoap avvisa solo dei cambiamenti)
 setTimeout(() => {
   void fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) })
-    .then((r) => r.json() as Promise<{ studio?: boolean; esterna?: boolean; stereotool?: string }>)
+    .then((r) => r.json() as Promise<{ studio?: boolean; esterna?: boolean; app?: boolean; stereotool?: string }>)
     .then((st) => {
       alarms.sync(!!st?.studio, !!st?.esterna)
+      // app Radio Esterna: dopo un riavvio del controllo torna fuori onda (si rientra con IN ONDA)
+      if (st) appEsterna.sync(!!st.app)
+      if (st) collegamentoEsterna.collegata(!!st.app)
       if (st) collegamentoStudio.collegata(!!st.studio)
       // Stereo Tool non partito prima del riavvio del controllo: l'allarme torna aperto
       if (st?.stereotool && st.stereotool !== 'attivo' && st.stereotool !== 'spento') alarms.onEvent('stereotool_errore', st.stereotool)
@@ -577,6 +616,18 @@ const puntateRegia = new PuntateRegia({
   daRivedere: (e) => daRivedere(programs.get(e.programId)?.title ?? e.programId, e),
   seconds: mp3Seconds
 })
+// app Radio Esterna: stesse regole dei programmi dallo studio, con i collegamenti dell'app al posto della regia
+const collegamentoEsterna = new CollegamentoStudio(join(DATA_DIR, 'collegamento-esterna.json'))
+collegamentoEsterna.avvio()
+const puntateEsterna = new PuntateRegia({
+  programs,
+  studio: collegamentoEsterna,
+  chi: 'esterna',
+  publish: publishDraft,
+  daRivedere: (e) => daRivedere(programs.get(e.programId)?.title ?? e.programId, e),
+  seconds: mp3Seconds,
+  log: (s) => console.log(`[puntate esterna] ${s}`)
+})
 
 // ---------- annunci con la voce sintetica (solo quando trasmette il server) ----------
 
@@ -587,8 +638,8 @@ const announceStore = new AnnounceStore(join(DATA_DIR, 'annunci.json'))
 /** true se adesso va in onda il server: diretta autonoma, oppure riserva (né regia né esterna). */
 async function serverOnAir(): Promise<boolean> {
   if (auto.state().active) return true
-  const ls = (await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) }).then((r) => r.json())) as { studio?: boolean; esterna?: boolean; autonoma?: boolean }
-  return !ls.studio && !ls.esterna && !ls.autonoma
+  const ls = (await fetch(`${LIQUIDSOAP}/stato`, { signal: AbortSignal.timeout(3000) }).then((r) => r.json())) as { studio?: boolean; esterna?: boolean; app_onda?: boolean; autonoma?: boolean }
+  return !ls.studio && !ls.esterna && !ls.app_onda && !ls.autonoma
 }
 function announceContext() {
   const a = auto.state()
@@ -760,7 +811,7 @@ async function handleNowPlaying(req: IncomingMessage, res: ServerResponse, url: 
     listeners: ice.listeners,
     hls: HLS_ATTIVO ? { url: `${base}/hls/${st}/live.m3u8`, listeners: hlsListeners.count() } : null,
     online: ice.online,
-    live: { isLive: esternaSince !== null, streamer: esternaSince !== null ? (prog?.title ?? 'Diretta esterna') : '', since: esternaSince },
+    live: { isLive: esternaSince !== null, streamer: esternaSince !== null ? (esternaTitolo ?? prog?.title ?? 'Diretta esterna') : '', since: esternaSince },
     art: progArt || (logoFile() ? `${base}/api/logo` : ''),
     songArt: (s) => {
       const key = covers.ready(s.artist, s.title)
@@ -1103,6 +1154,42 @@ async function saveBackup(req: IncomingMessage): Promise<string> {
   return name
 }
 
+// ---------- ascolto dell'app Radio Esterna e ritorno dello studio ----------
+
+const ASCOLTO_INTERNO = env('ASCOLTO_INTERNO', 'http://liquidsoap:8093')
+const MAX_ASCOLTI = 10
+let ascolti = 0
+/** Passa in HTTPS un flusso MP3 interno di Liquidsoap (mount "esterna" o "studio"). */
+async function proxyAscolto(req: IncomingMessage, res: ServerResponse, mount: 'esterna' | 'studio'): Promise<void> {
+  if (ascolti >= MAX_ASCOLTI) return json(res, 429, { error: 'troppi ascolti insieme' })
+  ascolti++
+  const stop = new AbortController()
+  const fine = (): void => stop.abort()
+  req.on('close', fine)
+  try {
+    const r = await fetch(`${ASCOLTO_INTERNO}/${mount}`, { signal: stop.signal }).catch(() => null)
+    if (!r?.ok || !r.body) {
+      json(res, 503, { error: mount === 'studio' ? 'la regia non manda audio adesso' : "l'audio dell'app non arriva" })
+      return
+    }
+    res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
+    const reader = r.body.getReader()
+    while (!stop.signal.aborted) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!res.write(value)) await new Promise((ok) => res.once('drain', ok))
+    }
+    res.end()
+  } catch {
+    if (!res.headersSent) json(res, 503, { error: 'ascolto non disponibile' })
+    else res.end()
+  } finally {
+    ascolti--
+    req.off('close', fine)
+    stop.abort()
+  }
+}
+
 // ---------- server pubblico ----------
 
 function loadCert(): { cert: Buffer; key: Buffer } | null {
@@ -1162,12 +1249,21 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     // --- titolo in onda e ascolto (pubblici, come AzuraCast) ---
     if (await handleNowPlaying(req, res, url)) return
 
+    // --- app Radio Esterna: ascolto dell'app (regia e pannello) e ritorno dello studio (app), con il token ---
+    if (req.method === 'GET' && (url.pathname === '/api/esterna/ascolta' || url.pathname === '/api/esterna/ritorno')) {
+      const t = url.searchParams.get('t')
+      const ascolto = url.pathname === '/api/esterna/ascolta'
+      if (!(ascolto ? appEsterna.validAscolto(t) : appEsterna.validRitorno(t))) return json(res, 403, { error: 'ascolto non permesso' })
+      return await proxyAscolto(req, res, ascolto ? 'esterna' : 'studio')
+    }
+
     // --- programmi e puntate (pubbliche, pannello, regia) ---
     if (
       await handleProgramApi(req, res, url, {
         programs,
         recorder,
         regia: puntateRegia,
+        esterna: puntateEsterna,
         // registrazione della regia: fino a 2 GB (6 ore in MP3 320 kbit/s sono circa 860 MB)
         saveUpload: async (r, file) => {
           const tmp = `${file}.${randomBytes(6).toString('hex')}.part`
@@ -1719,6 +1815,8 @@ if (tls) {
 // ---------- WebSocket: regia e pannelli ----------
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 })
+// audio dell'app Radio Esterna: pezzi piccoli (un quarto di secondo), niente compressione (è già Opus)
+const wssAudio = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024, perMessageDeflate: false })
 // connessioni degli ospiti aperte per indirizzo (una famiglia dietro lo stesso router ne usa poche)
 const MAX_GUEST_SOCKETS_PER_IP = 10
 const guestSockets = new Map<string, number>()
@@ -1781,6 +1879,42 @@ publicServer.on('upgrade', (req, socket, head) => {
         wire(ws, relay.attachPanel(ws, me, host || undefined, current), () => current() !== null)
       })
     }
+    if (url.pathname === '/ws/esterna') {
+      // app Radio Esterna: utente del pannello (cookie della sessione), da conduttore in su
+      const token = cookie(req, 'sessione')
+      const me = users.session(token)
+      if (!token || !me || !sameOrigin(req)) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+        return socket.destroy()
+      }
+      if (!can(me.role, 'comandare')) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
+        return socket.destroy()
+      }
+      return wssAudio.handleUpgrade(req, socket, head, (ws) => {
+        const h = appEsterna.attach(ws, me.name)
+        ws.on('message', (data, binary) => {
+          try {
+            h.message(Buffer.isBuffer(data) ? data : Buffer.concat(Array.isArray(data) ? data : [Buffer.from(data)]), binary)
+          } catch (e) {
+            console.error(`[radio esterna] messaggio scartato: ${e instanceof Error ? e.message : String(e)}`)
+          }
+        })
+        ws.on('close', () => h.close())
+        ws.on('error', () => ws.terminate())
+        // connessioni morte (4G caduto): chiuse dopo 30 secondi senza risposta; sessione scaduta o ruolo cambiato
+        let alive = true
+        ws.on('pong', () => (alive = true))
+        const ping = setInterval(() => {
+          if (!alive) return ws.terminate()
+          const now = users.session(token)
+          if (!now || !can(now.role, 'comandare')) return ws.close(4003, 'sessione scaduta')
+          alive = false
+          ws.ping()
+        }, 15_000)
+        ws.on('close', () => clearInterval(ping))
+      })
+    }
     if (url.pathname === '/ws/ospite') {
       const invite = guests?.validInvite(url.searchParams.get('t'))
       if (!guests || !invite || !sameOrigin(req)) {
@@ -1813,6 +1947,46 @@ publicServer.on('upgrade', (req, socket, head) => {
 
 // ---------- server interno (Liquidsoap) ----------
 
+/** Evento da Liquidsoap (o dall'app Radio Esterna, che entra e esce dall'onda come le altre esterne). */
+function onLqEvent(kind: string, detail: string): void {
+  if (kind === 'autonoma_brano') return auto.onTrackStart(detail)
+  if (kind === 'riserva_brano') return logPlay('riserva', detail)
+  if (kind === 'esterna_titolo') {
+    // titolo mandato dall'app dell'esterna (BUTT, Larix…): da qui in poi vale il suo
+    let m: Parameters<typeof appTitle>[0] = {}
+    try {
+      m = JSON.parse(detail || '{}') as typeof m
+    } catch {
+      // titolo non leggibile: si ignora
+    }
+    const t = appTitle(m)
+    if (t && esternaSince !== null) {
+      spoken.esternaAppTitle()
+      setNowPlaying({ ...t, duration: 0, at: Date.now(), source: 'esterna' })
+    }
+    return
+  }
+  // audio dell'app Radio Esterna collegato o caduto (non vuol dire in onda: lo decide chi è fuori)
+  if (kind === 'app_collegata' || kind === 'app_scollegata') {
+    collegamentoEsterna.collegata(kind === 'app_collegata')
+    appEsterna.setAudio(kind === 'app_collegata')
+    return
+  }
+  if (riconoscimentoAttivo && kind === 'esterna_collegata') esterne.setActive(true)
+  if (kind === 'esterna_scollegata') esterne.setActive(false)
+  if (kind === 'esterna_collegata') esternaSince = Date.now()
+  // la sorgente del server non è più in onda: il brano in corso finisce qui
+  if (kind === 'esterna_collegata') playLog.end()
+  if (kind === 'studio_connesso') playLog.end(['riserva'])
+  if (kind === 'studio_connesso' || kind === 'studio_scollegato') collegamentoStudio.collegata(kind === 'studio_connesso')
+  if (kind === 'esterna_scollegata') esternaSince = null
+  if (kind === 'esterna_collegata') spoken.esternaConnected(Date.now())
+  if (kind === 'esterna_scollegata') spoken.esternaDisconnected()
+  if (kind === 'studio_connesso') spoken.studioConnected()
+  alarms.onEvent(kind, detail)
+  spokenTick()
+}
+
 const internalServer = createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && req.url === '/internal/riserva') {
@@ -1824,37 +1998,7 @@ const internalServer = createServer(async (req, res) => {
       const body = await readJson(req)
       const kind = String(body.kind ?? '')
       console.log(`[evento] ${kind} ${body.detail ?? ''}`)
-      if (kind === 'autonoma_brano') auto.onTrackStart(String(body.detail ?? ''))
-      else if (kind === 'riserva_brano') logPlay('riserva', String(body.detail ?? ''))
-      else if (kind === 'esterna_titolo') {
-        // titolo mandato dall'app dell'esterna (BUTT, Larix…): da qui in poi vale il suo
-        let m: Parameters<typeof appTitle>[0] = {}
-        try {
-          m = JSON.parse(String(body.detail ?? '{}')) as typeof m
-        } catch {
-          // titolo non leggibile: si ignora
-        }
-        const t = appTitle(m)
-        if (t && esternaSince !== null) {
-          spoken.esternaAppTitle()
-          setNowPlaying({ ...t, duration: 0, at: Date.now(), source: 'esterna' })
-        }
-      }
-      else {
-        if (riconoscimentoAttivo && kind === 'esterna_collegata') esterne.setActive(true)
-        if (kind === 'esterna_scollegata') esterne.setActive(false)
-        if (kind === 'esterna_collegata') esternaSince = Date.now()
-        // la sorgente del server non è più in onda: il brano in corso finisce qui
-        if (kind === 'esterna_collegata') playLog.end()
-        if (kind === 'studio_connesso') playLog.end(['riserva'])
-        if (kind === 'studio_connesso' || kind === 'studio_scollegato') collegamentoStudio.collegata(kind === 'studio_connesso')
-        if (kind === 'esterna_scollegata') esternaSince = null
-        if (kind === 'esterna_collegata') spoken.esternaConnected(Date.now())
-        if (kind === 'esterna_scollegata') spoken.esternaDisconnected()
-        if (kind === 'studio_connesso') spoken.studioConnected()
-        alarms.onEvent(kind, String(body.detail ?? ''))
-        spokenTick()
-      }
+      onLqEvent(kind, String(body.detail ?? ''))
       return json(res, 200, { ok: true })
     }
     return json(res, 404, { error: 'non trovato' })

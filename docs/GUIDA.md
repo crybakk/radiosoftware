@@ -6,8 +6,8 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 23/11/2026, due microfoni insieme dal pannello; pannello impaginato per telefono e PC; la
-libreria della diretta autonoma compare solo quando la avvii.
+**Ultimo aggiornamento:** 24/11/2026, nuova app **Radio Esterna** per Windows e Mac per le dirette da fuori, con
+mixer, IN ONDA e FUORI ONDA, titolo del programma e registrazione.
 
 ## Indice
 
@@ -178,7 +178,85 @@ programma in cui l'hai scritto. Il titolo parlato non finisce mai nel registro n
 ## 3. Fare una diretta esterna
 
 Per andare in onda **da fuori** (un evento, un concerto, un'intervista in giro) con il computer o il telefono.
-Usi la **stessa app di prima** (BUTT, Larix, Luci Live…): cambiano solo i dati del server.
+
+- **Con il computer** usa l'app **Radio Esterna** (Windows e Mac, [qui sotto](#con-lapp-radio-esterna)): entri con
+  il tuo utente del pannello, provi i livelli fuori onda e vai in onda con un tasto.
+- **Con il telefono**, o se preferisci, va ancora bene un'app Icecast come prima (BUTT, Larix, Luci Live…), con i
+  dati qui sotto ([Con BUTT](#con-butt-computer)).
+
+### Con l'app Radio Esterna
+
+![Radio Esterna in onda](immagini/esterna-diretta.png)
+
+**Installarla** (una volta sola). Apri la pagina delle [release](https://github.com/crybakk/radiosoftware/releases)
+e, nell'ultima che contiene l'app, scarica:
+
+- **Windows:** **RadioEsterna-Setup-<versione>.exe**. Avvialo; se Windows avvisa che il programma non è firmato:
+  "Ulteriori informazioni" → "Esegui comunque".
+- **Mac** (macOS 13 o più nuovo): **RadioEsterna-<versione>-mac-arm64.dmg** per i Mac con chip Apple (M1, M2…),
+  **…-mac-x64.dmg** per i Mac Intel (menu  → **Informazioni su questo Mac** → "Chip" o "Processore"). Apri il file
+  e trascina **Radio Esterna** in **Applicazioni**. La prima volta il Mac dice che non può verificare lo
+  sviluppatore (l'app non è firmata da Apple): premi **Fine**, poi apri **Impostazioni di Sistema** → **Privacy e
+  sicurezza**, scorri in fondo e premi **Apri comunque** accanto a "Radio Esterna"; conferma con la password del Mac.
+  Si fa una volta sola. Al primo uso il Mac chiede anche il permesso per il **microfono** (e, se accendi l'audio del
+  computer, per la **registrazione dello schermo e dell'audio**): rispondi **Consenti**.
+
+Al primo avvio chiede la **chiave di attivazione**, la stessa della regia e del server. Poi entri con l'**indirizzo
+della radio** (lo stesso del pannello, senza `https://`), il tuo **nome** e la **password** del pannello. Serve il
+ruolo **conduttore** o **amministratore**. L'app resta collegata anche alle aperture successive; **Esci** è in
+**Impostazioni**. Non serve aprire porte sul router: l'audio passa in HTTPS come il pannello.
+
+**Andare in onda**, scheda **Diretta**:
+
+1. Appena collegata sei **fuori onda**: la radio continua con la regia (o la musica di riserva). Intanto prova i
+   microfoni e guarda i livelli: in regia e nel pannello compare **Esterna pronta**, e con **🎧 Ascolta l'esterna**
+   lo studio ti sente prima del passaggio.
+2. **Cosa vedono gli ascoltatori:** scegli il **programma** e, se vuoi, scrivi una riga (es. "In diretta dalla
+   piazza"). Alla radio va "Programma – riga". Quando il server riconosce un brano mostra titolo e artista finché
+   dura, poi torna il tuo titolo. Puoi cambiarlo anche in onda con **Aggiorna**.
+3. Premi **IN ONDA**: sei in onda con una breve dissolvenza, al posto della regia (e della diretta autonoma). Non
+   serve che lo studio accetti.
+4. **FUORI ONDA** (chiede conferma): torna la regia, o la musica di riserva se la regia è spenta. L'app resta
+   collegata, così puoi rientrare quando vuoi.
+
+Se internet cade, l'app si ricollega da sola: se eri in onda e torna entro 10 minuti rientra in onda da sola;
+intanto va la regia o la musica di riserva. Se l'app si chiude mentre sei in onda, dopo un minuto il server ti
+mette fuori onda.
+
+**Mixer:** fino a **4 microfoni** o ingressi (**+ Aggiungi microfono**; per ognuno scegli il dispositivo e se usare
+il canale sinistro, destro o tutti e due, utile con una scheda audio a due ingressi) e l'**audio del computer**
+(quello che suona sul PC: un programma, un video). Ognuno ha volume, **Muto** e barra del livello. In fondo,
+**Uscita verso la radio** con un limitatore che evita le distorsioni. In **Impostazioni** scegli la **qualità
+dell'invio** (160 kbit/s consigliata, circa 75 MB all'ora; più bassa se la rete è debole). L'audio del computer
+sul Mac richiede macOS 13 o più nuovo.
+
+**Cuffia:** scegli l'uscita e il volume dei tuoi microfoni in cuffia. **Ritorno dello studio** fa sentire in
+cuffia la regia (talkback), quando la regia è collegata. Attenzione: se la cuffia è anche l'uscita principale del
+computer e accendi l'audio del computer, in onda va anche quello che senti in cuffia, ritorno compreso. Usa per la
+cuffia un'uscita diversa (per esempio quella della scheda audio).
+
+**Registrazione:**
+
+- **Registra la puntata**: scegli il programma e premi **⏺**. Registra sia qui (MP3 320) sia sul server, come i
+  programmi dallo studio ([sezione 13](#programmi-fatti-dallo-studio)). L'inizio della puntata si segna da solo
+  alla prima pressione di **IN ONDA** (o con **📍 Segna inizio**) e la fine all'ultimo **FUORI ONDA**. Premi
+  **⏹ Fine programma** quando hai finito. Se il collegamento non è mai caduto vale la registrazione del server e la
+  puntata si pubblica da sola; altrimenti l'app manda il suo file e la puntata va in "Puntate da rivedere". La
+  registrazione non parte da sola all'orario del programma: va avviata dall'app.
+- **💾 Registra solo sul computer**: un MP3 320 nella cartella scelta in **Impostazioni**, senza puntata.
+
+**Scheda Regia:** è il pannello della radio dentro l'app (playlist, microfono, eventi…), con il tuo utente, per
+comandare la regia principale da fuori.
+
+**Aggiornamenti:** come la regia, non si aggiorna mai da sola. **Impostazioni** → **Aggiornamenti** → **Controlla
+aggiornamenti**; su Windows **Aggiorna** scarica e riavvia l'app, sul Mac **Scarica la versione nuova** scarica il
+file da installare come la prima volta. Non aggiornare mentre sei in onda.
+
+**In regia e nel pannello** compare il riquadro dell'esterna: **Esterna pronta** (collegata, fuori onda) o
+**Esterna IN ONDA**, con chi è collegato, il titolo e il tasto **🎧 Ascolta l'esterna** (si sente solo lì, non
+alla radio).
+
+### Con un'app Icecast (BUTT, Larix…)
 
 **Cosa ti serve:** l'app, internet (anche quella del telefono) e questi dati:
 
@@ -212,6 +290,8 @@ secondo, quindi fallo quando non sei in diretta. Si scrive una volta sola nell'a
 Nelle altre app (Larix, Luci Live…) i campi hanno nomi simili: scegli il tipo Icecast e metti gli stessi dati.
 
 ### Cosa succede quando ti colleghi
+
+Con BUTT, Larix e le altre app Icecast (con Radio Esterna vedi [sopra](#con-lapp-radio-esterna)):
 
 - **Appena l'app si collega sei in onda**, con una breve dissolvenza, al posto della regia (e anche della diretta
   autonoma). Non c'è una "prova" prima: collegati quando vuoi davvero andare in onda.
@@ -1158,7 +1238,13 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 
 | Problema | Cosa fare |
 |---|---|
-| L'app non si collega | controlla che sul router sia inoltrata la porta **TCP 9010** verso il server; ricontrolla indirizzo, porta, utente e password |
+| Radio Esterna non accetta nome e password | sono quelli del pannello; per andare in onda serve il ruolo conduttore o amministratore |
+| Radio Esterna: "Radio Esterna è già collegata da …" | se ne può collegare una sola alla volta: chiudi l'altra (o premi **Esci**) |
+| Radio Esterna: "Il server non ha l'ingresso per Radio Esterna" | il server va aggiornato e riavviato con `riavvia.sh`, che prepara l'ingresso da solo |
+| Radio Esterna: collegata ma "il server non riceve ancora il tuo audio" | aspetta qualche secondo; se resta, il server va aggiornato o riavviato con `riavvia.sh` |
+| Radio Esterna sul Mac: nessun suono dal microfono o dal computer | Impostazioni di Sistema → Privacy e sicurezza → **Microfono** (e **Registrazione schermo e audio**): attiva Radio Esterna, poi riaprila |
+| In onda si sente il ritorno dello studio o un'eco | la cuffia è l'uscita principale del computer e l'audio del computer è acceso: scegli un'altra uscita per la cuffia o spegni l'audio del computer |
+| L'app Icecast non si collega | controlla che sul router sia inoltrata la porta **TCP 9010** verso il server; ricontrolla indirizzo, porta, utente e password |
 | L'app dice "mount" o "mountpoint" sbagliato | alcune app vogliono il mount con la barra (`/`), altre senza: prova tutti e due |
 | Si collega ma non si sente nulla | nell'app controlla che sia scelto il microfono o il mixer giusto e che la barra del volume si muova |
 | Mi sento con l'eco o in ritardo | in cuffia ascolta l'app o il mixer, non la radio |
@@ -1226,6 +1312,7 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 
 ## 25. In arrivo
 
+- Radio Esterna: registrazione della puntata che parte da sola all'orario del programma.
 - Mix DJ anche sul server (diretta autonoma e musica di emergenza) e dal pannello.
 - FluidStream, se un giorno servirà.
 
@@ -1273,3 +1360,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 23/11/2026 | Due microfoni insieme dal pannello (due microfoni USB o i 2 ingressi di una scheda audio), ognuno con volume e muto |
 | 23/11/2026 | Programmi fatti dallo studio: registrazione in regia da palinsesto o a mano, segni di inizio e fine, interruzioni del collegamento; Stereo Tool sulle registrazioni della regia; revisione delle puntate anche da Telegram |
 | 24/11/2026 | Titolo quando si parla: senza brani in onda va il nome del programma con il conduttore (o il nome della radio) invece dell'ultimo brano; testo in più dalla regia o dal pannello; nelle esterne vale il titolo dell'app se lo manda |
+| 24/11/2026 | App **Radio Esterna** per Windows e Mac: installazione, accesso con l'utente del pannello, fuori onda e IN ONDA, titolo del programma, mixer con microfoni e audio del computer, cuffia e ritorno, registrazione della puntata, scheda Regia; riquadro dell'esterna in regia e nel pannello |

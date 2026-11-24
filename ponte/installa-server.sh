@@ -71,6 +71,7 @@ if [[ ! -f .env ]]; then
   imposta ICECAST_PASSWORD_SORGENTE "$(openssl rand -hex 12)"
   imposta ICECAST_PASSWORD_ADMIN "$(openssl rand -hex 12)"
   imposta ICECAST_PASSWORD_RELAY "$(openssl rand -hex 12)"
+  imposta APP_ESTERNA_PASSWORD_INTERNA "$(openssl rand -hex 16)"
   imposta PANNELLO_ADMIN_PASSWORD "$(openssl rand -base64 12 | tr -d '/+=' | cut -c1-12)"
   # il microfono remoto funziona anche dalla rete di casa
   imposta WEBRTC_INDIRIZZI "$(hostname -I | awk '{print $1}')"

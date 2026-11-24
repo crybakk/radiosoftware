@@ -125,7 +125,12 @@ interface Running {
   /** Il file non si può più scrivere (disco pieno...): si smette di registrare. */
   broken: boolean
   restart: ReturnType<typeof setTimeout> | null
+  /** Avviata a mano (app Radio Esterna): non segue le fasce, finisce con stopManual o dopo `to`. */
+  manual?: boolean
 }
+
+/** Durata massima di una registrazione avviata a mano, se nessuno la ferma (ore). */
+export const MANUAL_MAX_HOURS = 8
 
 export class Recorder {
   private readonly d: RecorderDeps
@@ -167,6 +172,11 @@ export class Recorder {
       // un errore (disco pieno...) non deve fermare il controllo degli altri programmi né far cadere il server
       try {
         const r = this.running.get(p.id)
+        // registrazione a mano: si ferma solo con stopManual o dopo la durata massima
+        if (r?.manual) {
+          if (now >= r.to) void this.finish(r)
+          continue
+        }
         const slot = p.record ? activeSlot(p.slots, new Date(now), margin) : null
         // fascia allungata o fascia attaccata alla successiva: si continua nello stesso file
         if (r && !r.stopping && slot && slot.to > r.to) r.to = slot.to
@@ -189,11 +199,37 @@ export class Recorder {
     for (const r of this.running.values()) if (!this.d.programs.get(r.programId)) void this.finish(r, true)
   }
 
-  private begin(programId: string, now: number, slot: { from: number; to: number }): void {
+  /**
+   * Registrazione a mano del programma in onda (app Radio Esterna), anche fuori fascia. Se il programma si
+   * sta già registrando nella sua fascia si continua quella (e non si ferma più a fine fascia, finché non
+   * arriva stopManual). Restituisce l'id della puntata.
+   */
+  startManual(programId: string): string {
+    if (!this.d.programs.get(programId)) throw new Error('programma non trovato')
+    const now = this.now()
+    const old = this.running.get(programId)
+    if (old && !old.stopping) {
+      old.manual = true
+      old.to = Math.max(old.to, now + MANUAL_MAX_HOURS * 3600_000)
+      return old.episodeId
+    }
+    const full = this.d.noSpace?.() ?? null
+    if (full) throw new Error(full)
+    this.begin(programId, now, { from: now, to: now + MANUAL_MAX_HOURS * 3600_000 }, true)
+    return this.running.get(programId)?.episodeId ?? ''
+  }
+
+  /** Ferma la registrazione a mano del programma (se c'è). */
+  async stopManual(programId: string): Promise<void> {
+    const r = this.running.get(programId)
+    if (r?.manual) await this.finish(r)
+  }
+
+  private begin(programId: string, now: number, slot: { from: number; to: number }, manual = false): void {
     const to = slot.to
     // server ripartito dopo uno spegnimento improvviso dentro la stessa fascia: si continua la stessa
     // puntata, accodando l'audio allo stesso file (come quando ffmpeg riparte), invece di farne un'altra
-    const old = this.d.programs.interruptedDrafts().find((x) => x.programId === programId && x.recordedFrom >= slot.from)
+    const old = manual ? undefined : this.d.programs.interruptedDrafts().find((x) => x.programId === programId && x.recordedFrom >= slot.from)
     const e = old ? this.d.programs.resumeRecording(old.id) : this.d.programs.startRecording(programId, now)
     const r: Running = {
       episodeId: e.id,
@@ -203,7 +239,8 @@ export class Recorder {
       out: createWriteStream(this.d.programs.rawFile(e.id), { flags: 'a' }),
       stopping: false,
       broken: false,
-      restart: null
+      restart: null,
+      manual
     }
     r.out.on('error', (err) => {
       if (r.broken) return

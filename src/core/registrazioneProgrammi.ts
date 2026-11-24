@@ -324,6 +324,12 @@ export class RegistrazioneProgrammi {
     this.log(`registrazione ${auto ? 'partita da sola' : 'avviata'}: ${title}`)
   }
 
+  /** Rilegge subito l'elenco dei programmi dal server (per esempio appena ci si collega). */
+  async aggiornaProgrammi(): Promise<void> {
+    await this.refresh(true)
+    this.emit(true)
+  }
+
   /** Tasto ⏺: "Registra adesso" (fascia in arrivo), "Segna inizio" (già partita), o registrazione a mano. */
   registra(programId?: string): StatoRegistrazioneProgrammi {
     if (this.corrente) {
@@ -351,10 +357,12 @@ export class RegistrazioneProgrammi {
     return this.status()
   }
 
-  /** "Fine programma": ferma e segna la fine. */
-  async fine(): Promise<StatoRegistrazioneProgrammi> {
+  /** "Fine programma": ferma e segna la fine (adesso, o `endMark` se dato: per esempio l'ultimo FUORI ONDA). */
+  async fine(endMark?: number): Promise<StatoRegistrazioneProgrammi> {
     if (!this.corrente) throw new Error('nessuna registrazione in corso')
-    await this.finisci(this.now(), false)
+    const c = this.corrente
+    const fineSegnata = endMark !== undefined && endMark > c.startedAt && endMark <= this.now() ? endMark : this.now()
+    await this.finisci(fineSegnata, false)
     void this.lavora().then(() => this.emit())
     this.emit(true)
     return this.status()

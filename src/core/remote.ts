@@ -1,5 +1,5 @@
 /** Controllo remoto dal lato regia: collegamento al ponte, stato da inviare, esecuzione dei comandi. */
-import type { FromStudio, RemoteCommand, RemoteState, RemoteTrack, ToStudio } from '../../ponte/controllo/src/protocol.ts'
+import type { EsternaStatus, FromStudio, RemoteCommand, RemoteState, RemoteTrack, ToStudio } from '../../ponte/controllo/src/protocol.ts'
 import { introLeft, introSeconds } from './intro'
 import type { PlayoutEngine, PlayoutSnapshot } from './playout'
 import { ponteControlBase } from './ponteClient'
@@ -112,6 +112,8 @@ export interface RemoteLinkOptions {
    * (il 4G a volte lo lascia "aperto" senza che passi niente) e lo riapriamo. Millisecondi.
    */
   silenceMs?: number
+  /** Stato dell'app Radio Esterna (dirette da fuori), mandato dal ponte quando cambia. */
+  onEsterna?: (s: EsternaStatus) => void
 }
 
 /** Il ponte manda un ping ogni 15 s: senza notizie per 40 s il collegamento è considerato caduto. */
@@ -138,6 +140,7 @@ export class RemoteLink {
   private onStatus: (s: RemoteLinkStatus) => void
   private Ws: WsCtor
   private silenceMs: number
+  private onEsterna: (s: EsternaStatus) => void
   private watchdog: ReturnType<typeof setInterval> | null = null
   /** I comandi (tranne la ricerca) vengono eseguiti uno alla volta, nell'ordine di arrivo. */
   private queue: Promise<unknown> = Promise.resolve()
@@ -154,6 +157,7 @@ export class RemoteLink {
     this.onStatus = onStatus
     this.Ws = Ws
     this.silenceMs = options.silenceMs ?? SILENCE_MS
+    this.onEsterna = options.onEsterna ?? (() => {})
   }
 
   getStatus(): RemoteLinkStatus {
@@ -221,6 +225,8 @@ export class RemoteLink {
           pinged = true
           this.startWatchdog(ws, () => Date.now() - lastSeen > this.silenceMs)
         }
+      } else if (msg.t === 'esterna') {
+        if (msg.esterna && typeof msg.esterna === 'object') this.onEsterna(msg.esterna)
       } else if (msg.t === 'auth-ok') {
         authed = true
         this.attempt = 0

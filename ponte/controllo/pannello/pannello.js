@@ -171,6 +171,8 @@ function connect() {
         autoBrowsed = true
         $('auto-search-form').requestSubmit()
       }
+    } else if (m.t === 'esterna') {
+      renderEsterna(m.esterna)
     } else if (m.t === 'mic') {
       mic = m.mic
       renderMic()
@@ -1134,6 +1136,56 @@ setInterval(() => !$('app').hidden && loadUnknowns(), 60_000)
 
 setInterval(() => state && studio && renderNow(), 250)
 start()
+
+// ---------- app Radio Esterna: chi è fuori, se è in onda, e ascolto prima del passaggio ----------
+let esternaAscolto = null
+function renderEsterna(st) {
+  const card = $('esterna-card')
+  const audio = $('esterna-audio')
+  const visibile = !!st && (st.collegata || st.inOnda)
+  card.hidden = !visibile
+  card.classList.toggle('live', !!st?.inOndaDavvero)
+  if (!visibile) {
+    esternaAscolto = null
+    audio.pause()
+    audio.removeAttribute('src')
+    $('esterna-ascolta').textContent = "🎧 Ascolta l'esterna"
+    return
+  }
+  $('esterna-stato').textContent = st.inOndaDavvero
+    ? '🔴 Esterna IN ONDA'
+    : st.inOnda
+      ? '🟠 Esterna in onda, audio non arriva'
+      : st.audio
+        ? '📡 Esterna pronta (fuori onda)'
+        : '📡 Esterna collegata, audio non ancora attivo'
+  $('esterna-chi').textContent = st.user ? `· ${st.user}` : ''
+  $('esterna-titolo').textContent = st.titolo || ''
+  // token cambiato (nuova connessione dell'app): l'ascolto si riapre con quello nuovo
+  if (esternaAscolto !== st.ascolto) {
+    const eraInAscolto = !audio.paused
+    esternaAscolto = st.ascolto
+    if (eraInAscolto && st.ascolto) {
+      audio.src = `/api/esterna/ascolta?t=${encodeURIComponent(st.ascolto)}`
+      audio.play().catch(() => {})
+    }
+  }
+}
+$('esterna-ascolta').addEventListener('click', () => {
+  const audio = $('esterna-audio')
+  if (!audio.paused) {
+    audio.pause()
+    audio.removeAttribute('src')
+    $('esterna-ascolta').textContent = "🎧 Ascolta l'esterna"
+    return
+  }
+  if (!esternaAscolto) return
+  audio.src = `/api/esterna/ascolta?t=${encodeURIComponent(esternaAscolto)}`
+  audio
+    .play()
+    .then(() => ($('esterna-ascolta').textContent = '■ Smetti di ascoltare'))
+    .catch(() => ($('esterna-nota').textContent = "L'audio dell'esterna non arriva ancora: riprova tra poco."))
+})
 
 // ---------- titolo parlato (scelte di cristian, 24/11/2026) ----------
 // Quando non suona nessun brano il ponte manda come titolo il programma e il conduttore (o il nome della radio).

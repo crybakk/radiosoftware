@@ -35,6 +35,10 @@ esterna_mount = env("ESTERNA_MOUNT", "/")
 esterna_user = env("ESTERNA_UTENTE", "esterna")
 esterna_password = env("ESTERNA_PASSWORD", "")
 
+# app "Radio Esterna": l'audio arriva al controllo in HTTPS e il controllo lo passa qui (rete Docker)
+app_porta = int_of_string(default=9011, env("APP_ESTERNA_PORTA_INTERNA", "9011"))
+app_password = env("APP_ESTERNA_PASSWORD_INTERNA", "")
+
 microfono_attivo = env("MICROFONO_REMOTO", "si") != "no"
 ducking_db = float_of_string(default=-12., env("ABBASSAMENTO_MUSICA_DB", "-12"))
 ritorno_host = env("RITORNO_VOCE_HOST", "controllo")
@@ -124,6 +128,34 @@ esterna_ingresso.on_metadata(
 titoli_esterna = insert_metadata(esterna_ingresso)
 esterna = titoli_esterna
 
+# --- diretta esterna con l'app "Radio Esterna" (scelte di cristian, 24/11/2026) ---
+# L'app manda l'audio al controllo in HTTPS (porta 443, nessuna porta in più sul router); il controllo lo
+# passa qui su un ingresso interno (solo rete Docker, porta non pubblicata). Collegata non vuol dire in onda:
+# chi è fuori prova i livelli e va in onda solo premendo IN ONDA (il controllo accende app_in_onda).
+# In onda ha la precedenza sulla regia, con la stessa dissolvenza delle altre esterne.
+app_in_onda = ref(false)
+app_ingresso =
+  if
+    app_password != ""
+  then
+    input.harbor(
+      id="app_esterna",
+      port=app_porta,
+      password=app_password,
+      buffer=1.,
+      max=10.,
+      on_connect=fun (_) -> notify("app_collegata", ""),
+      on_disconnect=fun () -> notify("app_scollegata", ""),
+      "app"
+    )
+  else
+    log.important("APP_ESTERNA_PASSWORD_INTERNA vuota: ingresso dell'app Radio Esterna disattivato")
+    source.fail()
+  end
+# titolo del programma scritto nell'app (e brani riconosciuti), inviato dal controllo
+app_titoli = insert_metadata(app_ingresso)
+app_esterna = switch(id="app_in_onda", track_sensitive=false, [({app_in_onda()}, app_titoli)])
+
 # --- diretta autonoma: musica dalla libreria del server, scelta dal pannello ---
 # Il controllo decide i brani e li mette in questa coda.
 autonoma_attiva = ref(false)
@@ -148,8 +180,8 @@ programma =
     id="selettore",
     track_sensitive=false,
     # la diretta autonoma parte subito, senza dissolvenza dalla sorgente precedente
-    transitions=[dissolvenza, diretto, dissolvenza],
-    [esterna, autonoma, programma]
+    transitions=[dissolvenza, dissolvenza, diretto, dissolvenza],
+    [app_esterna, esterna, autonoma, programma]
   )
 
 # --- voci dal pannello: microfono del conduttore e fino a 3 ospiti (via il controllo) ---
@@ -432,6 +464,26 @@ output.harbor(
   segnale_sicuro
 )
 
+# --- ascolto dell'app Radio Esterna e ritorno dello studio, solo rete Docker (il controllo li passa in HTTPS) ---
+# "esterna": quello che arriva dall'app, anche fuori onda (la regia e il pannello lo ascoltano prima del passaggio).
+# "studio": quello che manda la regia, per il ritorno in cuffia di chi è fuori.
+output.harbor(
+  %mp3(bitrate = 128, samplerate = 44100),
+  id="ascolto_esterna",
+  fallible=true,
+  port=8093,
+  mount="esterna",
+  app_ingresso
+)
+output.harbor(
+  %mp3(bitrate = 128, samplerate = 44100),
+  id="ritorno_studio",
+  fallible=true,
+  port=8093,
+  mount="studio",
+  studio
+)
+
 # --- flusso HLS (scelte di cristian, 17/11/2026) ---
 # Tre qualità AAC (64, 128 e 192 kbit/s): il lettore sceglie da solo in base alla rete. Pezzi da
 # 6 secondi. I file stanno in memoria (volume tmpfs "hls"): Caddy manda i pezzi, il controllo le playlist
@@ -546,10 +598,35 @@ def autonoma_salta(_) =
 end
 harbor.http.register.simple(port=8092, method="POST", "/autonoma/salta", autonoma_salta)
 
+# app Radio Esterna: in onda / fuori onda e titolo (dal controllo)
+def set_app_onda(req) =
+  try
+    let json.parse (m : {on: bool}) = req.body()
+    app_in_onda := m.on
+    stato_app = if m.on then "IN ONDA" else "fuori onda" end
+    log.important("App Radio Esterna: #{stato_app}")
+    risposta_ok()
+  catch _ do
+    risposta_errore()
+  end
+end
+harbor.http.register.simple(port=8092, method="POST", "/app/onda", set_app_onda)
+
+def set_app_metadata(req) =
+  try
+    let json.parse (m : {artist: string, title: string}) = req.body()
+    app_titoli.insert_metadata([("artist", m.artist), ("title", m.title)])
+    risposta_ok()
+  catch _ do
+    risposta_errore()
+  end
+end
+harbor.http.register.simple(port=8092, method="POST", "/app/metadata", set_app_metadata)
+
 def stato(_) =
   http.response(
     content_type="application/json",
-    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready(), voce=list.map(fun (v) -> (v.nome, v.in_onda()), voci), autonoma=autonoma_attiva(), stereotool=stereotool_stato()})
+    data=json.stringify({studio=studio.is_ready(), esterna=esterna.is_ready(), app=app_ingresso.is_ready(), app_onda=source.is_ready(app_esterna), voce=list.map(fun (v) -> (v.nome, v.in_onda()), voci), autonoma=autonoma_attiva(), stereotool=stereotool_stato()})
   )
 end
 harbor.http.register.simple(port=8092, method="GET", "/stato", stato)

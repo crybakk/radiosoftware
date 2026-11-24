@@ -110,7 +110,8 @@ export class Alarms {
         break
       case 'esterna_collegata':
         this.externalConnected = true
-        this.notify('🎙️ Diretta esterna collegata: è in onda al posto della regia.', 'esterna', true)
+        // detail = chi è in onda con l'app Radio Esterna (vuoto per le app Icecast come BUTT)
+        this.notify(detail ? `🎙️ Diretta esterna di ${detail} con Radio Esterna: è in onda al posto della regia.` : '🎙️ Diretta esterna collegata: è in onda al posto della regia.', 'esterna', true)
         break
       case 'esterna_scollegata':
         this.externalConnected = false

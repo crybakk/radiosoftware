@@ -1,5 +1,5 @@
 /** Smista i messaggi tra la regia (una sola) e i pannelli remoti (quanti si vuole). */
-import type { AutoState, FromPanel, GuestInfo, FromStudio, MicStatus, RemoteCommand, RemoteState, ToPanel, ToStudio, VideoStatus } from './protocol.ts'
+import type { AutoState, EsternaStatus, FromPanel, GuestInfo, FromStudio, MicStatus, RemoteCommand, RemoteState, ToPanel, ToStudio, VideoStatus } from './protocol.ts'
 import { can, sameSecret, type PublicUser } from './users.ts'
 import type { VoiceHub } from './voce.ts'
 import type { AutonomousPlayer } from './autonoma.ts'
@@ -63,6 +63,8 @@ export class Relay {
   /** Dirette video verso YouTube e Facebook; null se non attive sul ponte. */
   video: VideoLive | null = null
   private videoState: (ToPanel & { t: 'video' }) | null = null
+  /** App Radio Esterna (null = mai collegata da quando il ponte è partito). */
+  private esterna: EsternaStatus | null = null
 
   constructor(token: string) {
     this.token = token
@@ -106,6 +108,7 @@ export class Relay {
           this.studio = peer
           if (old && old !== peer) old.close(4000, 'sostituita da una nuova connessione')
           this.sendStudio({ t: 'auth-ok' })
+          if (this.esterna) this.sendStudio({ t: 'esterna', esterna: this.esterna })
           this.broadcast({ t: 'studio', connected: true })
           this.onStudioChange(true)
           return
@@ -193,6 +196,7 @@ export class Relay {
     if (this.autoState) this.sendTo(peer, this.autoState)
     if (this.guests) this.sendTo(peer, this.guestList)
     if (this.videoState) this.sendTo(peer, this.videoState)
+    if (this.esterna) this.sendTo(peer, { t: 'esterna', esterna: this.esterna })
     return {
       message: (raw: string) => {
         let msg: FromPanel
@@ -307,6 +311,12 @@ export class Relay {
   setAuto(state: AutoState): void {
     this.autoState = { t: 'autonoma', state }
     this.broadcast(this.autoState)
+  }
+
+  setEsterna(esterna: EsternaStatus): void {
+    this.esterna = esterna
+    this.broadcast({ t: 'esterna', esterna })
+    this.sendStudio({ t: 'esterna', esterna })
   }
 
   setMic(mic: MicStatus): void {

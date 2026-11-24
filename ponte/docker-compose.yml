@@ -29,6 +29,8 @@ services:
       ESTERNA_MOUNT: ${ESTERNA_MOUNT:-/}
       ESTERNA_UTENTE: ${ESTERNA_UTENTE:-esterna}
       ESTERNA_PASSWORD: ${ESTERNA_PASSWORD:-}
+      # app Radio Esterna: il controllo passa l'audio a Liquidsoap con questa password (solo rete Docker)
+      APP_ESTERNA_PASSWORD_INTERNA: ${APP_ESTERNA_PASSWORD_INTERNA:-}
       MICROFONO_REMOTO: ${MICROFONO_REMOTO:-si}
       ABBASSAMENTO_MUSICA_DB: ${ABBASSAMENTO_MUSICA_DB:--12}
       ICECAST_ESTERNO_HOST: ${ICECAST_ESTERNO_HOST:-}

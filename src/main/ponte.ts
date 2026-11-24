@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { sanitizeRestoredFile, type RadioDb } from '../core/db'
-import { backupDue, parsePonteHost, PonteClient, type PonteAlarm, type PonteBackup, type ListenerStats, type PonteProgram, type PonteState, type SpokenTitleState } from '../core/ponteClient'
+import { backupDue, parsePonteHost, PonteClient, ponteControlBase, type PonteAlarm, type PonteBackup, type ListenerStats, type PonteProgram, type PonteState, type SpokenTitleState } from '../core/ponteClient'
 import { SpokenTrigger } from '../core/titoloParlato'
 import { pickReplay } from '../core/eventActions'
 import type { PonteSettings, Track } from '../core/types'
 import { Uplink, type UplinkStatus } from '../core/uplink'
+import type { EsternaStatus } from '../../ponte/controllo/src/protocol.ts'
 import { RemoteLink, remoteTrack, remoteUrl, type RemoteCommand, type RemoteLinkStatus, type RemoteState } from '../core/remote'
 
 export interface StudioReport {
@@ -25,6 +26,8 @@ export interface PonteStatus {
   lastBackup: string | null
   backupError: string | null
   backupRunning: boolean
+  /** App Radio Esterna (dirette da fuori), con l'indirizzo per ascoltarla in preascolto. */
+  esterna: (EsternaStatus & { ascoltoUrl: string | null }) | null
 }
 
 const HEARTBEAT_MS = 15_000
@@ -68,7 +71,8 @@ export class PonteService {
   runInUi: (cmd: RemoteCommand, by: string) => Promise<unknown> = async () => {
     throw new Error('regia non pronta')
   }
-  private status: Omit<PonteStatus, 'uplink' | 'remote'> = {
+  private esterna: EsternaStatus | null = null
+  private status: Omit<PonteStatus, 'uplink' | 'remote' | 'esterna'> = {
     controlOk: null,
     controlError: null,
     alarms: [],
@@ -94,7 +98,14 @@ export class PonteService {
         if (cmd.type === 'search') return this.db.searchTracks({ text: String(cmd.q ?? '').slice(0, 200), limit: 50 }).tracks.map(remoteTrack)
         return this.runInUi(cmd, by)
       },
-      () => this.emit()
+      () => this.emit(),
+      undefined,
+      {
+        onEsterna: (e) => {
+          this.esterna = e
+          this.emit()
+        }
+      }
     )
     this.lastBackupFile = join(dataDir, 'ultimo-backup.txt')
     try {
@@ -110,7 +121,16 @@ export class PonteService {
   }
 
   getStatus(): PonteStatus {
-    return { ...this.status, uplink: this.uplink.getStatus(), remote: this.remote.getStatus() }
+    return { ...this.status, uplink: this.uplink.getStatus(), remote: this.remote.getStatus(), esterna: this.esternaInfo() }
+  }
+
+  /** Stato dell'app Radio Esterna con l'indirizzo per ascoltarla (solo se è collegata o in onda). */
+  private esternaInfo(): PonteStatus['esterna'] {
+    const e = this.esterna
+    if (!e || this.remote.getStatus().state !== 'collegato') return null
+    const p = this.settings
+    const url = e.ascolto && p ? `${ponteControlBase(p.host, p.controlPort, p.controlHttps)}/api/esterna/ascolta?t=${encodeURIComponent(e.ascolto)}` : null
+    return { ...e, ascoltoUrl: url }
   }
 
   private emit(): void {

@@ -315,6 +315,12 @@ button.danger { border-color: #b91c1c; color: #fca5a5; }
   .t-actions button { min-width: 36px; min-height: 36px; }
 }
 
+/* app Radio Esterna */
+.esterna-card .esterna-head { font-weight: 700; margin-bottom: 4px; }
+.esterna-card .esterna-titolo { margin-bottom: 8px; }
+.esterna-card.live { border-color: var(--red); box-shadow: 0 0 14px rgba(239, 68, 68, 0.35); }
+.esterna-card.live .esterna-stato { color: #fecaca; }
+
 /* titolo parlato */
 .tp-anteprima { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
 .tp-onda { margin-left: auto; background: var(--red, #ef4444); color: #fff; border-radius: 6px; padding: 2px 8px; }
