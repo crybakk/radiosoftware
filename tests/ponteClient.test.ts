@@ -91,3 +91,20 @@ describe('backup automatico', () => {
     }
   })
 })
+
+describe('programmi gestiti dalla regia', () => {
+  const client = new PonteClient('127.0.0.1', port, TOKEN)
+  it('crea, modifica, copertina ed elimina attraverso il server vero', async () => {
+    let st = await client.saveProgram({ title: 'Mattina', author: 'Luca', description: '', slots: [{ days: [1], start: '07:00', end: '09:00' }], record: true, studio: true, published: true })
+    const p = st.programs.find((x) => x.title === 'Mattina')!
+    expect(p.studio).toBe(true)
+    expect(await client.programArt(p.id)).toBeNull()
+    st = await client.setProgramArt(p.id, new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2]))
+    expect(await client.programArt(p.id)).toMatch(/^data:image\/jpeg;base64,/)
+    st = await client.saveProgram({ ...p, title: 'Mattina presto' })
+    expect((await client.managePrograms()).programs.map((x) => x.title)).toContain('Mattina presto')
+    st = await client.deleteProgram(p.id)
+    expect(st.programs.find((x) => x.id === p.id)).toBeUndefined()
+    await expect(client.saveProgram({ title: '', author: '', description: '', slots: [], record: true, studio: false, published: true })).rejects.toThrow()
+  })
+})

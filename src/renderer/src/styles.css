@@ -362,3 +362,14 @@ button.tiny.on { opacity: 1; background: var(--green); border-color: var(--green
 .titolo-parlato .tp-anteprima { font-weight: 600; margin: 4px 0 6px; }
 .titolo-parlato .tp-onda { background: var(--red); color: #fff; border-radius: 4px; padding: 1px 6px; font-size: 11px; margin-left: 6px; }
 .titolo-parlato form input { flex: 1; min-width: 0; }
+
+/* programmi del server gestiti dalla regia */
+.programs-view .prog-art img, .programs-view .prog-art-empty { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; display: grid; place-items: center; background: var(--line); }
+.prog-slot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.prog-slot .days { margin: 0; }
+.prog-slot label { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+.block-label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); margin: 6px 0 10px; }
+.block-label textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; resize: vertical; }
+.programs-view td.t-actions { display: table-cell; white-space: nowrap; }
+.programs-view td.t-actions button + button { margin-left: 4px; }
+.programs-view .section-title { display: flex; gap: 8px; align-items: center; } .programs-view .section-title .spacer { flex: 1; }

@@ -2,6 +2,7 @@ import { PreviewContext } from './VoiceSection'
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
 import { ConnectionView, uplinkClass } from './ConnectionView'
 import { EventsView } from './EventsView'
+import { ProgramsView } from './ProgramsView'
 import { GuideView } from './GuideView'
 import { hhmmss } from './format'
 import { LibraryView } from './LibraryView'
@@ -14,12 +15,13 @@ import { RiordinaContext, useOrdineSalvato } from './Riquadri'
 import { salvaOrdine, spostaSezione, unisciOrdine } from './ordine'
 import type { AggiornamentoStato, NovitaInstallate, NovitaVersione } from '../../shared/api'
 
-type Tab = 'onair' | 'library' | 'events' | 'log' | 'stats' | 'link' | 'settings' | 'guide'
+type Tab = 'onair' | 'library' | 'events' | 'programs' | 'log' | 'stats' | 'link' | 'settings' | 'guide'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'onair', label: 'In onda' },
   { id: 'library', label: 'Libreria' },
   { id: 'events', label: 'Eventi' },
+  { id: 'programs', label: 'Programmi' },
   { id: 'log', label: 'Registro' },
   { id: 'stats', label: 'Ascoltatori' },
   { id: 'link', label: 'Collegamento' },
@@ -124,6 +126,7 @@ export function App() {
           {tab === 'onair' && <OnAirView radio={radio} />}
           {tab === 'library' && <LibraryView radio={radio} />}
           {tab === 'events' && <EventsView radio={radio} />}
+          {tab === 'programs' && <ProgramsView />}
           {tab === 'log' && <LogView />}
           {tab === 'stats' && <StatsView />}
           {tab === 'link' && <ConnectionView radio={radio} />}
