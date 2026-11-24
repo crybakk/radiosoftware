@@ -260,6 +260,54 @@ export class PonteClient {
     return list.map((p) => ({ ...p, episodes: p.episodes.map((e) => ({ ...e, path: this.base + e.path })) }))
   }
 
+  /** Programmi completi, per gestirli dalla regia (server dalla 0.1.26). */
+  async managePrograms(): Promise<ManagedPrograms> {
+    try {
+      return (await (await this.request('GET', '/api/programmi/regia/gestione')).json()) as ManagedPrograms
+    } catch (e) {
+      throw oldServer(e)
+    }
+  }
+
+  async saveProgram(p: ManagedProgramInput): Promise<ManagedPrograms> {
+    try {
+      const r = await this.request('POST', '/api/programmi/regia/gestione', JSON.stringify({ azione: 'salva', programma: p }), 'application/json')
+      return (await r.json()) as ManagedPrograms
+    } catch (e) {
+      throw oldServer(e)
+    }
+  }
+
+  async deleteProgram(id: string): Promise<ManagedPrograms> {
+    try {
+      const r = await this.request('POST', '/api/programmi/regia/gestione', JSON.stringify({ azione: 'elimina', id }), 'application/json')
+      return (await r.json()) as ManagedPrograms
+    } catch (e) {
+      throw oldServer(e)
+    }
+  }
+
+  /** Copertina come indirizzo "data:" da mostrare (null se non c'è). */
+  async programArt(id: string): Promise<string | null> {
+    try {
+      const r = await this.request('GET', `/api/programmi/regia/copertina?id=${encodeURIComponent(id)}`)
+      const type = r.headers.get('content-type') || 'image/jpeg'
+      return `data:${type};base64,${Buffer.from(await r.arrayBuffer()).toString('base64')}`
+    } catch (e) {
+      if (e instanceof PonteError && e.status === 404) return null
+      throw e
+    }
+  }
+
+  async setProgramArt(id: string, data: Uint8Array): Promise<ManagedPrograms> {
+    try {
+      const r = await this.request('PUT', `/api/programmi/regia/copertina?id=${encodeURIComponent(id)}`, data as BodyInit, 'application/octet-stream', 60_000)
+      return (await r.json()) as ManagedPrograms
+    } catch (e) {
+      throw oldServer(e)
+    }
+  }
+
   /** Fine della registrazione in regia: il ponte dice se tiene la sua ("ponte") o se serve il file ("regia"). */
   async fineRegistrazione(f: FineRegia): Promise<{ usa: 'ponte' | 'regia' }> {
     const r = await this.request('POST', '/api/programmi/regia/fine', JSON.stringify(f), 'application/json', 30_000)
@@ -291,6 +339,35 @@ export type ListenerStats = Report & {
   /** Icecast secondario configurato sul server. */
   secondary: boolean
   periodo: 'giorno' | 'settimana'
+}
+
+/** Un server vecchio non conosce gli indirizzi della gestione dei programmi. */
+function oldServer(e: unknown): unknown {
+  // un server vecchio risponde "non trovato" agli indirizzi che non conosce
+  return e instanceof PonteError && e.status === 404 && (e.message === 'non trovato' || /HTTP 404/.test(e.message))
+    ? new PonteError('Il server non gestisce ancora i programmi dalla regia: aggiornalo dal pannello (Controlla aggiornamenti)', 404)
+    : e
+}
+
+export interface ManagedProgram {
+  id: string
+  title: string
+  description: string
+  author: string
+  slots: { days: number[]; start: string; end: string }[]
+  record: boolean
+  studio: boolean
+  published: boolean
+  art: '' | 'jpg' | 'png'
+  artUpdatedAt: number
+  createdAt: number
+}
+
+export type ManagedProgramInput = Omit<ManagedProgram, 'id' | 'art' | 'artUpdatedAt' | 'createdAt'> & { id?: string }
+
+export interface ManagedPrograms {
+  settings: { station: string; marginMinutes: number }
+  programs: ManagedProgram[]
 }
 
 export interface PonteProgram {

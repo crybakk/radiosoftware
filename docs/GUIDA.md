@@ -783,7 +783,11 @@ entro 10 minuti viene lasciato perdere. Non entra nel registro né nel report SI
 
 ## 13. Programmi, puntate e repliche
 
-Pannello, menu **☰ → Programmi**.
+Pannello, menu **☰ → Programmi**, oppure in regia la scheda **Programmi**.
+
+**Dalla regia** (scheda **Programmi**, con la regia collegata al server) crei, modifichi ed elimini i programmi e cambi
+la copertina come dal pannello: sono gli stessi programmi, salvati sul server. Le puntate da rivedere e pubblicare
+restano nel pannello e su Telegram. Se la scheda dice di aggiornare il server, aggiornalo dal pannello.
 
 **Programmi (solo amministratori).** **Nuovo programma**: nome, conduttori, descrizione e una o più **fasce
 orarie** (una fascia può passare la mezzanotte, es. 23:00 → 01:00). Con **Copertina** carichi un'immagine
@@ -1361,3 +1365,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 23/11/2026 | Programmi fatti dallo studio: registrazione in regia da palinsesto o a mano, segni di inizio e fine, interruzioni del collegamento; Stereo Tool sulle registrazioni della regia; revisione delle puntate anche da Telegram |
 | 24/11/2026 | Titolo quando si parla: senza brani in onda va il nome del programma con il conduttore (o il nome della radio) invece dell'ultimo brano; testo in più dalla regia o dal pannello; nelle esterne vale il titolo dell'app se lo manda |
 | 24/11/2026 | App **Radio Esterna** per Windows e Mac: installazione, accesso con l'utente del pannello, fuori onda e IN ONDA, titolo del programma, mixer con microfoni e audio del computer, cuffia e ritorno, registrazione della puntata, scheda Regia; riquadro dell'esterna in regia e nel pannello |
+| 24/11/2026 | Scheda Programmi in regia: crea, modifica ed elimina i programmi del server e la loro copertina |

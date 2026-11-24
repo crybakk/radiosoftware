@@ -3,7 +3,7 @@ import type { NewsSource } from '../core/news'
 import type { TrackEdit, TrackSearch } from '../core/db'
 import type { EngineStep } from '../core/playout'
 import type { ScanProgress } from '../core/scanner'
-import type { ListenerStats, PonteBackup, PonteProgram, PonteState, SpokenTitleState } from '../core/ponteClient'
+import type { ListenerStats, ManagedProgramInput, ManagedPrograms, PonteBackup, PonteProgram, PonteState, SpokenTitleState } from '../core/ponteClient'
 import type { RemoteCommand, RemoteState } from '../core/remote'
 import type { PonteStatus, StudioReport } from '../main/ponte'
 import type { StatoRegistrazioneProgrammi } from '../core/registrazioneProgrammi'
@@ -190,6 +190,13 @@ export interface RadioApi {
   ponteSpokenTitle(): Promise<SpokenTitleState | null>
   ponteSetSpokenText(testo: string): Promise<SpokenTitleState>
   ponteListPrograms(): Promise<PonteProgram[]>
+  /** Programmi del server, gestiti dalla regia come dal pannello. */
+  programsManage(): Promise<ManagedPrograms>
+  programSave(p: ManagedProgramInput): Promise<ManagedPrograms>
+  programDelete(id: string): Promise<ManagedPrograms>
+  programArt(id: string): Promise<string | null>
+  /** Sceglie un'immagine dal PC e la manda come copertina (null = annullato). */
+  programChooseArt(id: string): Promise<ManagedPrograms | null>
   ponteListeners(periodo: 'giorno' | 'settimana', data: string): Promise<ListenerStats>
   ponteReplay(programId: string, episodeId?: string): Promise<Track | null>
   ponteTestNotification(): Promise<{ ok: boolean; results: { channel: string; ok: boolean; error?: string }[] }>
