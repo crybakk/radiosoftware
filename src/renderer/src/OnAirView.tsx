@@ -7,6 +7,7 @@ import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
 import { Riquadri } from './Riquadri'
 import { RegistrazioneBox } from './RegistrazioneBox'
+import { TitoloParlatoBox } from './TitoloParlatoBox'
 
 function Meter({ radio }: { radio: Radio }) {
   const [level, setLevel] = useState(0)
@@ -94,6 +95,8 @@ export function OnAirView({ radio }: { radio: Radio }) {
           ))}
           <Meter radio={radio} />
         </div>
+
+        <TitoloParlatoBox />
 
         <div className="transport" data-sezione="transport" data-titolo="PLAY / AVANTI / STOP">
           <button className="big play" disabled={!!main || !s.queue.length} onClick={() => void engine.play()}>

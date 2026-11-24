@@ -162,6 +162,19 @@ filtro chiedono due brani con ritmo regolare e tempi vicini (entro il ±6%, si c
 passaggi solo che il brano che esce abbia un ritmo regolare. Con jingle, notiziari e brani parlati, o se il brano
 che esce non ha un ritmo regolare, la regia usa la dissolvenza normale. **AVANTI** e **STOP** funzionano come sempre.
 
+### Titolo quando si parla
+
+Quando non suona nessun brano (state parlando), dopo **5 secondi** la radio non lascia più il titolo dell'ultimo
+pezzo: manda il **titolo parlato**, cioè il **nome del programma** in palinsesto come titolo e il **conduttore**
+(il campo "Conduttori" del programma) come artista, con la copertina del programma. Se in quell'ora non c'è nessun
+programma va il nome della radio con lo slogan. Lo vedono Icecast (principale e secondario), il player, le app e il
+flusso HLS. Appena parte un brano torna il suo titolo. I jingle non contano: non cambiano il titolo.
+
+Nel riquadro **Titolo quando si parla** (nella regia, scheda In onda, e nel pannello) vedi cosa va in onda e puoi
+scrivere un **testo in più**, per esempio *Ospite: Mario Rossi*: diventa "Nome programma – Ospite: Mario Rossi".
+Premi **Usa** per mandarlo, **Togli** per tornare al solo nome del programma. Il testo vale fino alla fine del
+programma in cui l'hai scritto. Il titolo parlato non finisce mai nel registro né nel report SIAE.
+
 ## 3. Fare una diretta esterna
 
 Per andare in onda **da fuori** (un evento, un concerto, un'intervista in giro) con il computer o il telefono.
@@ -206,6 +219,9 @@ Nelle altre app (Larix, Luci Live…) i campi hanno nomi simili: scegli il tipo 
 - Quando **scolleghi** l'app torna da sola la regia. Se la regia è spenta, torna la musica di riserva.
 - Se internet cade per un momento, l'app di solito si ricollega da sola; nel frattempo va in onda la regia o la
   musica di riserva.
+- **Titolo**: se l'app manda il suo titolo (in BUTT il nome della canzone, "Song"), va in onda quello. Se non manda
+  niente, dopo 5 secondi va il **titolo parlato** (nome del programma e conduttore,
+  [vedi sopra](#titolo-quando-si-parla)), tranne mentre suona un brano riconosciuto.
 - Dallo studio o dal telefono puoi **parlare sopra** la diretta esterna con il microfono del pannello
   ([sezione 5](#5-parlare-in-diretta-dal-pannello)).
 - In cuffia ascolta l'app o il mixer, **non la radio**: la radio arriva con qualche secondo di ritardo e ti
@@ -1256,3 +1272,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 23/11/2026 | Pannello impaginato per telefono e PC (tre colonne sugli schermi larghi); libreria della diretta autonoma solo quando la avvii |
 | 23/11/2026 | Due microfoni insieme dal pannello (due microfoni USB o i 2 ingressi di una scheda audio), ognuno con volume e muto |
 | 23/11/2026 | Programmi fatti dallo studio: registrazione in regia da palinsesto o a mano, segni di inizio e fine, interruzioni del collegamento; Stereo Tool sulle registrazioni della regia; revisione delle puntate anche da Telegram |
+| 24/11/2026 | Titolo quando si parla: senza brani in onda va il nome del programma con il conduttore (o il nome della radio) invece dell'ultimo brano; testo in più dalla regia o dal pannello; nelle esterne vale il titolo dell'app se lo manda |

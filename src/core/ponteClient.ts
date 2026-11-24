@@ -14,6 +14,17 @@ export interface PonteBackup {
   date: string
 }
 
+/** Titolo parlato (quando non suona nessun brano): anteprima e testo libero. */
+export interface SpokenTitleState {
+  testo: string
+  programma: string | null
+  artist: string
+  title: string
+  /** Va in onda adesso. */
+  inOnda: boolean
+  max: number
+}
+
 export interface PonteState {
   studioConnected: boolean
   externalConnected?: boolean
@@ -136,6 +147,20 @@ export class PonteClient {
 
   async metadata(artist: string, title: string, duration = 0): Promise<void> {
     await this.request('POST', '/api/metadata', JSON.stringify({ artist, title, duration }), 'application/json', 5000)
+  }
+
+  /** Non suona nessun brano: il ponte manda il titolo parlato (programma e conduttore, o nome della radio). */
+  async spoken(): Promise<void> {
+    await this.request('POST', '/api/metadata', JSON.stringify({ parlato: true }), 'application/json', 5000)
+  }
+
+  /** Titolo parlato: anteprima e testo libero. */
+  async spokenTitle(): Promise<SpokenTitleState> {
+    return (await (await this.request('GET', '/api/titolo-parlato', undefined, undefined, 5000)).json()) as SpokenTitleState
+  }
+
+  async setSpokenText(testo: string): Promise<SpokenTitleState> {
+    return (await (await this.request('POST', '/api/titolo-parlato', JSON.stringify({ testo }), 'application/json', 5000)).json()) as SpokenTitleState
   }
 
   async state(): Promise<PonteState> {
