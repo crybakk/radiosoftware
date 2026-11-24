@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { sanitizeRestoredFile, type RadioDb } from '../core/db'
-import { backupDue, parsePonteHost, PonteClient, ponteControlBase, type PonteAlarm, type PonteBackup, type ListenerStats, type PonteProgram, type PonteState, type SpokenTitleState } from '../core/ponteClient'
+import { backupDue, parsePonteHost, PonteClient, ponteControlBase, type PonteAlarm, type PonteBackup, type ListenerStats, type PonteProgram, type PonteState, type SpokenTitleState, type ManagedProgramInput, type ManagedPrograms } from '../core/ponteClient'
 import { SpokenTrigger } from '../core/titoloParlato'
 import { pickReplay } from '../core/eventActions'
 import type { PonteSettings, Track } from '../core/types'
@@ -316,6 +316,29 @@ export class PonteService {
     const c = this.client()
     if (!c) throw new Error('Ponte non configurato: servono indirizzo e token')
     return c.listPrograms()
+  }
+
+  private need(): PonteClient {
+    const c = this.client()
+    if (!c) throw new Error('Ponte non configurato: servono indirizzo e token (scheda Collegamento)')
+    return c
+  }
+
+  /** Gestione dei programmi del server dalla regia. */
+  managePrograms(): Promise<ManagedPrograms> {
+    return this.need().managePrograms()
+  }
+  saveProgram(p: ManagedProgramInput): Promise<ManagedPrograms> {
+    return this.need().saveProgram(p)
+  }
+  deleteProgram(id: string): Promise<ManagedPrograms> {
+    return this.need().deleteProgram(id)
+  }
+  programArt(id: string): Promise<string | null> {
+    return this.need().programArt(id)
+  }
+  setProgramArt(id: string, data: Uint8Array): Promise<ManagedPrograms> {
+    return this.need().setProgramArt(id, data)
   }
 
   /** Brano per la replica di una puntata (la più recente del programma se manca episodeId). */

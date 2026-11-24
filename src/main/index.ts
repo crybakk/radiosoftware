@@ -1,10 +1,11 @@
+import type { ManagedProgramInput } from '../core/ponteClient'
 import { rimettiInLibreria, spostaNegliScarti } from './pulizia'
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
 import { spawn } from 'node:child_process'
 import { expandEvent, newsTrack, voiceTrack } from '../core/eventActions'
 import { fillTemplate, programContext, Synth, type AnnounceContext, type VoiceSettings } from '../../ponte/controllo/src/sintesi.ts'
 import { NewsFetcher, type NewsSource } from '../core/news'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ffmpegStatic from 'ffmpeg-static'
 import { StudioRecorder } from '../core/registratore'
@@ -500,6 +501,18 @@ if (primary) app.whenReady().then(async () => {
   handle('ponteSpokenTitle', () => ponte.spokenTitle())
   handle('ponteSetSpokenText', (testo: string) => ponte.setSpokenText(String(testo ?? '')))
   handle('ponteListPrograms', () => ponte.listPrograms())
+  handle('programsManage', () => ponte.managePrograms())
+  handle('programSave', (p: ManagedProgramInput) => ponte.saveProgram(p))
+  handle('programDelete', (id: string) => ponte.deleteProgram(String(id)))
+  handle('programArt', (id: string) => ponte.programArt(String(id)))
+  /** Copertina scelta dal PC (PNG o JPG, massimo 5 MB). */
+  handle('programChooseArt', async (id: string) => {
+    const res = await dialog.showOpenDialog(win!, { title: 'Scegli la copertina', properties: ['openFile'], filters: [{ name: 'Immagini', extensions: ['jpg', 'jpeg', 'png'] }] })
+    if (res.canceled || !res.filePaths[0]) return null
+    const data = readFileSync(res.filePaths[0])
+    if (data.length > 5 * 1024 * 1024) throw new Error('immagine troppo grande (massimo 5 MB)')
+    return ponte.setProgramArt(String(id), new Uint8Array(data))
+  })
   handle('ponteListeners', (periodo: 'giorno' | 'settimana', data: string) => ponte.listenerStats(periodo, data))
   handle('ponteReplay', (programId: string, episodeId?: string) => ponte.replayTrack(programId, episodeId))
   handle('ponteTestNotification', () => ponte.testNotification())

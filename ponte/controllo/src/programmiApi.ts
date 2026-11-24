@@ -17,7 +17,9 @@
  *                                               registrazioni in corso solo per chi può comandare)
  *   POST /api/puntate                           {azione: pubblica|modifica|ritira|ripubblica|elimina} (conduttori)
  *
- * Regia (token): GET /api/programmi/regia   puntate pubblicate di ogni programma (repliche), fasce e
+ * Regia (token): GET/POST /api/programmi/regia/gestione   programmi completi; {azione: salva|elimina}
+ *                GET/PUT  /api/programmi/regia/copertina?id= copertina del programma
+ *                GET /api/programmi/regia   puntate pubblicate di ogni programma (repliche), fasce e
  *                                            "va in onda dallo studio" (registrazione in regia)
  *                POST /api/programmi/regia/fine            fine della registrazione in regia: si tiene
  *                                                         quella del ponte o serve il file (puntateRegia.ts)
@@ -202,6 +204,41 @@ export async function handleProgramApi(req: IncomingMessage, res: ServerResponse
         }
       })
     )
+    return true
+  }
+
+  // gestione dei programmi dalla regia (richiesta del 24/11/2026): come gli amministratori del pannello
+  if (path === '/api/programmi/regia/gestione' || path === '/api/programmi/regia/copertina') {
+    if (!d.authorized(req)) return json(res, 401, { error: 'token non valido' }), true
+    const state = () => ({ settings: P.settings(), programs: P.list() })
+    if (path === '/api/programmi/regia/copertina') {
+      const id = url.searchParams.get('id') ?? ''
+      if (req.method === 'GET') {
+        const p = P.get(id)
+        if (!p?.art) return json(res, 404, { error: 'copertina non presente' }), true
+        sendFile(req, res, P.artFile(p), p.art === 'png' ? 'image/png' : 'image/jpeg', { 'Cache-Control': 'no-store' })
+        return true
+      }
+      if (req.method !== 'PUT') return json(res, 405, { error: 'metodo non valido' }), true
+      const p = P.setArt(id, await readBody(req, MAX_ART_BYTES))
+      log(`la regia ha cambiato la copertina di ${p.title}`)
+      json(res, 200, state())
+      return true
+    }
+    if (req.method === 'GET') return json(res, 200, state(), { 'Cache-Control': 'no-store' }), true
+    if (req.method !== 'POST') return json(res, 405, { error: 'metodo non valido' }), true
+    const b = await readJson(req)
+    if (b.azione === 'salva') {
+      const p = P.saveProgram(programInput(b.programma))
+      log(`la regia ha salvato il programma ${p.title}`)
+    } else if (b.azione === 'elimina') {
+      const p = P.get(String(b.id ?? ''))
+      P.removeProgram(String(b.id ?? ''))
+      log(`la regia ha eliminato il programma ${p?.title}`)
+    } else {
+      return json(res, 400, { error: 'azione sconosciuta' }), true
+    }
+    json(res, 200, state())
     return true
   }
 

@@ -513,6 +513,33 @@ describe('indirizzi HTTP', () => {
     expect((await big.arrayBuffer()).byteLength).toBe(990)
   })
 
+  it('la regia gestisce i programmi con il suo token', async () => {
+    const { base, prog } = await start(null, true)
+    const g = `${base}/api/programmi/regia/gestione`
+    let st = (await (await fetch(g)).json()) as { programs: { id: string; title: string; art: string }[] }
+    expect(st.programs.map((x) => x.title)).toEqual(['Sera', 'Nascosto'])
+    st = (await (
+      await fetch(g, { method: 'POST', body: JSON.stringify({ azione: 'salva', programma: { title: 'Mattina', author: 'Luca', slots: [{ days: [1, 2], start: '07:00', end: '09:00' }], studio: true } }) })
+    ).json()) as typeof st
+    const nuovo = st.programs.find((x) => x.title === 'Mattina')!
+    expect(nuovo).toMatchObject({ author: 'Luca', studio: true, record: true, slots: [{ days: [1, 2], start: '07:00', end: '09:00' }] })
+    const art = await fetch(`${base}/api/programmi/regia/copertina?id=${prog.id}`)
+    expect(art.headers.get('content-type')).toBe('image/jpeg')
+    expect((await fetch(`${base}/api/programmi/regia/copertina?id=${nuovo.id}`)).status).toBe(404)
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0])
+    st = (await (await fetch(`${base}/api/programmi/regia/copertina?id=${nuovo.id}`, { method: 'PUT', body: png })).json()) as typeof st
+    expect(st.programs.find((x) => x.id === nuovo.id)!.art).toBe('png')
+    st = (await (await fetch(g, { method: 'POST', body: JSON.stringify({ azione: 'elimina', id: nuovo.id }) })).json()) as typeof st
+    expect(st.programs.map((x) => x.title)).toEqual(['Sera', 'Nascosto'])
+  })
+
+  it('senza token la regia non gestisce i programmi', async () => {
+    const admin = { name: 'admin', role: 'amministratore' } as PublicUser
+    const { base } = await start(admin, false)
+    expect((await fetch(`${base}/api/programmi/regia/gestione`)).status).toBe(401)
+    expect((await fetch(`${base}/api/programmi/regia/copertina?id=x`, { method: 'PUT', body: 'x' })).status).toBe(401)
+  })
+
   it('senza accesso il pannello risponde 401', async () => {
     const { base } = await start(null)
     expect((await fetch(`${base}/api/programmi`)).status).toBe(401)
