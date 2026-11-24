@@ -138,7 +138,7 @@ export function buildPrompt(description: string, s: LibrarySummary): { system: s
     'Regole:',
     `- giorni: 0=${DAY_NAMES[0]}, 1=${DAY_NAMES[1]}, 2=${DAY_NAMES[2]}, 3=${DAY_NAMES[3]}, 4=${DAY_NAMES[4]}, 5=${DAY_NAMES[5]}, 6=${DAY_NAMES[6]}. "Tutti i giorni" = 0..6; "feriali" = 1..5; "weekend" = 0 e 6.`,
     '- orari "HH:MM" a 24 ore; "end" è l\'ora in cui la fascia finisce; se "end" è prima di "start" la fascia passa la mezzanotte.',
-    '- genres: SOLO generi presi dall\'elenco della libreria, scritti esattamente così; scegli quelli che corrispondono alla descrizione (anche simili: "musica tranquilla" → generi lenti o acustici). Lista vuota = tutta la musica.',
+    '- genres: SOLO generi presi dall\'elenco della libreria, scritti esattamente così. Se la descrizione della fascia nomina generi, stili o tipi di musica, metti SEMPRE quelli dell\'elenco che corrispondono, anche se nell\'elenco sono scritti in inglese o in modo simile ("elettronica" → electronic, "italiana" → i generi italiani, "acustico" → acoustic, "musica tranquilla" → generi lenti o acustici). Lascia la lista vuota solo se la fascia non dice nulla sul tipo di musica.',
     '- yearFrom / yearTo: solo se la descrizione parla di anni o decenni ("anni 80" = 1980-1989), altrimenti null.',
     '- artistSeparationMinutes e jingleEvery: solo se la descrizione li chiede, altrimenti null.',
     '- energyMin / energyMax (da 1 = molto calmo a 10 = molto energico): solo se la descrizione parla di energia o ritmo ("tranquilla" = 1-4, "media" = 4-7, "carica" o "energica" = 6-10), altrimenti null.',

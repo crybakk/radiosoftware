@@ -1,5 +1,5 @@
 import { rimettiInLibreria, spostaNegliScarti } from './pulizia'
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell, utilityProcess } from 'electron'
 import { spawn } from 'node:child_process'
 import { expandEvent, newsTrack, voiceTrack } from '../core/eventActions'
 import { fillTemplate, programContext, Synth, type AnnounceContext, type VoiceSettings } from '../../ponte/controllo/src/sintesi.ts'
@@ -19,6 +19,8 @@ import { fpcalcPath } from './fpcalc'
 import { AcoustId } from '../core/acoustid'
 import { AiService, previewCounts } from './ai'
 import { llamaEngine } from './llm'
+import { processEngine, type ChildLike } from './llmProcess'
+import { registro } from './registro'
 import { AiTitoliService } from './aiTitoli'
 import { AI_LABEL, cleanPlan, planEvents, summarize, type AiPlan } from '../core/aiRotation'
 import { RadioDb, type TrackEdit, type TrackSearch } from '../core/db'
@@ -193,7 +195,27 @@ if (primary) app.whenReady().then(async () => {
   })
   const tags = tagWorkers(db, (st) => win?.webContents.send('tagStatus', st))
   const tagWorker = (s: TagService) => tags.find((w) => w.service === s)!
-  const llm = llamaEngine()
+  const log = registro(join(app.getPath('userData'), 'logs'))
+  // errori gravi nel registro, senza cambiare cosa fa la regia quando capitano
+  process.on('uncaughtExceptionMonitor', (e) => log(`errore non gestito: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`))
+  app.on('render-process-gone', (_e, _wc, d) => log(`finestra della regia chiusa: ${d.reason} (codice ${d.exitCode})`))
+  app.on('child-process-gone', (_e, d) => log(`processo ${d.name ?? d.type} chiuso: ${d.reason} (codice ${d.exitCode})`))
+  // l'AI gira in un processo a parte: se il motore nativo cade, la regia resta in onda
+  const llm = processEngine({
+    spawn: () => {
+      const child = utilityProcess.fork(join(import.meta.dirname, 'llmWorker.js'), [], { serviceName: 'Radio Regia AI', stdio: 'pipe' })
+      // gli ultimi messaggi del motore finiscono nel registro se il processo cade
+      let tail = ''
+      const keep = (d: Buffer): void => {
+        tail = (tail + d.toString('utf8')).slice(-4000)
+      }
+      child.stdout?.on('data', keep)
+      child.stderr?.on('data', keep)
+      return Object.assign(child, { lastOutput: () => tail }) as unknown as ChildLike
+    },
+    fallback: llamaEngine(),
+    log
+  })
   const ai = new AiService({
     dir: join(app.getPath('userData'), 'ai'),
     engine: llm,
