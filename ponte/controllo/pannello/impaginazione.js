@@ -1,13 +1,13 @@
 // Pannello (/dashboard): impaginazione a mosaico sui PC larghi (richiesta di cristian, 23/11/2026).
-// Sopra i 1280 px la panoramica ha tre colonne: ogni riquadro occupa tante righe sottili quanto è alto,
+// Da 900 px (due colonne; tre sopra i 1280 px) ogni riquadro occupa tante righe sottili quanto è alto,
 // così i riquadri corti non lasciano buchi sotto di sé. L'ordine scelto con "⇅ Riordina" resta valido
-// (la griglia usa la proprietà CSS `order`). Su telefono e tablet non fa niente: una o due colonne normali.
+// (la griglia usa la proprietà CSS `order`). Sui telefoni non fa niente: una colonna normale.
 'use strict'
 
 ;(() => {
   const main = document.getElementById('main')
   if (!main || typeof ResizeObserver === 'undefined') return
-  const largo = window.matchMedia('(min-width: 1280px)')
+  const largo = window.matchMedia('(min-width: 900px)')
   const RIGA = 4 // px, uguale a grid-auto-rows in pannello.css
 
   function sistema() {

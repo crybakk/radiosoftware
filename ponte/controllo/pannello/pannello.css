@@ -283,16 +283,21 @@ button.danger { border-color: #b91c1c; color: #fca5a5; }
    PC largo: tre colonne, il brano in onda accanto ai tasti, i riquadri riempiono i buchi.
    Telefono: margini più stretti, titoli su due righe invece che tagliati, tasti più facili da toccare. */
 .section-title.sub { margin-top: 12px; font-size: 12px; }
+/* da 900 px a mosaico: la riga di 4 px e le righe occupate le gestisce impaginazione.js;
+   lo spazio verticale tra i riquadri lo fa il margin-bottom (row-gap a zero) */
+@media (min-width: 900px) {
+  main { grid-auto-flow: row dense; grid-auto-rows: 4px; row-gap: 0; align-items: start; }
+  main > * { margin-bottom: 12px; }
+}
 @media (min-width: 1280px) {
-  main { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 1680px; padding: 16px 20px; gap: 14px; grid-auto-flow: row dense; grid-auto-rows: 4px; align-items: start; }
-  /* la riga di 4 px e il mosaico li gestisce impaginazione.js; il gap verticale lo fanno le righe */
-  main { row-gap: 0; }
+  main { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 1680px; padding: 16px 20px; column-gap: 14px; }
   main > * { margin-bottom: 14px; }
   .now { grid-column: span 2; }
   .transport { grid-column: span 1; grid-template-columns: minmax(0, 1fr); }
   .transport .big { padding: 14px 6px; }
-  .mic, .auto { grid-column: span 1; }
-  .auto.live { grid-column: span 2; }
+  .auto { grid-column: span 1; }
+  /* microfono (due ingressi affiancati) e diretta autonoma in onda: due colonne */
+  .mic, .auto.live { grid-column: span 2; }
   .now-title { font-size: 34px; }
   .now-artist { font-size: 22px; }
   .progs, .users.stats { max-width: 1100px; }
