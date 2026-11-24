@@ -103,3 +103,21 @@ describe('grammatica JSON compatta', () => {
     ])
   })
 })
+
+describe('memoria per l\'AI', () => {
+  it('contesto grande quanto serve, tra 2048 e 8192', async () => {
+    const { planContextSize } = await import('../src/main/llm')
+    // il palinsesto di una giornata intera: ~2000 pezzi di istruzioni e domanda
+    expect(planContextSize(2000)).toBe(5376)
+    expect(planContextSize(10)).toBe(3328)
+    expect(planContextSize(9000)).toBe(8192)
+  })
+
+  it('con poca memoria libera un messaggio chiaro invece di cadere', async () => {
+    const { checkMemory, memoryNeeded } = await import('../src/main/llm')
+    const need = memoryNeeded(2.5e9, 5376)
+    expect(need / 1e9).toBeCloseTo(3.7, 1)
+    expect(() => checkMemory(need, 2.1e9)).toThrow('circa 3,7 GB liberi e adesso ce ne sono 2,1')
+    expect(() => checkMemory(need, 4e9)).not.toThrow()
+  })
+})
