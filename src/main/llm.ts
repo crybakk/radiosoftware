@@ -4,7 +4,34 @@
  * La risposta è vincolata da una grammatica costruita dallo schema JSON: il modello non può scrivere altro.
  */
 import { cpus } from 'node:os'
+import type { Llama, LlamaGrammar } from 'node-llama-cpp'
 import type { LlmEngine } from './ai'
+
+/**
+ * La grammatica JSON di node-llama-cpp lascia al modello andare a capo e rientrare ogni campo: più di metà
+ * dei pezzi generati erano spazi (un piano di 11 fasce: ~2100 pezzi, 7 minuti su un i7). Qui le regole degli
+ * spazi diventano "al massimo uno spazio": JSON su una riga, risposta molto più corta e veloce.
+ * Se la forma della grammatica cambiasse (altra versione del pacchetto) resta quella originale.
+ */
+export function compactJsonGrammar(gbnf: string): string {
+  return gbnf
+    .split('\n')
+    .map((line) => {
+      const m = /^((comma-)?whitespace-[\w-]+) ::= (.*)$/.exec(line)
+      if (!m || !m[3].includes('[\\n]')) return line
+      return m[2] ? `${m[1]} ::= "," [ ]?` : `${m[1]} ::= [ ]?`
+    })
+    .join('\n')
+}
+
+/** Grammatica dallo schema JSON, in versione compatta. */
+async function jsonGrammar(llama: Llama, schema: object): Promise<LlamaGrammar> {
+  const { LlamaText } = await import('node-llama-cpp')
+  const base = await llama.createGrammarForJsonSchema(schema as never)
+  const compact = compactJsonGrammar(base.grammar)
+  if (compact === base.grammar) return base
+  return llama.createGrammar({ grammar: compact, stopGenerationTriggers: [LlamaText(['\n\n\n\n'])], trimWhitespaceSuffix: true })
+}
 
 export function llamaEngine(): LlmEngine {
   return {
@@ -21,7 +48,7 @@ export function llamaEngine(): LlmEngine {
         throw e
       })
       const session = new LlamaChatSession({ contextSequence: context.getSequence(), systemPrompt: system })
-      const grammar = await llama.createGrammarForJsonSchema(schema as never)
+      const grammar = await jsonGrammar(llama, schema)
       return {
         async ask(user, signal) {
           // ogni domanda da capo: le risposte di prima non devono influenzare le altre
@@ -48,7 +75,7 @@ export function llamaEngine(): LlmEngine {
         const context = await model.createContext({ contextSize: 8192, threads })
         try {
           const session = new LlamaChatSession({ contextSequence: context.getSequence(), systemPrompt: system })
-          const grammar = await llama.createGrammarForJsonSchema(schema as never)
+          const grammar = await jsonGrammar(llama, schema)
           const answer = await session.prompt(user, { grammar, temperature: 0.2, maxTokens: 4000, signal })
           return answer
         } finally {
