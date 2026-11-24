@@ -142,7 +142,8 @@ app_ingresso =
       id="app_esterna",
       port=app_porta,
       password=app_password,
-      buffer=1.,
+      # 3 secondi di scorta contro gli scatti di internet (l'audio arriva a pezzi da 250 ms)
+      buffer=3.,
       max=10.,
       on_connect=fun (_) -> notify("app_collegata", ""),
       on_disconnect=fun () -> notify("app_scollegata", ""),
