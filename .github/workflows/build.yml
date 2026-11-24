@@ -29,7 +29,10 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm ci
       - run: npm ci --prefix ponte/controllo
+      # app Radio Esterna: solo i pacchetti (senza scaricare Electron), per controlli e prove
+      - run: npm ci --prefix esterna --ignore-scripts
       - run: npm run typecheck
+      - run: npm run typecheck --prefix esterna
       - run: npm test
       # lo script del mixer del ponte (Liquidsoap) deve essere valido: si controlla con la stessa versione del server
       - name: Controllo dello script di Liquidsoap
@@ -111,3 +114,117 @@ jobs:
           test -f "dist/RadioRegia-Setup-$VERSIONE.exe" || { echo "::error::manca dist/RadioRegia-Setup-$VERSIONE.exe"; ls dist; exit 1; }
           grep -q "RadioRegia-Setup-$VERSIONE.exe" dist/latest.yml
           gh release upload "$TAG" "dist/RadioRegia-Setup-$VERSIONE.exe" "dist/RadioRegia-Setup-$VERSIONE.exe.blockmap" dist/latest.yml --clobber --repo "$GITHUB_REPOSITORY"
+
+  # ---------- app Radio Esterna (Windows e Mac) ----------
+  esterna-windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: esterna/package-lock.json
+      # installa anche ffmpeg per Windows (ffmpeg-static scarica il binario della piattaforma)
+      - run: npm ci
+        working-directory: esterna
+      - name: Versione della release
+        if: inputs.versione != ''
+        working-directory: esterna
+        env:
+          VERSIONE: ${{ inputs.versione }}
+        run: npm version "$env:VERSIONE" --no-git-tag-version --allow-same-version
+      - run: npm run dist:win
+        working-directory: esterna
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Carica l'installer nella release in bozza
+        if: inputs.release_bozza != ''
+        shell: bash
+        working-directory: esterna
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_bozza }}
+          VERSIONE: ${{ inputs.versione }}
+        run: |
+          ls dist
+          test -f "dist/RadioEsterna-Setup-$VERSIONE.exe" || { echo "::error::manca dist/RadioEsterna-Setup-$VERSIONE.exe"; exit 1; }
+          # esterna.yml: l'aggiornamento dell'app (latest.yml resta quello della regia)
+          test -f dist/esterna.yml || { echo "::error::manca dist/esterna.yml"; exit 1; }
+          grep -q "RadioEsterna-Setup-$VERSIONE.exe" dist/esterna.yml
+          gh release upload "$TAG" "dist/RadioEsterna-Setup-$VERSIONE.exe" "dist/RadioEsterna-Setup-$VERSIONE.exe.blockmap" dist/esterna.yml --clobber --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.release_bozza == ''
+        with:
+          name: RadioEsterna-Windows
+          path: esterna/dist/*.exe
+          retention-days: 1
+          compression-level: 0
+
+  esterna-mac:
+    needs: test
+    # Mac con Apple Silicon e Mac Intel: un file per ognuno (ffmpeg è diverso). Tutti e due si fanno su un Mac
+    # con Apple Silicon: per Intel si scaricano Electron e ffmpeg per x64.
+    strategy:
+      matrix:
+        arch: [arm64, x64]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: esterna/package-lock.json
+      - run: npm ci
+        working-directory: esterna
+      - name: ffmpeg per Mac Intel
+        if: matrix.arch == 'x64'
+        working-directory: esterna
+        run: |
+          rm -f node_modules/ffmpeg-static/ffmpeg
+          npm_config_arch=x64 node node_modules/ffmpeg-static/install.js
+          file node_modules/ffmpeg-static/ffmpeg | grep -q x86_64
+      - name: Versione della release
+        if: inputs.versione != ''
+        working-directory: esterna
+        env:
+          VERSIONE: ${{ inputs.versione }}
+        run: npm version "$VERSIONE" --no-git-tag-version --allow-same-version
+      # Senza un account Apple Developer l'app non si può firmare: la si firma "ad hoc" (serve sui Mac con Apple
+      # Silicon perché parta) e al primo avvio il Mac chiede conferma (Impostazioni di Sistema → Privacy e sicurezza → Apri comunque)
+      - name: Crea l'app
+        working-directory: esterna
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npx electron-vite build
+          npx electron-builder --mac dir --${{ matrix.arch }} -c.mac.identity=null --publish never
+          app=$(ls -d dist/mac*/"Radio Esterna.app" | head -1)
+          test -d "$app" || { echo "::error::app non trovata"; ls -R dist | head -50; exit 1; }
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"
+          # ffmpeg (registrazione sul computer) deve essere per questo tipo di Mac
+          file "$app/Contents/Resources/app.asar.unpacked/node_modules/ffmpeg-static/ffmpeg"
+          versione=$(node -p "require('./package.json').version")
+          mkdir -p dmg-cartella
+          cp -R "$app" dmg-cartella/
+          ln -s /Applications dmg-cartella/Applicazioni
+          hdiutil create -volname "Radio Esterna" -srcfolder dmg-cartella -ov -format UDZO "dist/RadioEsterna-$versione-mac-${{ matrix.arch }}.dmg"
+          ls -l dist/*.dmg
+      - name: Carica nella release in bozza
+        if: inputs.release_bozza != ''
+        working-directory: esterna
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_bozza }}
+          VERSIONE: ${{ inputs.versione }}
+        run: gh release upload "$TAG" "dist/RadioEsterna-$VERSIONE-mac-${{ matrix.arch }}.dmg" --clobber --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.release_bozza == ''
+        with:
+          name: RadioEsterna-Mac-${{ matrix.arch }}
+          path: esterna/dist/*.dmg
+          retention-days: 1
+          compression-level: 0

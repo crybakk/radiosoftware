@@ -8,7 +8,8 @@
  * Le release vecchie, senza il commento, valgono per tutti e due, con i titoli delle PR come novità.
  */
 
-export type Programma = 'regia' | 'server'
+/** I programmi che si aggiornano dalle release: regia, server e app Radio Esterna (dal 24/11/2026). */
+export type Programma = 'regia' | 'server' | 'esterna'
 
 const VERSIONE = /^\d+\.\d+\.\d+$/
 
@@ -24,10 +25,15 @@ export interface InfoRelease {
   versione: string
   regia: boolean
   server: boolean
+  /** Cambia l'app Radio Esterna (le release di prima dell'app: no). */
+  esterna: boolean
   novitaRegia: string[]
   novitaServer: string[]
+  novitaEsterna: string[]
   assets: string[]
 }
+
+type Componenti = { regia: boolean; server: boolean; esterna?: boolean }
 
 /** Toglie la formattazione markdown più comune: il pannello e la regia mostrano testo semplice. */
 function testoSemplice(s: string): string {
@@ -41,13 +47,14 @@ function testoSemplice(s: string): string {
 }
 
 /** Legge le sezioni Regia/Server della descrizione: un elemento per ogni punto dell'elenco. */
-export function leggiNote(testo: string): { regia: string[]; server: string[]; componenti: { regia: boolean; server: boolean } | null } {
-  const out = { regia: [] as string[], server: [] as string[], componenti: null as { regia: boolean; server: boolean } | null }
+export function leggiNote(testo: string): { regia: string[]; server: string[]; esterna: string[]; componenti: Componenti | null } {
+  const out = { regia: [] as string[], server: [] as string[], esterna: [] as string[], componenti: null as Componenti | null }
   const m = /<!--\s*componenti:\s*(\{[^}]*\})\s*-->/.exec(testo)
   if (m) {
     try {
-      const c = JSON.parse(m[1]) as { regia?: unknown; server?: unknown }
+      const c = JSON.parse(m[1]) as { regia?: unknown; server?: unknown; esterna?: unknown }
       out.componenti = { regia: c.regia === true, server: c.server === true }
+      if ('esterna' in c) out.componenti.esterna = c.esterna === true
     } catch {
       out.componenti = null
     }
@@ -66,7 +73,13 @@ export function leggiNote(testo: string): { regia: string[]; server: string[]; c
     if (titolo) {
       chiudi()
       const t = titolo[1].trim().toLowerCase()
-      sezione = t.startsWith('regia') ? 'regia' : t.startsWith('server') || t.startsWith('ponte') ? 'server' : null
+      sezione = t.startsWith('regia')
+        ? 'regia'
+        : t.startsWith('server') || t.startsWith('ponte')
+          ? 'server'
+          : t.startsWith('esterna') || t.startsWith('radio esterna')
+            ? 'esterna'
+            : null
       continue
     }
     if (!sezione) continue
@@ -111,12 +124,15 @@ export function leggiRelease(r: unknown): InfoRelease | null {
       versione,
       regia: true,
       server: true,
+      esterna: false,
       novitaRegia: vecchie ?? note.regia,
       novitaServer: vecchie ?? note.server,
+      novitaEsterna: [],
       assets
     }
   }
-  return { versione, ...note.componenti, novitaRegia: note.regia, novitaServer: note.server, assets }
+  const c = note.componenti
+  return { versione, regia: c.regia, server: c.server, esterna: c.esterna === true, novitaRegia: note.regia, novitaServer: note.server, novitaEsterna: note.esterna, assets }
 }
 
 export interface NovitaVersione {
@@ -136,6 +152,8 @@ export interface Valutazione {
 /** Il server si installa solo da release con il suo ZIP; la regia da release con l'installer. */
 function installabile(r: InfoRelease, chi: Programma): boolean {
   if (chi === 'server') return r.assets.includes(`RadioPonte-server-${r.versione}.zip`)
+  // Radio Esterna: esterna.yml (aggiornamento su Windows) o il file per il Mac
+  if (chi === 'esterna') return r.assets.includes('esterna.yml') || r.assets.some((a) => a.startsWith(`RadioEsterna-${r.versione}`) && a.endsWith('.dmg'))
   return r.assets.includes('latest.yml')
 }
 
@@ -155,7 +173,7 @@ export function valuta(release: unknown, attuale: string, chi: Programma): Valut
     ultima,
     daAggiornare: nuove.length > 0,
     novita: nuove.map((r) => {
-      const n = chi === 'regia' ? r.novitaRegia : r.novitaServer
+      const n = chi === 'regia' ? r.novitaRegia : chi === 'esterna' ? r.novitaEsterna : r.novitaServer
       return { versione: r.versione, novita: n.length ? n : ['Correzioni e miglioramenti interni.'] }
     })
   }

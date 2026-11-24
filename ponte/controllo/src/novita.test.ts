@@ -54,3 +54,28 @@ describe('novità delle release', () => {
     expect(valuta([nuova('0.1.12', true, true), senzaZip], '0.1.12', 'regia')).toMatchObject({ ultima: '0.1.13', daAggiornare: true })
   })
 })
+
+describe('novità di Radio Esterna', () => {
+  const conEsterna = (v: string, esterna: boolean, corpo = '', assets = [`RadioEsterna-Setup-${v}.exe`, 'esterna.yml', `RadioEsterna-${v}-mac-arm64.dmg`]) => ({
+    tag_name: `v${v}`,
+    draft: false,
+    body: `<!-- componenti: ${JSON.stringify({ regia: true, server: true, esterna })} -->\n${corpo}`,
+    assets: [{ name: 'latest.yml' }, ...assets.map((name) => ({ name }))]
+  })
+
+  it('legge la sezione Radio Esterna', () => {
+    const n = leggiNote('<!-- componenti: {"regia":false,"server":false,"esterna":true} -->\n### Radio Esterna\n\n- Mixer nuovo\n')
+    expect(n.componenti).toEqual({ regia: false, server: false, esterna: true })
+    expect(n.esterna).toEqual(['Mixer nuovo'])
+  })
+
+  it("l'app si aggiorna solo per le versioni che la cambiano e che hanno i suoi file", () => {
+    const rel = [conEsterna('0.3.1', false), conEsterna('0.3.0', true, '### Radio Esterna\n- Prima versione')]
+    expect(valuta(rel, '0.2.9', 'esterna')).toEqual({ ultima: '0.3.1', daAggiornare: true, novita: [{ versione: '0.3.0', novita: ['Prima versione'] }] })
+    expect(valuta(rel, '0.3.0', 'esterna').daAggiornare).toBe(false)
+    // release vecchie, senza i file dell'app: non contano
+    expect(valuta([nuova('0.2.9', true, true)], '0.2.0', 'esterna').daAggiornare).toBe(false)
+    // basta il file per il Mac
+    expect(valuta([conEsterna('0.3.2', true, '', ['RadioEsterna-0.3.2-mac-x64.dmg'])], '0.3.1', 'esterna').daAggiornare).toBe(true)
+  })
+})

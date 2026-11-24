@@ -8,7 +8,7 @@
 // - In cima c'è un commento nascosto <!-- componenti: {...} --> che regia e server leggono
 //   (ponte/controllo/src/novita.ts) per non proporre un aggiornamento che non li riguarda.
 import { execFileSync } from 'node:child_process'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, posix } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -38,9 +38,10 @@ const PROVA = /(\.test\.tsx?$|^tests\/|^ponte\/controllo\/prove\/)/
  * Quali programmi cambiano, dai file cambiati.
  * `usatiDallaRegia` = file di ponte/ che la regia include (es. ponte/controllo/src/novita.ts).
  */
-export function programmiCambiati(file, usatiDallaRegia) {
+export function programmiCambiati(file, usatiDallaRegia, usatiDallEsterna = null) {
   let regia = false
   let server = false
+  let esterna = false
   for (const f of file) {
     if (PROVA.test(f) || f.endsWith('.md')) continue
     if (
@@ -51,8 +52,43 @@ export function programmiCambiati(file, usatiDallaRegia) {
     )
       regia = true
     if (f.startsWith('ponte/')) server = true
+    // app Radio Esterna: la sua cartella e i file della regia o del ponte che include
+    if (f.startsWith('esterna/') || usatiDallEsterna?.has(f)) esterna = true
   }
-  return { regia, server }
+  // senza l'elenco dei file dell'app (chiamate vecchie) si risponde come prima
+  return usatiDallEsterna ? { regia, server, esterna } : { regia, server }
+}
+
+/** File fuori da esterna/ (regia src/ o ponte/) che l'app Radio Esterna include, direttamente o no. */
+export function fileUsatiDallEsterna(radice) {
+  const usati = new Set()
+  const daGuardare = []
+  const IMPORT = /(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g
+  const elenca = (dir) => {
+    for (const nome of readdirSync(join(radice, dir))) {
+      if (nome === 'node_modules' || nome === 'out' || nome === 'dist') continue
+      const rel = posix.join(dir, nome)
+      if (statSync(join(radice, rel)).isDirectory()) elenca(rel)
+      else if (/\.(ts|tsx|js|mjs)$/.test(nome)) daGuardare.push(rel)
+    }
+  }
+  elenca('esterna')
+  const visti = new Set(daGuardare)
+  while (daGuardare.length) {
+    const f = daGuardare.pop()
+    const testo = readFileSync(join(radice, f), 'utf8')
+    for (const m of testo.matchAll(IMPORT)) {
+      if (!m[1].startsWith('.')) continue
+      let dest = posix.normalize(posix.join(posix.dirname(f), m[1]))
+      // import senza estensione (stile della regia)
+      if (!/\.(ts|tsx|js|mjs)$/.test(dest)) dest = ['.ts', '.tsx', '/index.ts'].map((e) => dest + e).find((x) => existsSync(join(radice, x))) ?? dest
+      if (visti.has(dest) || !existsSync(join(radice, dest))) continue
+      visti.add(dest)
+      daGuardare.push(dest)
+      if (!dest.startsWith('esterna/')) usati.add(dest)
+    }
+  }
+  return usati
 }
 
 /** File di ponte/ che la regia include (direttamente o attraverso altri file di ponte/). */
@@ -85,7 +121,7 @@ export function fileUsatiDallaRegia(radice) {
 
 /** Punti dell'elenco sotto i titoli "Regia" e "Server" di un file di novità (markdown così com'è). */
 export function leggiFrammento(testo) {
-  const out = { regia: [], server: [] }
+  const out = { regia: [], server: [], esterna: [] }
   let sezione = null
   let voce = null
   const chiudi = () => {
@@ -97,7 +133,13 @@ export function leggiFrammento(testo) {
     if (titolo) {
       chiudi()
       const t = titolo[1].trim().toLowerCase()
-      sezione = t.startsWith('regia') ? 'regia' : t.startsWith('server') || t.startsWith('ponte') ? 'server' : null
+      sezione = t.startsWith('regia')
+        ? 'regia'
+        : t.startsWith('server') || t.startsWith('ponte')
+          ? 'server'
+          : t.startsWith('esterna') || t.startsWith('radio esterna')
+            ? 'esterna'
+            : null
       continue
     }
     if (!sezione) continue
@@ -108,28 +150,36 @@ export function leggiFrammento(testo) {
     else if (voce && /^\s+\S/.test(riga)) voce.push(`  ${riga.trim()}`)
   }
   chiudi()
+  // le chiamate vecchie (e le prove) si aspettano solo regia e server quando l'app non c'entra
+  if (!out.esterna.length) delete out.esterna
   return out
 }
 
 /** Testo della release. `cambiati` = programmi cambiati nel codice; `frammenti` = testi dei file di novità. */
 export function componiNote(cambiati, frammenti) {
-  const voci = { regia: [], server: [] }
+  const voci = { regia: [], server: [], esterna: [] }
   for (const f of frammenti) {
     const n = leggiFrammento(f)
     voci.regia.push(...n.regia)
     voci.server.push(...n.server)
+    voci.esterna.push(...(n.esterna ?? []))
   }
   // chi scrive le novità può segnare un programma anche se il codice non cambia (es. solo la guida)
   const regia = cambiati.regia || voci.regia.length > 0
   const server = cambiati.server || voci.server.length > 0
-  const righe = [`<!-- componenti: ${JSON.stringify({ regia, server })} -->`, '']
-  if (regia && server) righe.push('Questa versione aggiorna **la regia e il server**.')
+  const esterna = !!cambiati.esterna || voci.esterna.length > 0
+  const righe = [`<!-- componenti: ${JSON.stringify({ regia, server, esterna })} -->`, '']
+  if (esterna) {
+    const nomi = [regia && 'la regia', server && 'il server', 'l\'app Radio Esterna'].filter(Boolean)
+    righe.push(`Questa versione aggiorna **${nomi.length > 1 ? `${nomi.slice(0, -1).join(', ')} e ${nomi.at(-1)}` : nomi[0]}**.`)
+  } else if (regia && server) righe.push('Questa versione aggiorna **la regia e il server**.')
   else if (regia) righe.push('Questa versione aggiorna **solo la regia**: il server non ha bisogno di aggiornarsi.')
   else if (server) righe.push('Questa versione aggiorna **solo il server**: la regia non ha bisogno di aggiornarsi.')
   else righe.push('Questa versione non cambia i programmi (solo prove o documentazione): non serve aggiornare niente.')
   for (const [chi, titolo, attivo] of [
     ['regia', 'Regia', regia],
-    ['server', 'Server', server]
+    ['server', 'Server', server],
+    ['esterna', 'Radio Esterna', esterna]
   ]) {
     if (!attivo) continue
     righe.push('', `### ${titolo}`, '')
@@ -143,12 +193,12 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   if (!SEMPLICE.test(versione ?? '')) throw new Error('Uso: node scripts/note-release.mjs <versione>')
   const git = (...a) => execFileSync('git', a, { encoding: 'utf8' }).split('\n').filter(Boolean)
   const prec = tagPrecedente(versione, git('tag', '-l', 'v*'))
-  const cambiati = prec ? git('diff', '--name-only', prec, 'HEAD') : ['src/', 'ponte/']
+  const cambiati = prec ? git('diff', '--name-only', prec, 'HEAD') : ['src/', 'ponte/', 'esterna/']
   const nuovi = (prec ? git('diff', '--name-only', '--diff-filter=A', prec, 'HEAD', '--', 'novita') : git('ls-files', 'novita'))
     .filter((f) => f.endsWith('.md') && !/LEGGIMI\.md$/i.test(f))
     .sort()
   const testo = componiNote(
-    programmiCambiati(cambiati, fileUsatiDallaRegia('.')),
+    programmiCambiati(cambiati, fileUsatiDallaRegia('.'), fileUsatiDallEsterna('.')),
     nuovi.map((f) => readFileSync(f, 'utf8'))
   )
   process.stderr.write(`release precedente: ${prec ?? 'nessuna'}; file di novità: ${nuovi.join(', ') || 'nessuno'}\n`)

@@ -77,7 +77,8 @@ export function ffmpegArgs(url: string): string[] {
     '-f', 'webm', '-i', 'pipe:0',
     // l'Opus del browser passa così com'è, senza ricodifica
     '-map', '0:a:0', '-c:a', 'copy',
-    '-content_type', 'audio/ogg', '-f', 'ogg', url
+    // metodo SOURCE delle vecchie versioni di Icecast: è quello che l'ingresso di Liquidsoap accetta da sempre
+    '-content_type', 'audio/ogg', '-legacy_icecast', '1', '-f', 'ogg', url
   ]
 }
 

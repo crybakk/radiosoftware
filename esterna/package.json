@@ -1,0 +1,81 @@
+{
+  "name": "radio-esterna",
+  "productName": "Radio Esterna",
+  "version": "0.1.0",
+  "description": "App per le dirette esterne della radio: microfoni, audio del computer, in onda e fuori onda",
+  "main": "out/main/index.js",
+  "author": "cristian",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dist:win": "electron-vite build && electron-builder --win --x64 --publish never",
+    "dist:mac": "electron-vite build && electron-builder --mac --universal --publish never"
+  },
+  "build": {
+    "appId": "it.radioregia.esterna",
+    "productName": "Radio Esterna",
+    "directories": {
+      "output": "dist",
+      "buildResources": "risorse"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "RadioEsterna-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.music",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Radio Esterna usa il microfono per mandarlo in onda.",
+        "NSAudioCaptureUsageDescription": "Radio Esterna può mandare in onda l'audio del computer, se lo scegli nel mixer."
+      }
+    },
+    "dmg": {
+      "artifactName": "RadioEsterna-${version}-mac.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/crybakk/radiosoftware/releases/latest/download",
+        "channel": "esterna"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11",
+    "ffmpeg-static": "^5.3.0",
+    "ws": "^8.23.0"
+  }
+}

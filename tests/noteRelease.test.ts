@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 // @ts-expect-error script JavaScript senza tipi
-import { componiNote, fileUsatiDallaRegia, leggiFrammento, programmiCambiati, tagPrecedente } from '../scripts/note-release.mjs'
+import { componiNote, fileUsatiDallEsterna, fileUsatiDallaRegia, leggiFrammento, programmiCambiati, tagPrecedente } from '../scripts/note-release.mjs'
 import { leggiRelease } from '../ponte/controllo/src/novita.ts'
 
 describe('note delle release', () => {
@@ -42,5 +42,30 @@ describe('note delle release', () => {
       novitaServer: ['Guida del pannello rifatta']
     })
     expect(componiNote({ regia: false, server: false }, [])).toContain('non serve aggiornare niente')
+  })
+})
+
+describe('note delle release con Radio Esterna', () => {
+  it("capisce quando cambia l'app Radio Esterna", () => {
+    const regia = new Set<string>()
+    const esterna = new Set(['ponte/controllo/src/novita.ts', 'src/core/registrazioneProgrammi.ts'])
+    expect(programmiCambiati(['esterna/src/main/index.ts'], regia, esterna)).toEqual({ regia: false, server: false, esterna: true })
+    expect(programmiCambiati(['src/core/registrazioneProgrammi.ts'], regia, esterna)).toEqual({ regia: true, server: false, esterna: true })
+    expect(programmiCambiati(['ponte/controllo/src/server.ts'], regia, esterna)).toEqual({ regia: false, server: true, esterna: false })
+    expect(programmiCambiati(['esterna/src/main/x.test.ts', 'esterna/LEGGIMI.md'], regia, esterna)).toEqual({ regia: false, server: false, esterna: false })
+  })
+
+  it("trova i file della regia e del ponte che l'app include", () => {
+    const usati = fileUsatiDallEsterna('.')
+    expect(usati.has('ponte/controllo/src/novita.ts')).toBe(true)
+    expect([...usati].some((f) => f.startsWith('esterna/'))).toBe(false)
+  })
+
+  it('scrive la sezione Radio Esterna', () => {
+    const testo = componiNote({ regia: false, server: true, esterna: false }, ['## Server\n- Ingresso nuovo\n\n## Radio Esterna\n- Prima versione\n'])
+    expect(testo).toContain('"esterna":true')
+    expect(testo).toContain("aggiorna **il server e l'app Radio Esterna**")
+    expect(testo).toContain('### Radio Esterna\n\n- Prima versione')
+    expect(leggiFrammento('## Radio Esterna\n- Uno\n')).toEqual({ regia: [], server: [], esterna: ['- Uno'] })
   })
 })
