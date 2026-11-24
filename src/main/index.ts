@@ -208,7 +208,7 @@ if (primary) app.whenReady().then(async () => {
       // gli ultimi messaggi del motore finiscono nel registro se il processo cade
       let tail = ''
       const keep = (d: Buffer): void => {
-        tail = (tail + d.toString('utf8')).slice(-4000)
+        tail = (tail + d.toString('utf8')).slice(-8000)
       }
       child.stdout?.on('data', keep)
       child.stderr?.on('data', keep)
