@@ -91,6 +91,8 @@ const api: RadioApi = {
   aiGenerate: call('aiGenerate'),
   aiCancelGenerate: call('aiCancelGenerate'),
   aiPreview: call('aiPreview'),
+  aiExport: call('aiExport'),
+  aiImport: call('aiImport'),
   aiApply: call('aiApply'),
   onAiStatus: (cb: (s: AiStatus) => void) => {
     const listener = (_e: unknown, s: AiStatus): void => cb(s)

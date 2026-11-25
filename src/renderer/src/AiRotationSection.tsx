@@ -48,6 +48,28 @@ export function AiRotationSection({
     }
   }
 
+  /** Senza l'AI della regia: file per Claude in chat, poi si importa la sua risposta. */
+  const exportClaude = async (): Promise<void> => {
+    setErr(null)
+    setMsg(null)
+    try {
+      const file = await api.aiExport(text)
+      if (file) setMsg(`File salvato: ${file}. Mandalo a Claude in chat; poi salva la sua risposta in un file e premi "Importa piano".`)
+    } catch (e) {
+      setErr(clean(e))
+    }
+  }
+  const importClaude = async (): Promise<void> => {
+    setErr(null)
+    setMsg(null)
+    try {
+      const r = await api.aiImport()
+      if (r) setRes(r)
+    } catch (e) {
+      setErr(clean(e))
+    }
+  }
+
   /** Dopo una modifica a mano: ricontrolla e ricalcola i brani. */
   const update = async (plan: AiPlan): Promise<void> => {
     setRes((r) => (r ? { ...r, plan } : r))
@@ -159,6 +181,15 @@ export function AiRotationSection({
                 </button>
               </>
             )}
+          </div>
+          <div className="row">
+            <span className="hint">Oppure fallo preparare a Claude in chat:</span>
+            <button className="small" disabled={st.busy} onClick={() => void exportClaude()}>
+              Esporta per Claude
+            </button>
+            <button className="small" disabled={st.busy} onClick={() => void importClaude()}>
+              Importa piano
+            </button>
           </div>
           {err && <div className="banner error inline-banner">{err}</div>}
           {msg && <div className="banner ok inline-banner">{msg}</div>}
