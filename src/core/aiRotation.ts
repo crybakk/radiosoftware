@@ -151,6 +151,93 @@ export function buildPrompt(description: string, s: LibrarySummary): { system: s
   return { system, user: `Palinsesto:\n${description.trim()}` }
 }
 
+/** Generi messi nel file per Claude: molti più che per il modello piccolo, ma non migliaia di etichette rare. */
+const MAX_EXPORT_GENRES = 500
+
+/**
+ * File da dare a Claude (o a un'altra AI in chat) quando l'AI della regia non può girare: palinsesto, regole,
+ * generi della libreria e formato della risposta. La risposta si importa con parseImportedPlan().
+ */
+export function exportForClaude(description: string, s: LibrarySummary, now = new Date()): string {
+  const { system } = buildPrompt('', { ...s, genres: [] })
+  const regole = system.split('\n').filter((l) => l.startsWith('- ')).join('\n')
+  const genres = s.genres.slice(0, MAX_EXPORT_GENRES)
+  const esempio = {
+    slots: [
+      {
+        name: 'Mattina pop',
+        days: [1, 2, 3, 4, 5],
+        start: '07:00',
+        end: '10:00',
+        genres: genres.slice(0, 2).map((g) => g.name),
+        yearFrom: null,
+        yearTo: null,
+        artistSeparationMinutes: null,
+        jingleEvery: null,
+        energyMin: 5,
+        energyMax: 8
+      }
+    ]
+  }
+  return [
+    '# Rotazioni della radio: dati per preparare il piano',
+    '',
+    `Esportato dalla regia il ${now.toLocaleDateString('it-IT')}.`,
+    '',
+    '## Cosa fare',
+    '',
+    'Trasforma il palinsesto qui sotto in fasce orarie con regole di rotazione musicale, seguendo le regole e',
+    'usando SOLO i generi dell\'elenco della libreria. Rispondi con un unico blocco ```json con il formato indicato:',
+    'chi gestisce la radio lo importerà nella regia ("Importa piano").',
+    '',
+    '## Palinsesto',
+    '',
+    description.trim() || '(scrivi qui il palinsesto)',
+    '',
+    '## Regole',
+    '',
+    regole,
+    '',
+    '## Formato della risposta',
+    '',
+    'Un oggetto con "slots" (massimo 30 fasce); ogni fascia ha tutti questi campi:',
+    '',
+    '```json',
+    JSON.stringify(esempio, null, 2),
+    '```',
+    '',
+    '## Libreria',
+    '',
+    `Brani di musica: ${s.music}. Anni dei brani: ${s.yearMin != null ? `dal ${s.yearMin} al ${s.yearMax}` : 'sconosciuti'}.`,
+    '',
+    `Generi con il numero di brani (${genres.length}${s.genres.length > genres.length ? ` più frequenti su ${s.genres.length}` : ''}):`,
+    '',
+    ...genres.map((g) => `- ${g.name} (${g.count})`),
+    ''
+  ].join('\n')
+}
+
+/**
+ * Il piano dalla risposta di Claude: JSON puro, oppure un testo con dentro un blocco ```json o un oggetto {…}.
+ * Il contenuto va poi ricontrollato con cleanPlan().
+ */
+export function parseImportedPlan(text: string): unknown {
+  const tries: string[] = [text.trim()]
+  for (const m of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) tries.push(m[1].trim())
+  const a = text.indexOf('{')
+  const b = text.lastIndexOf('}')
+  if (a >= 0 && b > a) tries.push(text.slice(a, b + 1))
+  for (const t of tries) {
+    try {
+      const v = JSON.parse(t) as unknown
+      if (v && typeof v === 'object' && Array.isArray((v as { slots?: unknown }).slots)) return v
+    } catch {
+      // prova il prossimo
+    }
+  }
+  throw new Error('nel file non c\'è un piano valido: serve il blocco JSON con "slots" della risposta di Claude')
+}
+
 function minutes(t: string): number {
   return Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
 }

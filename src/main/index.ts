@@ -23,7 +23,7 @@ import { llamaEngine } from './llm'
 import { processEngine, type ChildLike } from './llmProcess'
 import { registro } from './registro'
 import { AiTitoliService } from './aiTitoli'
-import { AI_LABEL, cleanPlan, planEvents, summarize, type AiPlan } from '../core/aiRotation'
+import { AI_LABEL, cleanPlan, exportForClaude, parseImportedPlan, planEvents, summarize, type AiPlan } from '../core/aiRotation'
 import { RadioDb, type TrackEdit, type TrackSearch } from '../core/db'
 import { RotationService } from '../core/rotationService'
 import type { ScheduledEvent, Settings, Track, TrackKind } from '../core/types'
@@ -489,6 +489,31 @@ if (primary) app.whenReady().then(async () => {
   handle('aiPreview', (plan: AiPlan) => {
     const music = db.rotationCandidates('music')
     const r = cleanPlan(plan, summarize(music))
+    return { ...r, ...previewCounts(r.plan, music), seconds: 0 }
+  })
+  /** File per far preparare il piano a Claude in chat (quando l'AI della regia non può girare). */
+  handle('aiExport', async (description: string) => {
+    db.saveSettings({ aiDescription: description })
+    const res = await dialog.showSaveDialog(win!, {
+      title: 'Esporta i dati per Claude',
+      defaultPath: `rotazioni-per-claude_${localDay(new Date())}.md`,
+      filters: [{ name: 'Testo Markdown', extensions: ['md'] }]
+    })
+    if (res.canceled || !res.filePath) return null
+    writeFileSync(res.filePath, exportForClaude(description, summarize(db.rotationCandidates('music'))), 'utf8')
+    return res.filePath
+  })
+  /** Il piano preparato da Claude (file .json, .md o .txt con il blocco JSON) → stessa anteprima dell'AI. */
+  handle('aiImport', async () => {
+    const res = await dialog.showOpenDialog(win!, {
+      title: 'Importa il piano di Claude',
+      properties: ['openFile'],
+      filters: [{ name: 'Piano', extensions: ['json', 'md', 'txt'] }]
+    })
+    const file = res.canceled ? null : res.filePaths[0]
+    if (!file) return null
+    const music = db.rotationCandidates('music')
+    const r = cleanPlan(parseImportedPlan(readFileSync(file, 'utf8').slice(0, 2_000_000)), summarize(music))
     return { ...r, ...previewCounts(r.plan, music), seconds: 0 }
   })
   /** Crea gli eventi del piano; replace = toglie prima quelli creati dall'AI le volte precedenti. */
