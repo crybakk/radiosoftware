@@ -6,8 +6,7 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 24/11/2026, nuova app **Radio Esterna** per Windows e Mac per le dirette da fuori, con
-mixer, IN ONDA e FUORI ONDA, titolo del programma e registrazione.
+**Ultimo aggiornamento:** 25/11/2026, **Mix DJ** più preciso: i brani restano a tempo battuta per battuta.
 
 ## Indice
 
@@ -114,6 +113,11 @@ Invece della solita dissolvenza, il **Mix DJ** passa al brano successivo come un
 - entra senza bassi; a metà mix i bassi passano dal brano che esce a quello che entra, poi il primo sfuma;
 - se il finale del brano che esce è troppo corto, ripete in **loop** le sue ultime 4 battute piene finché il mix
   non è finito.
+
+I due brani restano agganciati **battuta per battuta**: anche i brani suonati senza metronomo, che accelerano o
+rallentano un poco, restano a tempo per tutto il mix. Qualche secondo prima del mix la regia controlla dove si trova
+davvero il brano in onda (gli MP3, soprattutto quelli a bitrate variabile, possono sbagliare di qualche centesimo)
+e fa partire quello nuovo dal suo inizio, senza volume, così arriva sul battito giusto.
 
 Oltre al mix lungo, il Mix DJ conosce gli altri **passaggi** di un DJ:
 
@@ -529,7 +533,9 @@ Dopo le impronte audio parte l'**analisi per il Mix DJ** (riga "Analisi per il M
 trova i **BPM** e i battiti, il primo tempo della battuta, la **tonalità**, l'**energia** (da 1 a 10), dove finisce
 l'**intro** e dove inizia l'**outro**. Ci vogliono alcuni secondi a brano: con 20.000 brani circa un giorno, in
 sottofondo e solo mentre la regia è aperta (riprende da dove era rimasta). Non esiste un archivio online con questi
-dati, per questo li calcola la regia. I risultati si vedono in fondo alla scheda del brano. Se un brano non ha un
+dati, per questo li calcola la regia. I risultati si vedono in fondo alla scheda del brano. Dopo l'aggiornamento
+del 25/11/2026 la regia rifà questa analisi su tutti i brani, per trovare l'inizio di ogni battuta: finché un brano
+non è rianalizzato il Mix DJ usa i dati di prima. Se un brano non ha un
 ritmo regolare (classica, live, tempi liberi) la scheda lo dice: in quel caso il cambio sarà la dissolvenza normale.
 
 Sotto c'è l'elenco dei brani. **Scheda** apre la scheda del brano, dove puoi:
@@ -1366,3 +1372,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 24/11/2026 | Titolo quando si parla: senza brani in onda va il nome del programma con il conduttore (o il nome della radio) invece dell'ultimo brano; testo in più dalla regia o dal pannello; nelle esterne vale il titolo dell'app se lo manda |
 | 24/11/2026 | App **Radio Esterna** per Windows e Mac: installazione, accesso con l'utente del pannello, fuori onda e IN ONDA, titolo del programma, mixer con microfoni e audio del computer, cuffia e ritorno, registrazione della puntata, scheda Regia; riquadro dell'esterna in regia e nel pannello |
 | 24/11/2026 | Scheda Programmi in regia: crea, modifica ed elimina i programmi del server e la loro copertina |
+| 25/11/2026 | Mix DJ più preciso: brani agganciati battuta per battuta e posizione vera del brano in onda; nuova analisi per il Mix DJ in sottofondo |

@@ -381,7 +381,10 @@ if (primary) app.whenReady().then(async () => {
     const planned = upcoming
       .filter((u) => tracks.has(u.trackId))
       .map((u) => ({ track: tracks.get(u.trackId)!, at: new Date(u.at) }))
-    return rotation.fill(planned, count)
+    // i candidati della rotazione non hanno gli "uno" delle battute (servono al Mix DJ): si rileggono i brani scelti
+    const picked = rotation.fill(planned, count)
+    const full = new Map(db.getTracks(picked.filter((t) => t.id > 0).map((t) => t.id)).map((t) => [t.id, t]))
+    return picked.map((t) => full.get(t.id) ?? t)
   })
   handle('logStart', (track: Track, at: string) => {
     // per i brani della libreria usiamo i dati aggiornati del database (autori, codici SIAE)

@@ -22,7 +22,16 @@ export interface DjAnalysis {
   introEnd: number
   /** Secondi: dove inizia l'outro (uguale alla fine se il brano finisce pieno). */
   outroStart: number
+  /**
+   * Secondi di ogni "uno" di battuta, seguiti battuta per battuta: i brani suonati senza metronomo accelerano o
+   * rallentano un poco e una griglia fissa, giusta a metà brano, sbaglia di decine di millesimi all'inizio e alla fine.
+   * Assente nelle analisi fatte prima di questa versione (allora vale la griglia fissa).
+   */
+  downbeats?: number[]
 }
+
+/** Versione dell'analisi DJ: i brani analizzati con una versione precedente vengono rianalizzati in background. */
+export const DJ_ANALYSIS_VERSION = 2
 
 /** Sotto questa affidabilità della griglia il brano non si mixa sul battito. */
 export const MIN_GRID_CONFIDENCE = 0.6
@@ -84,6 +93,137 @@ export function fitGrid(ticks: number[], from: number, to: number): Grid {
   return { bpm: round(60 / period, 2), firstBeat: round(firstBeat, 3), confidence: round(ok / t.length, 3) }
 }
 
+/** Battiti seguiti uno a uno: i tempi (secondi) e quanti dei battiti trovati da Essentia ci cadono sopra. */
+export interface BeatTrack {
+  beats: number[]
+  confidence: number
+}
+
+/** Mezza larghezza (in battiti) della finestra con cui si stima il tempo locale. */
+const LOCAL_BEATS = 12
+/** Distanza massima (secondi) di un battito trovato dalla griglia per contarlo "sul battito". */
+const ON_BEAT = 0.035
+/** Secondi iniziali in cui i battiti trovati da Essentia non sono affidabili. */
+const WARMUP_SECONDS = 3
+
+/**
+ * Segue i battiti partendo dalla griglia fissa: a ogni battito prevede il successivo, lo aggancia al battito trovato
+ * più vicino e adatta piano piano il passo (come l'orecchio di un DJ). Poi ogni battito viene rimesso sulla retta che
+ * passa meglio per i battiti vicini (±12): così il tempo locale segue le accelerazioni, ma un battito trovato male
+ * non sposta la griglia.
+ */
+export function trackBeats(ticks: number[], grid: Grid, from: number, to: number): BeatTrack {
+  // i primi battiti di Essentia sono di "riscaldamento" e spesso sbagliati di decine di millesimi
+  const t = ticks.filter((x) => x >= Math.max(from - 0.1, WARMUP_SECONDS) && x <= to + 0.1).sort((a, b) => a - b)
+  if (!(grid.bpm > 0) || t.length < 16) return { beats: [], confidence: 0 }
+  const p0 = 60 / grid.bpm
+  const nearest = (x: number): number | null => {
+    let lo = 0
+    let hi = t.length - 1
+    while (lo < hi) {
+      const m = (lo + hi) >> 1
+      if (t[m] < x) lo = m + 1
+      else hi = m
+    }
+    let best = t[lo]
+    if (lo > 0 && Math.abs(t[lo - 1] - x) < Math.abs(best - x)) best = t[lo - 1]
+    return best
+  }
+  // 1. aggancio battito per battito, dal centro del brano (dove la griglia fissa è più giusta) verso i due capi
+  const mid = t[t.length >> 1]
+  const startBeat = grid.firstBeat + Math.round((mid - grid.firstBeat) / p0) * p0
+  const walk = (dir: 1 | -1): { b: number; hit: number | null }[] => {
+    const out: { b: number; hit: number | null }[] = []
+    let p = p0
+    let b = startBeat
+    for (let i = 0; i < 4000; i++) {
+      if (dir > 0 ? b > to + 1e-6 : b < from - 1e-6) break
+      const x = nearest(b)
+      let hit: number | null = null
+      if (x !== null && Math.abs(x - b) <= 0.15 * p) {
+        const e = x - b
+        hit = x
+        b += 0.4 * e
+        p = Math.min(p0 * 1.08, Math.max(p0 / 1.08, p + 0.05 * e * dir))
+      }
+      out.push({ b, hit })
+      b += dir * p
+    }
+    return out
+  }
+  const fwd = walk(1)
+  const back = walk(-1).slice(1).reverse()
+  const all = [...back, ...fwd]
+  const pll = all.map((x) => x.b)
+  const matched: { i: number; t: number }[] = []
+  all.forEach((x, i) => {
+    if (x.hit !== null) matched.push({ i, t: x.hit })
+  })
+  if (matched.length < 16) return { beats: [], confidence: 0 }
+  // 2. retta locale (pesata, senza i battiti trovati troppo lontani) per ogni battito
+  const beats = pll.map((guess, i) => {
+    let lo = 0
+    let hi = matched.length
+    while (lo < hi) {
+      const m = (lo + hi) >> 1
+      if (matched[m].i < i - LOCAL_BEATS) lo = m + 1
+      else hi = m
+    }
+    const near: { i: number; t: number }[] = []
+    for (let k = lo; k < matched.length && matched[k].i <= i + LOCAL_BEATS; k++) near.push(matched[k])
+    if (near.length < 6) return guess
+    let fit = lineFit(near, i, null)
+    for (let pass = 0; fit && pass < 3; pass++) fit = lineFit(near, i, fit) ?? fit
+    return fit ? fit.at(i) : guess
+  })
+  // affidabilità: battiti trovati che cadono sulla griglia seguita
+  const tol = Math.min(ON_BEAT, p0 * 0.08)
+  let ok = 0
+  let n = 0
+  let k = 0
+  for (const x of t) {
+    if (x < from || x > to) continue
+    n++
+    while (k + 1 < beats.length && beats[k + 1] <= x) k++
+    const d = Math.min(Math.abs(x - beats[k]), k + 1 < beats.length ? Math.abs(beats[k + 1] - x) : Infinity)
+    if (d <= tol) ok++
+  }
+  const first = beats.findIndex((x) => x >= from - 1e-6)
+  return { beats: beats.slice(Math.max(0, first)).filter((x) => x <= to).map((x) => round(x, 4)), confidence: n ? round(ok / n, 3) : 0 }
+}
+
+/** Retta tempo = a + b * indice sui battiti vicini, pesati per distanza; con `prev` scarta quelli lontani dalla retta. */
+function lineFit(
+  pts: { i: number; t: number }[],
+  center: number,
+  prev: { at: (i: number) => number } | null
+): { at: (i: number) => number } | null {
+  let sw = 0
+  let si = 0
+  let st = 0
+  for (const q of pts) {
+    if (prev && Math.abs(q.t - prev.at(q.i)) > ON_BEAT) continue
+    const w = 1 - Math.abs(q.i - center) / (LOCAL_BEATS + 1)
+    sw += w
+    si += w * q.i
+    st += w * q.t
+  }
+  if (sw <= 0) return null
+  const mi = si / sw
+  const mt = st / sw
+  let num = 0
+  let den = 0
+  for (const q of pts) {
+    if (prev && Math.abs(q.t - prev.at(q.i)) > ON_BEAT) continue
+    const w = 1 - Math.abs(q.i - center) / (LOCAL_BEATS + 1)
+    num += w * (q.i - mi) * (q.t - mt)
+    den += w * (q.i - mi) ** 2
+  }
+  if (!(den > 0) || !(num > 0)) return null
+  const slope = num / den
+  return { at: (i: number) => mt + (i - mi) * slope }
+}
+
 /**
  * Sceglie quale dei 4 battiti è l'"uno" della battuta: è dove cambiano gli accordi
  * (novità armonica) e, a parità, dove i bassi sono più forti.
@@ -122,7 +262,9 @@ export function findSections(
   barEnergy: number[],
   firstDownbeat: number,
   barSeconds: number,
-  end: number
+  end: number,
+  /** Inizio di ogni battuta seguita (se c'è vale questa al posto della griglia fissa). */
+  barTimes?: number[]
 ): { introEnd: number; outroStart: number } {
   const bars = barEnergy.length
   if (!bars || !(barSeconds > 0)) return { introEnd: firstDownbeat, outroStart: end }
@@ -149,8 +291,9 @@ export function findSections(
   }
   introBar = Math.min(snap(introBar), bars)
   outroBar = Math.max(introBar, Math.min(snap(outroBar), bars))
-  let introEnd = firstDownbeat + introBar * barSeconds
-  let outroStart = firstDownbeat + outroBar * barSeconds
+  const at = (i: number): number => barTimes?.[i] ?? firstDownbeat + i * barSeconds
+  let introEnd = at(introBar)
+  let outroStart = at(outroBar)
   if (introEnd - firstDownbeat > MAX_SECTION_SECONDS) introEnd = firstDownbeat
   if (end - outroStart > MAX_SECTION_SECONDS) outroStart = end
   return { introEnd: round(Math.min(introEnd, end), 3), outroStart: round(Math.min(outroStart, end), 3) }
@@ -245,21 +388,31 @@ export function analyzeDjSignal(e: EssentiaLike, signal: Float32Array, sampleRat
       grid.firstBeat = round(shifted - 2 * half >= start ? shifted - 2 * half : shifted, 3)
     }
   }
-  const usable = grid.bpm > 0 && grid.confidence >= MIN_GRID_CONFIDENCE
+  // battiti seguiti uno a uno: la griglia fissa va bene solo per i brani fatti con il metronomo
+  const tracked = trackBeats(ticks, grid, start, end)
+  const follow = tracked.beats.length >= 16 && tracked.confidence >= grid.confidence - 0.05
+  const confidence = follow ? tracked.confidence : grid.confidence
+  const usable = grid.bpm > 0 && confidence >= MIN_GRID_CONFIDENCE
   const beatSec = grid.bpm > 0 ? 60 / grid.bpm : 0.5
-  const beatTimes = sampleBeats(grid.firstBeat, beatSec, end)
+  const beatTimes = follow ? tracked.beats.filter((t) => t < end) : sampleBeats(grid.firstBeat, beatSec, end)
 
   // per ogni battito: novità armonica (cambio di accordo) e forza dei bassi
-  const chroma = beatChroma(e, signal, sampleRate, beatTimes, beatSec)
+  const chroma = beatChroma(e, signal, sampleRate, beatTimes)
   const novelty = chroma.map((c, i) => (i === 0 ? 0 : 1 - cosine(c, chroma[i - 1])))
   const bass = beatBass(signal, sampleRate, beatTimes, beatSec)
   const phase = usable ? chooseDownbeat(novelty, bass) : 0
   const firstDownbeat = beatTimes[phase] ?? start
+  const downbeats: number[] = []
+  for (let i = phase; i < beatTimes.length; i += 4) downbeats.push(round(beatTimes[i], 3))
 
   const barSec = beatSec * 4
   const barEnergy: number[] = []
-  for (let t = firstDownbeat; t + barSec <= end + 0.01; t += barSec) barEnergy.push(rms(signal, sampleRate, t, t + barSec))
-  const sections = findSections(barEnergy, firstDownbeat, barSec, end)
+  if (follow) {
+    for (let i = 0; i + 1 < downbeats.length && downbeats[i + 1] <= end + 0.01; i++) barEnergy.push(rms(signal, sampleRate, downbeats[i], downbeats[i + 1]))
+  } else {
+    for (let t = firstDownbeat; t + barSec <= end + 0.01; t += barSec) barEnergy.push(rms(signal, sampleRate, t, t + barSec))
+  }
+  const sections = findSections(barEnergy, firstDownbeat, barSec, end, follow ? downbeats : undefined)
   const typical = percentile(barEnergy, 0.6)
   const fullRatio = barEnergy.length ? barEnergy.filter((x) => x >= typical * FULL_ENERGY).length / barEnergy.length : 0
 
@@ -267,23 +420,25 @@ export function analyzeDjSignal(e: EssentiaLike, signal: Float32Array, sampleRat
   return {
     bpm: usable ? grid.bpm : 0,
     firstDownbeat: round(firstDownbeat, 3),
-    gridConfidence: grid.confidence,
+    gridConfidence: confidence,
     key: key.strength > 0.3 ? camelot(key.key, key.scale) : '',
     energy: energyScore(dance, grid.bpm, fullRatio),
     introEnd: usable ? sections.introEnd : round(start, 3),
-    outroStart: usable ? sections.outroStart : round(end, 3)
+    outroStart: usable ? sections.outroStart : round(end, 3),
+    ...(usable && follow ? { downbeats } : {})
   }
 }
 
-function beatChroma(e: EssentiaLike, signal: Float32Array, sr: number, beats: number[], beatSec: number): number[][] {
+function beatChroma(e: EssentiaLike, signal: Float32Array, sr: number, beats: number[]): number[][] {
   const out = beats.map(() => new Array<number>(12).fill(0))
   if (!beats.length) return out
+  let b = 0
   // fotogrammi tagliati qui: il FrameGenerator di essentia.js salta i tratti silenziosi e sfasa i tempi
   for (let start = Math.max(0, Math.floor(beats[0] * sr)); start + CHROMA_FRAME <= signal.length; start += CHROMA_HOP) {
     const t = (start + CHROMA_FRAME / 2) / sr
-    const b = Math.floor((t - beats[0]) / beatSec)
-    if (b < 0) continue
-    if (b >= beats.length) break
+    if (t < beats[0]) continue
+    while (b + 1 < beats.length && beats[b + 1] <= t) b++
+    if (b === beats.length - 1 && t > beats[b] + (beats.length > 1 ? beats[b] - beats[b - 1] : 0.5)) break
     const frame = e.arrayToVector(signal.subarray(start, start + CHROMA_FRAME))
     const w = e.Windowing(frame, true, CHROMA_FRAME, 'blackmanharris62').frame
     const s = e.Spectrum(w, CHROMA_FRAME).spectrum

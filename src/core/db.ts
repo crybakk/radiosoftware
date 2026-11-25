@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import type { DjAnalysis } from './djAnalysis'
+import { DJ_ANALYSIS_VERSION, type DjAnalysis } from './djAnalysis'
 import { resolve } from 'node:path'
 import { chiaveDoppione, copiaDaTenere, motivoNonRadiofonico } from './pulizia'
 import { SECONDI_LIVE } from './liveAudio'
@@ -148,6 +148,15 @@ function rowToMbTrack(r: Row): MbTrack {
 }
 
 function rowToTrack(r: Row): Track {
+  return rowToTrackWith(r, true)
+}
+
+/** Senza gli "uno" delle battute: per le liste lunghe, come i candidati della rotazione (pesano). */
+function rowToTrackLight(r: Row): Track {
+  return rowToTrackWith(r, false)
+}
+
+function rowToTrackWith(r: Row, beats: boolean): Track {
   return {
     id: Number(r.id),
     path: String(r.path),
@@ -176,11 +185,11 @@ function rowToTrack(r: Row): Track {
     enabled: Number(r.enabled) === 1,
     analyzedAt: r.analyzed_at == null ? null : String(r.analyzed_at),
     addedAt: String(r.added_at),
-    dj: r.dj_at == null ? null : rowToDj(r)
+    dj: r.dj_at == null ? null : rowToDj(r, beats)
   }
 }
 
-function rowToDj(r: Row): DjAnalysis {
+function rowToDj(r: Row, beats: boolean): DjAnalysis {
   return {
     bpm: Number(r.bpm ?? 0),
     firstDownbeat: Number(r.dj_downbeat ?? 0),
@@ -188,7 +197,18 @@ function rowToDj(r: Row): DjAnalysis {
     key: String(r.music_key ?? ''),
     energy: Number(r.energy ?? 0),
     introEnd: Number(r.intro_end ?? 0),
-    outroStart: Number(r.outro_start ?? 0)
+    outroStart: Number(r.outro_start ?? 0),
+    ...(beats ? parseDownbeats(r.dj_beats) : {})
+  }
+}
+
+function parseDownbeats(v: unknown): { downbeats?: number[] } {
+  if (typeof v !== 'string' || !v) return {}
+  try {
+    const a = JSON.parse(v) as unknown
+    return Array.isArray(a) && a.length >= 2 && a.every((x) => typeof x === 'number') ? { downbeats: a as number[] } : {}
+  } catch {
+    return {}
   }
 }
 
@@ -387,7 +407,10 @@ export class RadioDb {
       ['energy', 'INTEGER NOT NULL DEFAULT 0'],
       ['intro_end', 'REAL NOT NULL DEFAULT 0'],
       ['outro_start', 'REAL NOT NULL DEFAULT 0'],
-      ['dj_at', 'TEXT']
+      ['dj_at', 'TEXT'],
+      // "uno" di ogni battuta (JSON) e versione dell'analisi: le analisi vecchie si rifanno in background
+      ['dj_beats', "TEXT NOT NULL DEFAULT ''"],
+      ['dj_ver', 'INTEGER NOT NULL DEFAULT 0']
     ] as const) {
       if (!cols.includes(col)) this.db.exec(`ALTER TABLE tracks ADD COLUMN ${col} ${def}`)
     }
@@ -654,29 +677,42 @@ export class RadioDb {
     return (
       this.db
         .prepare(
-          `SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()} AND analyzed_at IS NOT NULL AND dj_at IS NULL ORDER BY id LIMIT ?`
+          `SELECT * FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()} AND analyzed_at IS NOT NULL
+             AND (dj_at IS NULL OR dj_ver < ?)
+           ORDER BY (dj_at IS NOT NULL), (bpm = 0), id LIMIT ?`
         )
-        .all(limit) as Row[]
+        .all(DJ_ANALYSIS_VERSION, limit) as Row[]
     ).map(rowToTrack)
   }
 
   djStats(): { done: number; total: number } {
     const r = this.db
       .prepare(
-        `SELECT COUNT(*) AS total, SUM(CASE WHEN dj_at IS NOT NULL THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()}`
+        `SELECT COUNT(*) AS total, SUM(CASE WHEN dj_at IS NOT NULL AND dj_ver >= ? THEN 1 ELSE 0 END) AS done FROM tracks WHERE kind = 'music' AND enabled = 1 AND ${this.short()}`
       )
-      .get() as Row
+      .get(DJ_ANALYSIS_VERSION) as Row
     return { done: Number(r.done ?? 0), total: Number(r.total ?? 0) }
   }
 
   /** null = file non analizzabile: segnato come fatto (senza griglia) per non riprovarlo finché il file non cambia. */
   saveDj(id: number, a: DjAnalysis | null): void {
-    const d = a ?? { bpm: 0, firstDownbeat: 0, gridConfidence: 0, key: '', energy: 0, introEnd: 0, outroStart: 0 }
+    const d: DjAnalysis = a ?? { bpm: 0, firstDownbeat: 0, gridConfidence: 0, key: '', energy: 0, introEnd: 0, outroStart: 0 }
     this.db
       .prepare(
-        `UPDATE tracks SET bpm=?, dj_downbeat=?, dj_grid=?, music_key=?, energy=?, intro_end=?, outro_start=?, dj_at=datetime('now') WHERE id=?`
+        `UPDATE tracks SET bpm=?, dj_downbeat=?, dj_grid=?, music_key=?, energy=?, intro_end=?, outro_start=?, dj_beats=?, dj_ver=?, dj_at=datetime('now') WHERE id=?`
       )
-      .run(d.bpm, d.firstDownbeat, d.gridConfidence, d.key, d.energy, d.introEnd, d.outroStart, id)
+      .run(
+        d.bpm,
+        d.firstDownbeat,
+        d.gridConfidence,
+        d.key,
+        d.energy,
+        d.introEnd,
+        d.outroStart,
+        d.downbeats?.length ? JSON.stringify(d.downbeats) : '',
+        DJ_ANALYSIS_VERSION,
+        id
+      )
   }
 
   countPendingAnalysis(): number {
@@ -966,9 +1002,9 @@ export class RadioDb {
     this.db.prepare('UPDATE tracks SET server_choice = ? WHERE id = ?').run(choice === null ? null : choice ? 1 : 0, id)
   }
 
-  /** Brani candidati per la rotazione automatica. */
+  /** Brani candidati per la rotazione automatica (senza gli "uno" delle battute: per il Mix DJ si rileggono con getTracks). */
   rotationCandidates(kind: TrackKind): Track[] {
-    return (this.db.prepare(`SELECT * FROM tracks WHERE kind = ? AND enabled = 1 AND ${this.short()}`).all(kind) as Row[]).map(rowToTrack)
+    return (this.db.prepare(`SELECT * FROM tracks WHERE kind = ? AND enabled = 1 AND ${this.short()}`).all(kind) as Row[]).map(rowToTrackLight)
   }
 
   libraryStats(): { total: number; byKind: Record<string, number>; pendingAnalysis: number; hiddenLong: number; maxTrackMinutes: number } {

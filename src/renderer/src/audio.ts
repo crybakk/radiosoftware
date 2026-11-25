@@ -1,4 +1,4 @@
-import { rateRampSeconds, SPINBACK_SECONDS, type MixPlan, type MixStyle } from '../../core/djMix'
+import { mixTarget, rateRampSeconds, SPINBACK_SECONDS, type MixPlan, type MixStyle } from '../../core/djMix'
 import type { AudioBackend, Player } from '../../core/playout'
 import type { Track } from '../../core/types'
 
@@ -36,17 +36,25 @@ export class WebAudioBackend implements AudioBackend {
    */
   async startMix(from: Player, to: Player, plan: MixPlan): Promise<void> {
     if (!(from instanceof WebPlayer) || !(to instanceof WebPlayer)) throw new Error('lettori non adatti al Mix DJ')
-    let loopBuf: AudioBuffer | null = null
-    if (plan.loop || BUFFER_STYLES.includes(plan.style)) {
+    // il brano che esce decodificato in memoria: serve per il loop e per sapere dove si trova davvero
+    const needBuf = !!plan.loop || BUFFER_STYLES.includes(plan.style)
+    let buf: AudioBuffer | null = null
+    try {
       const data = await (await fetch(from.url)).arrayBuffer()
-      loopBuf = await this.ctx.decodeAudioData(data)
+      buf = await this.ctx.decodeAudioData(data)
+    } catch (e) {
+      if (needBuf) throw e
     }
+    // dopo un salto nel file (l'inizio dal cue) il lettore sbaglia la sua posizione: negli MP3 di qualche
+    // centesimo, nei VBR anche di qualche decimo. La si misura confrontando quello che suona con il file.
+    let offset = 0
+    if (buf && (plan.aStart - from.position()) / from.rate() > CALIBRATE_MIN_SECONDS) offset = (await from.measureOffset(buf)) ?? 0
     const rateA = from.rate()
-    const t0 = this.ctx.currentTime + (plan.aStart - from.position()) / rateA
+    const t0 = this.ctx.currentTime + (plan.aStart - (from.position() + offset)) / rateA
     // il riverbero comincia a "bagnare" il brano una battuta prima
     const lead = plan.style === 'reverb' ? plan.barSeconds / rateA : 0
     if (t0 - lead - this.ctx.currentTime < 0.5) throw new Error('troppo tardi per agganciare il battito')
-    from.mixOut(plan, t0, rateA, loopBuf)
+    from.mixOut(plan, t0, rateA, needBuf ? buf : null)
     try {
       await to.startMix(plan, t0, rateA)
     } catch (e) {
@@ -77,6 +85,21 @@ const BASS_CUT_DB = -30
 const BUFFER_STYLES: MixStyle[] = ['roll', 'brake', 'spinback']
 /** Passaggi a tempo: il brano che entra segue quello che esce. */
 const SYNCED_STYLES: MixStyle[] = ['blend', 'filter']
+/** Sotto questo anticipo (secondi) non c'è tempo di misurare la posizione vera del brano che esce. */
+const CALIBRATE_MIN_SECONDS = 4.5
+/** Secondi di audio confrontati per misurare la posizione vera. */
+const CALIBRATE_SECONDS = 2
+/** Errore massimo di posizione cercato (secondi). */
+const CALIBRATE_RANGE = 0.4
+/**
+ * Correzione massima di velocità del brano che entra: da muto (non si sente), mentre entra appena (primo sedicesimo
+ * del mix, volume basso) e poi. Con la velocità diversa da 1 Chromium allunga il suono senza cambiare intonazione.
+ */
+const LOCK_SILENT = 0.25
+const LOCK_ENTERING = 0.08
+const LOCK_AUDIBLE = 0.03
+/** Anticipo (secondi) con cui si chiede la partenza: il lettore ci mette un attimo, meglio arrivare prima e rallentare. */
+const PLAY_EARLY = 0.04
 
 /** Risposta all'impulso di un riverbero ampio: rumore che si spegne in `seconds`. */
 function reverbImpulse(ctx: BaseAudioContext, seconds = 3.5): AudioBuffer {
@@ -205,20 +228,25 @@ export class WebPlayer implements Player {
   }
 
   /**
-   * Mix DJ, brano che entra: parte in anticipo senza volume, si aggancia alla griglia (piccole correzioni
-   * di velocità, senza cambiare intonazione) e all'istante `t0` del contesto audio entra senza bassi.
-   * Si risolve a `t0`, quando il brano comincia a sentirsi.
+   * Mix DJ, brano che entra: parte dall'inizio del file senza volume, proprio quando serve per arrivare al suo primo
+   * "uno" insieme a quello del brano che esce (niente salti nel file: dopo un salto il lettore non sa più con
+   * precisione dove si trova). Poi resta agganciato battuta per battuta con piccole correzioni di velocità, senza
+   * cambiare intonazione, e all'istante `t0` del contesto audio entra senza bassi. Si risolve a `t0`.
    */
   async startMix(plan: MixPlan, t0: number, rateA: number): Promise<void> {
     const synced = SYNCED_STYLES.includes(plan.style)
-    const rate = synced ? plan.rate * rateA : 1
     // istante in cui il brano comincia a sentirsi
     const tB = t0 + plan.bIn / rateA
-    const target = (t: number): number => plan.bStart + rate * (t - tB)
+    /** Dove deve essere il brano all'istante `t` del contesto audio, e a che velocità. */
+    const target = (t: number): { pos: number; rate: number } => {
+      if (!synced) return { pos: plan.bStart + (t - tB), rate: 1 }
+      const m = mixTarget(plan, (t - t0) * rateA)
+      return { pos: m.pos, rate: m.rate * rateA }
+    }
+    let seeked = false
     try {
       await this.load()
       this.audio.preservesPitch = true
-      this.audio.playbackRate = rate
       const now = this.ctx.currentTime
       const g = this.gain.gain
       g.cancelScheduledValues(0)
@@ -243,11 +271,19 @@ export class WebPlayer implements Player {
         g.setValueAtTime(0, tB - 0.07)
         g.linearRampToValueAtTime(this.level, tB - 0.05)
       }
-      // se il punto di partenza è prima dell'inizio del file si aspetta
-      const wait = Math.max(0, -target(this.ctx.currentTime + 0.1) / rate)
+      // quando partire dall'inizio del file per trovarsi al punto giusto
+      const first = target(tB)
+      const tStart = tB - first.pos / first.rate
+      const wait = tStart - this.ctx.currentTime - PLAY_EARLY
       if (wait > 0) await new Promise((r) => setTimeout(r, wait * 1000))
       if (this.done) throw new Error('fermato')
-      this.audio.currentTime = Math.max(0, target(this.ctx.currentTime + 0.1))
+      const late = (this.ctx.currentTime - tStart) * first.rate
+      if (late > 0.05 + LOCK_SILENT * Math.max(0, tB - this.ctx.currentTime - 0.1)) {
+        // troppo tardi per partire dall'inizio e recuperare prima di sentirsi: salto al punto giusto
+        this.audio.currentTime = Math.max(0, target(this.ctx.currentTime + 0.1).pos)
+        seeked = true
+      }
+      this.audio.playbackRate = first.rate
       await this.audio.play()
     } catch (e) {
       this.release()
@@ -256,27 +292,108 @@ export class WebPlayer implements Player {
     this.audio.addEventListener('error', () => this.finish())
 
     // aggancio: corregge la posizione con la velocità finché dura il mix (o poco dopo l'entrata)
-    const mixEnd = synced ? t0 + plan.seconds : tB + 2
+    const mixEnd = synced ? t0 + plan.seconds / rateA : tB + 2
     const lock = setInterval(() => {
       if (this.done) return clearInterval(lock)
       const now = this.ctx.currentTime
       if (now >= mixEnd) {
         clearInterval(lock)
-        if (synced) this.rampRate(rate, rateRampSeconds(plan))
+        if (synced) this.rampRate(this.audio.playbackRate, rateRampSeconds(plan))
         else this.audio.playbackRate = 1
         return
       }
-      const err = this.audio.currentTime - target(now)
-      // prima di sentirsi può saltare al punto giusto; dopo, solo piccole correzioni di velocità (un salto fa un buco)
-      if (Math.abs(err) > (synced ? 0.25 : 0.1) && now < tB - 0.5) {
-        this.audio.currentTime = Math.max(0, target(now + 0.05))
+      const want = target(now)
+      const err = this.audio.currentTime - want.pos
+      const silent = now < tB - 0.05
+      const entering = synced && now < t0 + plan.seconds / rateA / 16
+      // da muto un salto non si sente, ma solo se con la velocità non si recupera in tempo (dopo un salto il
+      // lettore non sa più con precisione dove si trova)
+      if (silent && !seeked && Math.abs(err) > 0.05 + LOCK_SILENT * Math.max(0, tB - now - 0.1)) {
+        this.audio.currentTime = Math.max(0, target(now + 0.05).pos)
+        seeked = true
         return
       }
-      this.audio.playbackRate = rate * (1 - Math.max(-0.03, Math.min(0.03, err * 0.8)))
+      const max = silent ? LOCK_SILENT : entering ? LOCK_ENTERING : LOCK_AUDIBLE
+      const k = silent ? 4 : entering ? 2 : 0.8
+      this.audio.playbackRate = want.rate * (1 - Math.max(-max, Math.min(max, err * k)))
     }, 40)
     this.timers.push(lock)
     await new Promise((r) => setTimeout(r, msUntil(this.ctx, t0)))
     if (this.done) throw new Error('fermato')
+  }
+
+  /**
+   * Di quanto la posizione dichiarata dal lettore è sbagliata (secondi da aggiungere a `position()`): suona di
+   * nascosto lo stesso brano dalla memoria, dove il lettore dice di essere, e cerca lo scarto tra i due.
+   * null se non si riesce a misurare (silenzio, velocità diversa da 1, brano quasi finito).
+   */
+  async measureOffset(buf: AudioBuffer): Promise<number | null> {
+    if (!this.source || this.audio.paused || this.done || Math.abs(this.audio.playbackRate - 1) > 1e-3) return null
+    const ctx = this.ctx
+    const mono = (): GainNode => {
+      const g = ctx.createGain()
+      g.channelCount = 1
+      g.channelCountMode = 'explicit'
+      g.channelInterpretation = 'speakers'
+      return g
+    }
+    const merger = ctx.createChannelMerger(2)
+    const live = mono()
+    const refGain = mono()
+    const ref = ctx.createBufferSource()
+    ref.buffer = buf
+    const sp = ctx.createScriptProcessor(4096, 2, 1)
+    const mute = ctx.createGain()
+    mute.gain.value = 0
+    this.source.connect(live)
+    live.connect(merger, 0, 0)
+    ref.connect(refGain)
+    refGain.connect(merger, 0, 1)
+    merger.connect(sp)
+    sp.connect(mute)
+    mute.connect(ctx.destination)
+    const ts = ctx.currentTime + 0.1
+    const from = this.audio.currentTime + (ts - ctx.currentTime)
+    const total = CALIBRATE_SECONDS + 2 * CALIBRATE_RANGE + 0.2
+    const cleanup = (): void => {
+      try {
+        ref.stop()
+      } catch {
+        // mai partito
+      }
+      for (const n of [ref, refGain, live, merger, sp, mute]) n.disconnect()
+      try {
+        this.source?.disconnect(live)
+      } catch {
+        // già staccato
+      }
+    }
+    if (from + total + 0.5 > buf.duration) {
+      cleanup()
+      return null
+    }
+    ref.start(ts, from)
+    const a: Float32Array[] = []
+    const b: Float32Array[] = []
+    let got = 0
+    const need = Math.ceil((total + 0.3) * ctx.sampleRate)
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, (total + 2) * 1000)
+      sp.onaudioprocess = (ev): void => {
+        a.push(new Float32Array(ev.inputBuffer.getChannelData(0)))
+        b.push(new Float32Array(ev.inputBuffer.getChannelData(1)))
+        got += ev.inputBuffer.length
+        if (got >= need) {
+          clearTimeout(timer)
+          resolve()
+        }
+      }
+    })
+    sp.onaudioprocess = null
+    cleanup()
+    if (this.done || got < need) return null
+    const lag = findLag(concat(a), concat(b), ctx.sampleRate, CALIBRATE_SECONDS, CALIBRATE_RANGE)
+    return lag === null ? null : -lag
   }
 
   /** Riporta piano piano la velocità a 1 (inudibile su qualche battuta). */
@@ -581,6 +698,93 @@ export class WebPlayer implements Player {
     this.audio.removeAttribute('src')
     this.audio.load()
   }
+}
+
+function concat(parts: Float32Array[]): Float32Array {
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0))
+  let o = 0
+  for (const p of parts) {
+    out.set(p, o)
+    o += p.length
+  }
+  return out
+}
+
+/**
+ * Ritardo (secondi) del segnale `live` rispetto a `ref` (live(t) ≈ ref(t - ritardo)), cercato tra ±`range`.
+ * `ref` comincia con del silenzio (parte dopo): si guarda solo dove suona. Prima un confronto grossolano su un
+ * segnale ridotto, poi preciso al campione. Tra due somiglianze quasi uguali (battiti tutti uguali) vince il
+ * ritardo più piccolo. null se i due segnali non si somigliano abbastanza.
+ */
+export function findLag(live: Float32Array, ref: Float32Array, sr: number, seconds: number, range: number): number | null {
+  let s0 = 0
+  while (s0 < ref.length && Math.abs(ref[s0]) < 1e-6) s0++
+  const R = Math.floor(range * sr)
+  const W = Math.floor(seconds * sr)
+  const w0 = s0 + R + Math.floor(0.05 * sr)
+  if (w0 + W + R > ref.length || w0 + W > live.length) return null
+  const D = 8
+  const dec = (x: Float32Array): Float32Array => {
+    const out = new Float32Array(Math.floor(x.length / D))
+    for (let i = 0; i < out.length; i++) {
+      let acc = 0
+      for (let k = 0; k < D; k++) acc += x[i * D + k]
+      out[i] = acc / D
+    }
+    return out
+  }
+  const ncc = (x: Float32Array, y: Float32Array, start: number, len: number, lag: number): number => {
+    let xy = 0
+    let xx = 0
+    let yy = 0
+    for (let i = start; i < start + len; i++) {
+      const u = x[i]
+      const v = y[i - lag]
+      xy += u * v
+      xx += u * u
+      yy += v * v
+    }
+    return xx > 0 && yy > 0 ? xy / Math.sqrt(xx * yy) : 0
+  }
+  const xl = dec(live)
+  const yr = dec(ref)
+  const cs = Math.floor(w0 / D)
+  const cl = Math.floor(W / D)
+  const cr = Math.floor(R / D)
+  const scores: number[] = []
+  for (let l = -cr; l <= cr; l++) scores.push(ncc(xl, yr, cs, cl, l))
+  const best = Math.max(...scores)
+  if (!(best > 0.5)) return null
+  // il picco più vicino a zero tra quelli quasi alti come il migliore
+  let pick = 0
+  for (let i = 1; i < scores.length - 1; i++) {
+    const isPeak = scores[i] >= scores[i - 1] && scores[i] >= scores[i + 1]
+    if (isPeak && scores[i] >= best * 0.97 && Math.abs(i - cr) < Math.abs(pick - cr)) pick = i
+  }
+  if (scores[pick] < best * 0.97) pick = scores.indexOf(best)
+  const coarse = (pick - cr) * D
+  let fine = coarse
+  let fineScore = -Infinity
+  const at = new Map<number, number>()
+  for (let l = coarse - 2 * D; l <= coarse + 2 * D; l++) {
+    if (Math.abs(l) > R) continue
+    const v = ncc(live, ref, w0, W, l)
+    at.set(l, v)
+    if (v > fineScore) {
+      fineScore = v
+      fine = l
+    }
+  }
+  if (!(fineScore > 0.5)) return null
+  // tra due campioni: vertice della parabola
+  const ym = at.get(fine - 1)
+  const yp = at.get(fine + 1)
+  let frac = 0
+  if (ym !== undefined && yp !== undefined) {
+    const den = ym - 2 * fineScore + yp
+    if (den < 0) frac = (0.5 * (ym - yp)) / den
+  }
+  return (fine + frac) / sr
 }
 
 /** Preascolto in cuffia su una scheda audio separata (per esempio un canale del RodeCaster). */

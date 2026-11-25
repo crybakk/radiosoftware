@@ -8,10 +8,12 @@ import {
   findSections,
   fitGrid,
   foldBpm,
+  trackBeats,
   keysCompatible,
   type EssentiaLike
 } from '../src/core/djAnalysis'
 import { RadioDb, type ScannedFile } from '../src/core/db'
+import { DJ_ANALYSIS_VERSION } from '../src/core/djAnalysis'
 
 describe('griglia dei battiti', () => {
   it('trova BPM e primo battito anche con battiti arrotondati ai fotogrammi e in ritardo accumulato', () => {
@@ -33,6 +35,45 @@ describe('griglia dei battiti', () => {
 
   it('pochi battiti: niente griglia', () => {
     expect(fitGrid([1, 1.5, 2], 0, 10).bpm).toBe(0)
+  })
+})
+
+describe('battiti seguiti uno a uno', () => {
+  /** Brano suonato senza metronomo: da 128 a 128,4 BPM in 4 minuti, battiti arrotondati ai fotogrammi di Essentia. */
+  function driftingTicks(): { truth: number[]; ticks: number[] } {
+    const hop = 512 / 44100
+    const truth: number[] = []
+    for (let t = 0.3; t < 240; ) {
+      truth.push(t)
+      t += 60 / (128 * (1 + 0.003 * (t / 240)))
+    }
+    // i primi battiti di Essentia sono sbagliati ("riscaldamento")
+    const ticks = truth.map((t, i) => Math.round((t + (i < 4 ? 0.06 - i * 0.015 : 0)) / hop) * hop)
+    return { truth, ticks }
+  }
+
+  it('la griglia fissa sbaglia di quasi un decimo alla fine; quella seguita resta entro pochi millesimi', () => {
+    const { truth, ticks } = driftingTicks()
+    const grid = fitGrid(ticks, 0, 240)
+    const fixedErr = (t: number): number => {
+      const p = 60 / grid.bpm
+      return Math.abs(grid.firstBeat + Math.round((t - grid.firstBeat) / p) * p - t)
+    }
+    expect(fixedErr(truth.at(-1)!)).toBeGreaterThan(0.05)
+    const tr = trackBeats(ticks, grid, 0, 240)
+    expect(tr.confidence).toBeGreaterThan(0.95)
+    expect(tr.beats.length).toBe(truth.length)
+    const errs = tr.beats.map((b, i) => Math.abs(b - truth[i]))
+    expect(Math.max(...errs)).toBeLessThan(0.012)
+  })
+
+  it('un battito trovato male non sposta la griglia', () => {
+    const { truth, ticks } = driftingTicks()
+    ticks[200] += 0.04
+    ticks.splice(300, 1)
+    const tr = trackBeats(ticks, fitGrid(ticks, 0, 240), 0, 240)
+    expect(Math.abs(tr.beats[200] - truth[200])).toBeLessThan(0.012)
+    expect(Math.abs(tr.beats[300] - truth[300])).toBeLessThan(0.012)
   })
 })
 
@@ -158,13 +199,34 @@ describe('database', () => {
     expect(db.pendingDj()).toHaveLength(0) // prima serve l'analisi di inizio e fine
     db.saveAnalysis(id, { duration: 200, loudness: -14, cueIn: 0.5, cueOut: 199, mixPoint: 195 })
     expect(db.pendingDj().map((t) => t.id)).toEqual([id])
-    const dj = { bpm: 124, firstDownbeat: 1.3, gridConfidence: 0.98, key: '8A', energy: 7, introEnd: 16.8, outroStart: 180 }
+    const dj = { bpm: 124, firstDownbeat: 1.3, gridConfidence: 0.98, key: '8A', energy: 7, introEnd: 16.8, outroStart: 180, downbeats: [1.3, 3.235, 5.171] }
     db.saveDj(id, dj)
     expect(db.getTrack(id)!.dj).toEqual(dj)
     expect(db.pendingDj()).toHaveLength(0)
     expect(db.djStats()).toEqual({ done: 1, total: 1 })
     db.upsertScanned(file({ mtime: 2 }))
     expect(db.getTrack(id)!.dj).toBeNull()
+    db.close()
+  })
+
+  it('le analisi fatte con la versione precedente si rifanno, dopo i brani mai analizzati e prima quelli mixabili', () => {
+    const db = new RadioDb(':memory:')
+    const ids = ['/m/a.mp3', '/m/b.mp3', '/m/c.mp3'].map((path) => {
+      const id = db.upsertScanned(file({ path }))
+      db.saveAnalysis(id, { duration: 200, loudness: -14, cueIn: 0.5, cueOut: 199, mixPoint: 195 })
+      return id
+    })
+    db.saveDj(ids[0], { bpm: 0, firstDownbeat: 0, gridConfidence: 0.2, key: '', energy: 3, introEnd: 0, outroStart: 199 })
+    db.saveDj(ids[1], { bpm: 124, firstDownbeat: 1, gridConfidence: 0.9, key: '8A', energy: 7, introEnd: 16, outroStart: 180 })
+    // come le avrebbe lasciate la versione precedente
+    db.db.exec('UPDATE tracks SET dj_ver = 0')
+    expect(db.pendingDj().map((t) => t.id)).toEqual([ids[2], ids[1], ids[0]])
+    expect(db.djStats()).toEqual({ done: 0, total: 3 })
+    // nel frattempo vale la griglia vecchia
+    expect(db.getTrack(ids[1])!.dj?.bpm).toBe(124)
+    db.saveDj(ids[1], { bpm: 124, firstDownbeat: 1, gridConfidence: 0.9, key: '8A', energy: 7, introEnd: 16, outroStart: 180 })
+    expect(db.pendingDj().map((t) => t.id)).toEqual([ids[2], ids[0]])
+    expect(DJ_ANALYSIS_VERSION).toBeGreaterThan(1)
     db.close()
   })
 

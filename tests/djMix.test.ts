@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { planExit, planMix, planTransition, tempoRatio, type MixPlan } from '../src/core/djMix'
+import { barGrid, mixTarget, planExit, planMix, planTransition, tempoRatio, type MixPlan } from '../src/core/djMix'
+import { findLag } from '../src/renderer/src/audio'
 import type { DjAnalysis } from '../src/core/djAnalysis'
-import { PlayoutEngine, type PlayoutHost } from '../src/core/playout'
+import { djLeadSeconds, PlayoutEngine, type PlayoutHost } from '../src/core/playout'
 import type { Track } from '../src/core/types'
 import { FakeBackend, FakeClock, FakePlayer, makeTrack } from './helpers'
 
@@ -82,6 +83,100 @@ describe('piano del Mix DJ', () => {
     expect(planMix(djTrack(), djTrack({ t: { kind: 'jingle' } })).ok).toBe(false)
     // con un limite più largo si mixa
     expect(planMix(djTrack({ bpm: 124 }), djTrack({ bpm: 110 }), 0.15).ok).toBe(true)
+  })
+})
+
+describe('mix battuta per battuta', () => {
+  /** "Uno" di un brano che accelera piano piano: da `bpm` a `bpm` × (1 + drift) in `bars` battute. */
+  function drifting(bpm: number, drift: number, bars = 96, first = 1): number[] {
+    const out = [first]
+    for (let i = 0; i < bars; i++) out.push(out[i] + (4 * 60) / (bpm * (1 + (drift * i) / bars)))
+    return out.map((x) => Math.round(x * 1000) / 1000)
+  }
+
+  it('il punto del mix e la velocità seguono gli "uno" veri, non la griglia fissa', () => {
+    const da = drifting(124, 0.01)
+    const db = drifting(122, -0.01)
+    const a = djTrack({ dj: { downbeats: da, outroStart: da[80] }, t: { cueOut: da[96] } })
+    const b = djTrack({ bpm: 122, dj: { downbeats: db, introEnd: db[16] } })
+    const plan = (planMix(a, b) as { plan: MixPlan }).plan
+    expect(plan.loop).toBeNull()
+    // outro di 16 battute: si parte dalla battuta 80 vera
+    expect(plan.aStart).toBeCloseTo(da[80], 3)
+    expect(plan.bStart).toBeCloseTo(db[0], 3)
+    expect(plan.aBars).toHaveLength(17)
+    expect(plan.aBars![16]).toBeCloseTo(da[96] - da[80], 3)
+    expect(plan.bBars![16]).toBeCloseTo(db[16], 3)
+    // a ogni "uno" di A corrisponde il suo "uno" di B
+    for (let k = 0; k <= 16; k++) expect(mixTarget(plan, plan.aBars![k]).pos).toBeCloseTo(db[k], 3)
+    // a metà battuta: a metà tra i due "uno", con la velocità di quella battuta
+    const mid = mixTarget(plan, (plan.aBars![3] + plan.aBars![4]) / 2)
+    expect(mid.pos).toBeCloseTo((db[3] + db[4]) / 2, 3)
+    expect(mid.rate).toBeCloseTo((db[4] - db[3]) / (da[84] - da[83]), 4)
+  })
+
+  it('con il loop le 4 battute di A si ripetono; con metà tempo un aggancio ogni due battute', () => {
+    const da = drifting(124, 0.01)
+    const a = djTrack({ dj: { downbeats: da, outroStart: da[94] }, t: { cueOut: da[96] } })
+    const plan = (planMix(a, djTrack({ intro: 16 })) as { plan: MixPlan }).plan
+    expect(plan.loop).toEqual({ start: da[90], end: da[94] })
+    const loopLen = da[94] - da[90]
+    expect(plan.aBars![4]).toBeCloseTo(loopLen, 3)
+    expect(plan.aBars![8]).toBeCloseTo(2 * loopLen, 3)
+    // B "sentito" a metà tempo (62 BPM): una sua battuta ogni due di A
+    const half = (planMix(djTrack(), djTrack({ bpm: 62, bars: 48 })) as { plan: MixPlan }).plan
+    expect(half.rate).toBeCloseTo(1, 3)
+    expect(half.aBars!.length).toBe(half.bars / 2 + 1)
+    expect(half.bBars![1] - half.bBars![0]).toBeCloseTo((4 * 60) / 62, 3)
+  })
+
+  it('griglia delle battute: fuori dagli "uno" conosciuti prosegue con il passo vicino', () => {
+    const g = barGrid({ bpm: 120, firstDownbeat: 1, gridConfidence: 1, key: '', energy: 5, introEnd: 1, outroStart: 9, downbeats: [1, 3, 5.1, 7.1, 9.2] })
+    expect(g.time(2)).toBe(5.1)
+    expect(g.index(6)).toBe(2)
+    expect(g.nearest(6.2)).toBe(3)
+    expect(g.time(5)).toBeCloseTo(9.2 + (9.2 - 1) / 4, 6)
+    expect(g.index(-1)).toBe(-1)
+    // analisi vecchia: griglia fissa
+    expect(barGrid({ bpm: 120, firstDownbeat: 1, gridConfidence: 1, key: '', energy: 5, introEnd: 1, outroStart: 9 }).time(3)).toBe(7)
+  })
+})
+
+describe('posizione vera del lettore', () => {
+  /** Musica finta: rumore con colpi forti ogni mezzo secondo (tutti diversi tra loro). */
+  function music(seconds: number, sr: number): Float32Array {
+    const x = new Float32Array(Math.floor(seconds * sr))
+    let seed = 3
+    const rnd = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5
+    for (let i = 0; i < x.length; i++) x[i] = 0.1 * rnd() + (i % (sr / 2) < 400 ? rnd() : 0)
+    return x
+  }
+
+  it('trova di quanto suona in ritardo o in anticipo, anche di qualche decimo e tra due campioni', () => {
+    const sr = 8000
+    const src = music(4, sr)
+    for (const delay of [0, 0.026, -0.0185, 0.231]) {
+      const d = Math.round(delay * sr)
+      // il riferimento parte dopo 0,1 s; il lettore suona lo stesso spostato di `delay`
+      const ref = new Float32Array(src.length)
+      const live = new Float32Array(src.length)
+      for (let i = Math.floor(0.1 * sr); i < src.length; i++) {
+        ref[i] = src[i]
+        if (i - d >= 0 && i - d < src.length) live[i] = src[i - d]
+      }
+      const lag = findLag(live, ref, sr, 2, 0.4)
+      expect(lag).not.toBeNull()
+      expect(lag!).toBeCloseTo(d / sr, 3)
+    }
+  })
+
+  it('segnali che non si somigliano: nessuna misura', () => {
+    const sr = 8000
+    const a = music(4, sr)
+    const b = new Float32Array(a.length)
+    let seed = 99
+    for (let i = Math.floor(0.1 * sr); i < b.length; i++) b[i] = (seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5
+    expect(findLag(a, b, sr, 2, 0.4)).toBeNull()
   })
 })
 
@@ -170,16 +265,18 @@ function setup(tracks: Track[]) {
 }
 
 describe('Mix DJ nel motore', () => {
-  it('"Mixa il prossimo" in manuale: parte 6 s prima del punto del mix, poi si spegne', async () => {
+  it('"Mixa il prossimo" in manuale: parte in anticipo sul punto del mix (8 s + intro di B), poi si spegne', async () => {
     const a = djTrack({ outro: 16 })
     const b = djTrack()
     const { engine, backend, run } = setup([a, b])
     await engine.play()
     engine.setDjOnce(true)
     expect(engine.snapshot().dj.next).toMatchObject({ ok: true })
-    const aStart = (planMix(a, b) as { plan: MixPlan }).plan.aStart
+    const plan = (planMix(a, b) as { plan: MixPlan }).plan
+    // B parte dal suo inizio: anticipo 8 s + 1 s prima del suo primo "uno"
+    expect(djLeadSeconds(plan)).toBeCloseTo(9, 5)
     // posizione di A = cueIn (0,5) + secondi passati
-    await run(aStart - 0.5 - 6 - 0.5)
+    await run(plan.aStart - 0.5 - djLeadSeconds(plan) - 0.5)
     expect(backend.mixes).toHaveLength(0)
     await run(1)
     expect(backend.mixes).toHaveLength(1)

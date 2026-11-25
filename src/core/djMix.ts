@@ -69,6 +69,12 @@ export interface MixPlan {
   loop: { start: number; end: number } | null
   /** Secondi dall'inizio del mix in cui i bassi passano da A a B. */
   bassSwapAt: number
+  /**
+   * Punti di aggancio battuta per battuta (passaggi a tempo): `aBars[k]` secondi dall'inizio del mix (nel tempo di A)
+   * corrispondono a `bBars[k]` secondi nel file di B. Così B segue anche i brani che accelerano o rallentano.
+   */
+  aBars?: number[]
+  bBars?: number[]
 }
 
 export type MixDecision = { ok: true; plan: MixPlan } | { ok: false; reason: string }
@@ -83,6 +89,56 @@ export function tempoRatio(bpmA: number, bpmB: number): number {
   return best
 }
 
+/**
+ * Le battute di un brano: dagli "uno" seguiti uno a uno (analisi nuova) o dalla griglia fissa (analisi vecchia).
+ * Prima del primo e dopo l'ultimo "uno" conosciuto si prosegue con il passo delle battute vicine.
+ */
+export interface BarGrid {
+  /** Secondi dell'"uno" della battuta `i` (0 = primo "uno"). */
+  time(i: number): number
+  /** Battuta in cui cade il secondo `t` (anche negativa). */
+  index(t: number): number
+  /** Battuta con l'"uno" più vicino al secondo `t`. */
+  nearest(t: number): number
+}
+
+export function barGrid(d: NonNullable<Track['dj']>): BarGrid {
+  const bar = (4 * 60) / d.bpm
+  const db = d.downbeats && d.downbeats.length >= 2 ? d.downbeats : null
+  if (!db) {
+    return {
+      time: (i) => d.firstDownbeat + i * bar,
+      index: (t) => Math.floor((t - d.firstDownbeat) / bar + 1e-6),
+      nearest: (t) => Math.round((t - d.firstDownbeat) / bar)
+    }
+  }
+  const n = db.length
+  const k = Math.min(4, n - 1)
+  const headBar = (db[k] - db[0]) / k
+  const tailBar = (db[n - 1] - db[n - 1 - k]) / k
+  const time = (i: number): number => (i < 0 ? db[0] + i * headBar : i >= n ? db[n - 1] + (i - n + 1) * tailBar : db[i])
+  const index = (t: number): number => {
+    if (t < db[0]) return Math.floor((t - db[0]) / headBar + 1e-6)
+    if (t >= db[n - 1]) return n - 1 + Math.floor((t - db[n - 1]) / tailBar + 1e-6)
+    let lo = 0
+    let hi = n - 1
+    while (lo < hi) {
+      const m = (lo + hi + 1) >> 1
+      if (db[m] <= t + 1e-6) lo = m
+      else hi = m - 1
+    }
+    return lo
+  }
+  return {
+    time,
+    index,
+    nearest: (t) => {
+      const i = index(t)
+      return t - time(i) > time(i + 1) - t ? i + 1 : i
+    }
+  }
+}
+
 /** Il piano del mix da A a B, oppure il motivo per cui si usa la dissolvenza normale. */
 export function planMix(a: Track, b: Track, maxStretch = DEFAULT_MAX_STRETCH): MixDecision {
   if (a.kind !== 'music' || b.kind !== 'music') return { ok: false, reason: 'non è musica' }
@@ -91,27 +147,26 @@ export function planMix(a: Track, b: Track, maxStretch = DEFAULT_MAX_STRETCH): M
   if (!da || !db) return { ok: false, reason: 'analisi DJ non ancora fatta' }
   if (!(da.bpm > 0) || da.gridConfidence < MIN_GRID_CONFIDENCE) return { ok: false, reason: `"${a.title}" non ha un ritmo regolare` }
   if (!(db.bpm > 0) || db.gridConfidence < MIN_GRID_CONFIDENCE) return { ok: false, reason: `"${b.title}" non ha un ritmo regolare` }
-  const rate = tempoRatio(da.bpm, db.bpm)
-  if (Math.abs(rate - 1) > maxStretch + 1e-9) {
+  if (Math.abs(tempoRatio(da.bpm, db.bpm) - 1) > maxStretch + 0.02) {
     return { ok: false, reason: `tempi troppo diversi (${Math.round(foldBpm(da.bpm))} e ${Math.round(foldBpm(db.bpm))} BPM)` }
   }
 
-  const barA = (4 * 60) / da.bpm
-  const barB = (4 * 60) / db.bpm
+  const ga = barGrid(da)
+  const gb = barGrid(db)
   const endA = a.cueOut > a.cueIn ? a.cueOut : a.duration
   const endB = b.cueOut > b.cueIn ? b.cueOut : b.duration
-  // battute di A da un "uno" a un altro: la griglia parte da firstDownbeat
-  const barIndexA = (t: number): number => Math.floor((t - da.firstDownbeat) / barA + 1e-6)
-  const barTimeA = (i: number): number => da.firstDownbeat + i * barA
+  // battute di B per ogni battuta di A: 1, oppure 2 o 1/2 se uno dei due brani è stato "sentito" a metà o al doppio
+  const per = Math.round(Math.log2(tempoRatio(da.bpm, db.bpm) * (da.bpm / db.bpm)))
+  const bPerA = 2 ** -per
 
-  // lunghezza del mix: l'intro di B se è lunga, altrimenti 8 battute
-  const introBarsB = Math.floor((db.introEnd - db.firstDownbeat) / barB + 1e-6)
+  // lunghezza del mix: l'intro di B se è lunga, altrimenti 8 battute (contate in battute di A)
+  const introBarsB = gb.index(db.introEnd) / bPerA
   const bars = introBarsB >= 16 ? 16 : PHRASE_BARS
-  if (db.firstDownbeat + bars * barB > endB) return { ok: false, reason: `"${b.title}" è troppo corto` }
+  if (gb.time(Math.ceil(bars * bPerA)) > endB) return { ok: false, reason: `"${b.title}" è troppo corto` }
 
   // l'outro di A comincia a inizio frase; le battute "sicure" sono quelle che finiscono prima della fine dell'audio
-  const lastBarA = barIndexA(endA) // battute intere fino alla fine
-  const outroBar = Math.min(lastBarA, Math.max(0, Math.round((da.outroStart - da.firstDownbeat) / barA)))
+  const lastBarA = ga.index(endA) // battute intere fino alla fine
+  const outroBar = Math.min(lastBarA, Math.max(0, ga.nearest(da.outroStart)))
   const available = lastBarA - outroBar
   if (lastBarA < LOOP_BARS + 1) return { ok: false, reason: `"${a.title}" è troppo corto` }
 
@@ -126,27 +181,62 @@ export function planMix(a: Track, b: Track, maxStretch = DEFAULT_MAX_STRETCH): M
     const loopEndBar = outroBar
     const loopStartBar = loopEndBar - LOOP_BARS
     if (loopStartBar < 0) return { ok: false, reason: `"${a.title}" è troppo corto per il loop` }
-    loop = { start: round(barTimeA(loopStartBar)), end: round(barTimeA(loopEndBar)) }
+    loop = { start: round(ga.time(loopStartBar)), end: round(ga.time(loopEndBar)) }
     startBar = loopStartBar
   }
-  const aStart = barTimeA(startBar)
+  const aStart = ga.time(startBar)
   if (aStart < a.cueIn) return { ok: false, reason: `"${a.title}" è troppo corto` }
-  const seconds = bars * barA
+
+  // "uno" di A durante il mix, in secondi dall'inizio del mix (con il loop le 4 battute si ripetono)
+  const aOff: number[] = [0]
+  for (let j = 0; j < bars; j++) {
+    const i = loop ? startBar + (j % LOOP_BARS) : startBar + j
+    aOff.push(aOff[j] + ga.time(i + 1) - ga.time(i))
+  }
+  // punti di aggancio: ogni "uno" comune ai due brani (con metà/doppio uno ogni due)
+  const aBars: number[] = []
+  const bBars: number[] = []
+  const stepA = Math.max(1, Math.round(1 / bPerA))
+  for (let j = 0; j <= bars; j += stepA) {
+    aBars.push(round(aOff[j]))
+    bBars.push(round(gb.time(Math.round(j * bPerA))))
+  }
+  const seconds = aOff[bars]
+  const rate = (bBars[bBars.length - 1] - bBars[0]) / (aBars[aBars.length - 1] - aBars[0])
+  if (Math.abs(rate - 1) > maxStretch + 1e-9) {
+    return { ok: false, reason: `tempi troppo diversi (${Math.round(foldBpm(da.bpm))} e ${Math.round(foldBpm(db.bpm))} BPM)` }
+  }
   return {
     ok: true,
     plan: {
       style: 'blend',
       bIn: 0,
       aStart: round(aStart),
-      bStart: round(db.firstDownbeat),
+      bStart: bBars[0],
       bars,
-      barSeconds: round(barA),
+      barSeconds: round(seconds / bars),
       seconds: round(seconds),
       rate: Math.round(rate * 10000) / 10000,
       loop,
-      bassSwapAt: round(seconds / 2)
+      bassSwapAt: round(aOff[bars / 2]),
+      aBars,
+      bBars
     }
   }
+}
+
+/**
+ * Dove deve essere B (secondi nel file) quando A è a `x` secondi dall'inizio del mix, e la velocità di B in quel
+ * tratto: segue gli "uno" dei due brani battuta per battuta. Prima e dopo il mix prosegue con la prima e l'ultima battuta.
+ */
+export function mixTarget(plan: MixPlan, x: number): { pos: number; rate: number } {
+  const a = plan.aBars
+  const b = plan.bBars
+  if (!a || !b || a.length < 2) return { pos: plan.bStart + plan.rate * x, rate: plan.rate }
+  let k = 0
+  while (k + 2 < a.length && x >= a[k + 1]) k++
+  const rate = (b[k + 1] - b[k]) / (a[k + 1] - a[k])
+  return { pos: b[k] + (x - a[k]) * rate, rate }
 }
 
 /** Quanto dura il passaggio di velocità di B da `rate` a 1 dopo il mix (secondi). */
@@ -165,16 +255,16 @@ function gridOk(t: Track): boolean {
 }
 
 /** Battuta di uscita di A: inizio di una frase nell'outro, almeno una battuta prima della fine. */
-function exitBar(a: Track): { bar: number; first: number; barA: number; lastBar: number } | null {
+function exitBar(a: Track): { bar: number; barA: number; time: (i: number) => number } | null {
   const d = a.dj!
-  const barA = (4 * 60) / d.bpm
+  const g = barGrid(d)
   const endA = a.cueOut > a.cueIn ? a.cueOut : a.duration
-  const lastBar = Math.floor((endA - d.firstDownbeat) / barA + 1e-6)
+  const lastBar = g.index(endA)
   if (lastBar < 4) return null
-  const outroBar = Math.min(lastBar, Math.max(0, Math.round((d.outroStart - d.firstDownbeat) / barA)))
+  const outroBar = Math.min(lastBar, Math.max(0, g.nearest(d.outroStart)))
   const available = lastBar - outroBar
   const bar = Math.min(lastBar - 1, outroBar + Math.floor(Math.max(0, available - 1) / PHRASE_BARS) * PHRASE_BARS)
-  return { bar, first: d.firstDownbeat, barA, lastBar }
+  return { bar, barA: g.time(bar + 1) - g.time(bar), time: g.time }
 }
 
 /** Battute di intro di B (0 se parte pieno; null se non si sa). */
@@ -193,7 +283,7 @@ export function planExit(a: Track, b: Track, style: Exclude<MixStyle, 'blend' | 
   const beat = x.barA / 4
   // il rullo finisce sulla battuta d'uscita: comincia due battute prima
   const startBar = style === 'roll' ? x.bar - 2 : x.bar
-  const aStart = x.first + startBar * x.barA
+  const aStart = x.time(startBar)
   if (startBar < 0 || aStart < a.cueIn + (style === 'reverb' ? x.barA : 0)) return { ok: false, reason: `"${a.title}" è troppo corto` }
   const bStart = gridOk(b) ? b.dj!.firstDownbeat : b.cueIn
   let bIn = 0

@@ -24,8 +24,16 @@ export interface AudioBackend {
   startMix?(from: Player, to: Player, plan: MixPlan): Promise<void>
 }
 
-/** Secondi di anticipo con cui si prepara il brano che entra nel Mix DJ. */
-export const DJ_LEAD_SECONDS = 6
+/**
+ * Secondi di anticipo con cui si prepara il Mix DJ: c'è da misurare dove si trova davvero il brano che esce
+ * (un paio di secondi) e poi far partire quello che entra dall'inizio del file, senza volume.
+ */
+export const DJ_LEAD_SECONDS = 8
+
+/** Anticipo del Mix DJ per questo piano: in più il tratto di B prima del punto da cui entra (al massimo 20 s). */
+export function djLeadSeconds(plan: MixPlan): number {
+  return DJ_LEAD_SECONDS + Math.min(20, Math.max(0, plan.bStart - plan.bIn) / Math.max(0.5, plan.rate))
+}
 
 /** Servizi esterni al motore: database, rotazione, registro. */
 export interface PlayoutHost {
@@ -307,7 +315,7 @@ export class PlayoutEngine {
     if (cur && !cur.mixTriggered && !cur.fading && this.knownLength(cur.item.track)) {
       const pos = cur.player.position()
       const dj = this.djPlan(cur)
-      if (dj?.ok && pos >= dj.plan.aStart - DJ_LEAD_SECONDS) {
+      if (dj?.ok && pos >= dj.plan.aStart - djLeadSeconds(dj.plan)) {
         cur.mixTriggered = true
         await this.startDjMix(cur, dj.plan)
       } else if (!dj?.ok && pos >= this.mixPoint(cur.item.track)) {
