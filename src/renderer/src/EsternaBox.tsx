@@ -1,6 +1,7 @@
 // App Radio Esterna (dirette da fuori): in regia si vede chi è collegato, se è in onda, e la si ascolta in preascolto
 // prima del passaggio (scelte di cristian, 24/11/2026). La regia non deve accettare: IN ONDA lo preme chi è fuori.
 import { useState } from 'react'
+import type { LineaStato } from '../../../ponte/controllo/src/protocol.ts'
 import type { Radio } from './useRadio'
 
 /** Id finto per il preascolto dell'esterna (i brani hanno id positivi). */
@@ -25,6 +26,7 @@ export function EsternaBox({ radio }: { radio: Radio }) {
         <b>{stato}</b> {e.user && <span className="muted">· {e.user}</span>}
       </div>
       {e.titolo && <div className="esterna-titolo">{e.titolo}</div>}
+      {e.collegata && e.linea && <LineaBadge linea={e.linea} via={e.via ?? null} />}
       <div className="row">
         <button
           className={`small ${ascolto ? 'on' : ''}`}
@@ -41,6 +43,23 @@ export function EsternaBox({ radio }: { radio: Radio }) {
         </button>
       </div>
       {errore && <div className="esterna-errore">{errore}</div>}
+    </div>
+  )
+}
+
+const PALLINI = { buona: '🟢', debole: '🟡', pessima: '🔴', assente: '⚫' } as const
+
+/** Qualità della linea di chi è fuori (26/11/2026): pallino e frase; i numeri solo passando sopra con il mouse. */
+function LineaBadge({ linea, via }: { linea: LineaStato; via: 'webrtc' | 'https' | null }) {
+  const dettagli = [
+    linea.perdita ? `pacchetti persi o in ritardo ${linea.perdita}%` : '',
+    linea.buchi ? `audio ricostruito ${linea.buchi}%` : '',
+    linea.ritardo ? `ritardo della linea ${linea.ritardo} ms` : '',
+    via === 'webrtc' ? 'collegamento WebRTC (UDP)' : via === 'https' ? 'collegamento di riserva (HTTPS)' : ''
+  ].filter(Boolean)
+  return (
+    <div className={`linea ${linea.livello}`} title={`Dettagli: ${dettagli.join(' · ') || 'nessun problema'}`}>
+      {PALLINI[linea.livello]} {linea.frase}
     </div>
   )
 }
