@@ -226,6 +226,8 @@ export interface RadioApi {
   /** novità dell'aggiornamento appena installato (null se non c'è niente da mostrare) */
   novitaInstallate(): Promise<NovitaInstallate | null>
   novitaLette(): Promise<void>
+  /** Ingrandimento di tutta la finestra (1 = normale), per "Testo grande". */
+  setZoom(f: number): void
   // libreria del server (diretta autonoma)
   serverSyncStatus(): Promise<ServerSyncStatus>
   serverSyncList(filter: 'esclusi' | 'tutti', q: string): Promise<ServerTrackRow[]>

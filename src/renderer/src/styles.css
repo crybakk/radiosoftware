@@ -73,7 +73,7 @@ main { flex: 1; overflow: hidden; }
 .row.sticky { position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; }
 
 /* In onda */
-.onair-view { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; height: 100%; padding: 14px; }
+.onair-view { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px; height: 100%; padding: 14px; }
 .left, .right { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
 .now {
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px;
@@ -377,3 +377,36 @@ button.tiny.on { opacity: 1; background: var(--green); border-color: var(--green
 .programs-view td.t-actions { display: table-cell; white-space: nowrap; }
 .programs-view td.t-actions button + button { margin-left: 4px; }
 .programs-view .section-title { display: flex; gap: 8px; align-items: center; } .programs-view .section-title .spacer { flex: 1; }
+
+/* --- regia a prova di anziano (26/11/2026) --- */
+.modal.conferma { z-index: 50; }
+.conferma-body { height: auto; width: min(560px, 92vw); gap: 12px; }
+.conferma-titolo { font-size: 22px; font-weight: 700; }
+.conferma-testo { white-space: pre-line; word-break: break-word; font-size: 17px; line-height: 1.4; margin: 0; color: #d6dce6; }
+.conferma-pulsanti { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; }
+button.big-ish { font-size: 17px; padding: 12px 20px; font-weight: 700; }
+button.danger.big-ish { background: #4c1d1d; border-color: #7f2d2d; }
+.avviso-muta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 18px; font-weight: 700; padding: 12px 16px; }
+.link-pill.off { color: var(--muted); }
+.tabs { flex-wrap: wrap; min-width: 0; }
+.tabs button { white-space: nowrap; }
+.topbar .clock { min-width: 0; flex-shrink: 0; }
+.modal.benvenuto { z-index: 40; }
+.benvenuto-body { height: auto; width: min(720px, 94vw); gap: 14px; padding: 26px; }
+.benvenuto-testa { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.benvenuto-titolo { font-size: 26px; font-weight: 800; }
+.benvenuto-passo { color: var(--muted); font-size: 15px; }
+.benvenuto-testo { font-size: 18px; line-height: 1.45; margin: 0; }
+.benvenuto-ok { font-size: 16px; color: #86efac; word-break: break-all; }
+.benvenuto-pulsanti { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; }
+.benvenuto-salta { align-self: flex-start; }
+button.link { background: transparent; border: none; color: var(--muted); text-decoration: underline; padding: 4px 0; }
+textarea.codice-collegamento { width: 100%; box-sizing: border-box; font-family: Consolas, monospace; font-size: 14px; background: var(--panel2); color: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 10px; word-break: break-all; }
+.collega-codice { display: flex; flex-direction: column; gap: 10px; }
+details.tecniche > summary { cursor: pointer; }
+details.tecniche > summary::before { content: '▸ '; }
+details.tecniche[open] > summary::before { content: '▾ '; }
+label.check.grande { font-size: 17px; gap: 10px; }
+label.check.grande input { width: 22px; height: 22px; }
+.topbar { flex-wrap: wrap; row-gap: 8px; }
+.tabs { flex: 1 1 420px; }

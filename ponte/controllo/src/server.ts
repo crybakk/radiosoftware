@@ -47,6 +47,7 @@
  * Porta interna 8091 (solo rete Docker): POST /internal/event da Liquidsoap, GET /internal/riserva
  * (brano a caso per la riserva del ponte).
  */
+import { creaCodice, indirizzoLocale } from './codiceCollegamento.ts'
 import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -1475,6 +1476,22 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       if (!me) return json(res, 401, { error: 'accesso richiesto' })
       if (!can(me.role, 'utenti')) return json(res, 403, { error: 'solo gli amministratori cambiano le impostazioni' })
       if (req.method !== 'GET' && !sameOrigin(req)) return json(res, 403, { error: 'origine non valida' })
+      // codice da incollare nella regia: indirizzo e porta sono quelli con cui l'amministratore ha aperto il pannello
+      if (req.method === 'GET' && url.pathname === '/api/impostazioni/collegamento-regia') {
+        const v = (k: string, d = ''): string => (impostazioni.disponibile() ? impostazioni.valore(k) : env(k, d))
+        const host = (url.searchParams.get('host') ?? '').trim().toLowerCase()
+        const porta = Number(url.searchParams.get('porta') || 443)
+        if (!/^[a-z0-9.-]+$/.test(host) || !Number.isInteger(porta) || porta < 1 || porta > 65535) return json(res, 400, { error: 'indirizzo non valido' })
+        const dati = {
+          host,
+          controlPort: porta,
+          controlHttps: url.searchParams.get('https') !== '0',
+          srtPort: Number(v('SRT_PORT', '9000')) || 9000,
+          passphrase: v('SRT_PASSPHRASE'),
+          controlToken: TOKEN
+        }
+        return json(res, 200, { codice: creaCodice(dati), host, porta, locale: indirizzoLocale(host), dominio: env('DOMINIO') })
+      }
       if (!impostazioni.disponibile()) {
         return json(res, 503, { error: 'il file delle impostazioni non è collegato: aggiorna il server rilanciando una volta installa-server.sh' })
       }

@@ -334,3 +334,4 @@ button.danger { border-color: #b91c1c; color: #fca5a5; }
 .linea.debole { color: #1a1000; background: var(--amber); }
 .linea.pessima, .linea.assente { color: white; background: var(--red); }
 .g-name .linea { display: block; width: fit-content; margin-top: 2px; font-size: 0.85em; }
+#imp-regia-codice { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 0.85rem; word-break: break-all; }

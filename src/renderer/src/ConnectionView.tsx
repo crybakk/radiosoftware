@@ -6,6 +6,7 @@ import { listInputDevices } from './uplinkCapture'
 import { ServerLibrarySection } from './ServerLibrarySection'
 import type { Radio } from './useRadio'
 import { Riquadri } from './Riquadri'
+import { collegaConCodice } from './Benvenuto'
 
 const api = window.radio
 
@@ -54,6 +55,8 @@ export function ConnectionView({ radio }: { radio: Radio }) {
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState<string | null>(null)
   const [, setTick] = useState(0)
+  const [codice, setCodice] = useState('')
+  const [codiceMsg, setCodiceMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const st = radio.ponte
   const up = st?.uplink
 
@@ -103,16 +106,49 @@ export function ConnectionView({ radio }: { radio: Radio }) {
   
   return (
     <Riquadri className="settings-view" chiave="collegamento" nome="Collegamento">
-      <section className="panel" data-sezione="invio" data-titolo="Invio al ponte">
+      <section className="panel collega-codice" data-sezione="codice" data-titolo="Codice di collegamento">
+        <div className="section-title">Collega la regia con il codice</div>
+        <p className="hint">
+          Il codice si copia dal pannello del server: Impostazioni server → Collega la regia. Incollalo qui e premi Collega:
+          tutto il resto si sistema da solo.
+        </p>
+        <textarea
+          className="codice-collegamento"
+          rows={2}
+          spellCheck={false}
+          placeholder="Incolla qui il codice (inizia con RADIO-REGIA1.)"
+          value={codice}
+          onChange={(e) => {
+            setCodice(e.target.value)
+            setCodiceMsg(null)
+          }}
+        />
+        <div className="row">
+          <button
+            className="primary"
+            disabled={!codice.trim()}
+            onClick={async () => {
+              const e = await collegaConCodice(radio, codice)
+              setCodiceMsg(e ? { kind: 'error', text: e } : { kind: 'ok', text: 'Fatto: la regia si sta collegando al server.' })
+              if (!e) setCodice('')
+            }}
+          >
+            Collega
+          </button>
+        </div>
+        {codiceMsg && <div className={`banner ${codiceMsg.kind === 'ok' ? 'ok' : 'error'} inline-banner`}>{codiceMsg.text}</div>}
+      </section>
+
+      <section className="panel" data-sezione="invio" data-titolo="Collegamento al server">
         <div className="section-title">
-          Invio al ponte
+          Collegamento al server
           <button
             className={radio.settings.ponte.enabled ? 'on' : 'primary'}
             disabled={!radio.settings.ponte.host || dirty}
             title={dirty ? 'Prima salva le impostazioni' : ''}
             onClick={() => void save({ enabled: !radio.settings.ponte.enabled })}
           >
-            {radio.settings.ponte.enabled ? 'Acceso: premi per spegnere' : 'Accendi invio'}
+            {radio.settings.ponte.enabled ? 'Acceso: premi per spegnere' : 'Accendi il collegamento'}
           </button>
         </div>
         <div className="link-status">
@@ -135,13 +171,13 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           </div>
         )}
         <p className="hint">
-          Se il collegamento cade, la regia riprova da sola. Nel frattempo il ponte manda in onda la sua musica di riserva.
+          Se il collegamento cade, la regia riprova da sola. Nel frattempo il server manda in onda la sua musica di riserva.
         </p>
       </section>
 
-      <section className="panel" data-sezione="stato-ponte" data-titolo="Stato del ponte">
-        <div className="section-title">Stato del ponte</div>
-        {!configured && <p className="hint">Inserisci qui sotto indirizzo e token del ponte per vedere allarmi e backup.</p>}
+      <section className="panel" data-sezione="stato-ponte" data-titolo="Stato del server">
+        <div className="section-title">Stato del server</div>
+        {!configured && <p className="hint">Incolla il codice di collegamento qui sopra per vedere avvisi e backup.</p>}
         {configured && (
           <>
             <div className="link-status">
@@ -252,8 +288,12 @@ export function ConnectionView({ radio }: { radio: Radio }) {
       )}
 
       <section className="panel" data-sezione="impostazioni-collegamento" data-titolo="Impostazioni del collegamento">
-        <div className="section-title">Impostazioni del collegamento</div>
-        <p className="hint">I valori devono coincidere con quelli del file .env sul server ponte.</p>
+        <details className="tecniche">
+        <summary className="section-title">Impostazioni tecniche del collegamento</summary>
+        <p className="hint">
+          Di solito non serve toccarle: le compila il codice di collegamento. I valori devono coincidere con quelli del file
+          .env sul server.
+        </p>
         <div className="form-grid">
           <label>
             <span>
@@ -354,6 +394,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
             Salva
           </button>
         </div>
+        </details>
       </section>
       <ServerLibrarySection draft={draft} set={set} />
     </Riquadri>

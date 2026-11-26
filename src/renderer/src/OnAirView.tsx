@@ -9,6 +9,7 @@ import { Riquadri } from './Riquadri'
 import { RegistrazioneBox } from './RegistrazioneBox'
 import { EsternaBox } from './EsternaBox'
 import { TitoloParlatoBox } from './TitoloParlatoBox'
+import { useConferma } from './Conferma'
 
 function Meter({ radio }: { radio: Radio }) {
   const [level, setLevel] = useState(0)
@@ -59,6 +60,26 @@ export function OnAirView({ radio }: { radio: Radio }) {
   const ending = main && main.remaining < 10
   const intro = main ? introLeft(main.track, main.position) : null
   const [djStyle, setDjStyle] = useState<MixStyle | ''>('')
+  const conferma = useConferma()
+  const stop = async (): Promise<void> => {
+    const ok = await conferma({
+      titolo: 'Fermare la musica?',
+      testo: 'Il brano in onda si interrompe subito e la radio resta senza musica finché non premi PLAY.',
+      si: 'Sì, ferma la musica'
+    })
+    if (ok) engine.stop()
+  }
+  const svuota = async (): Promise<void> => {
+    const ok = await conferma({
+      titolo: 'Togliere tutti i brani dalla coda?',
+      testo:
+        s.mode === 'auto'
+          ? 'In AUTOMATICO la regia la riempie di nuovo da sola.'
+          : 'In MANUALE, finito il brano in onda, la musica si ferma.',
+      si: 'Sì, svuota la coda'
+    })
+    if (ok) engine.clearQueue()
+  }
 
   return (
     <div className="onair-view">
@@ -107,7 +128,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
           <button className="big next" disabled={!s.queue.length} onClick={() => void engine.next()}>
             ⏭ AVANTI
           </button>
-          <button className="big stop" disabled={!main} onClick={() => engine.stop()}>
+          <button className="big stop" disabled={!main} onClick={() => void stop()}>
             ■ STOP
           </button>
           <div className="dj-row">
@@ -152,7 +173,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
           <div className="section-title">
             In coda
             {s.queue.length > 0 && (
-              <button className="small" onClick={() => engine.clearQueue()}>
+              <button className="small" onClick={() => void svuota()}>
                 Svuota
               </button>
             )}
