@@ -811,6 +811,9 @@ internet; serve internet solo la prima volta, per scaricare la voce (circa 65 MB
 Se una parte non si sa (es. nessun brano dopo), la frase viene detta senza. Nel registro l'annuncio compare come
 Jingle, quindi non va nel report SIAE.
 
+`{ora}` dice l'ora in cui l'annuncio **va in onda**, non quella in cui scatta l'evento: se l'evento aspetta la fine
+del brano in corso (o altri brani dell'evento vengono prima), la regia calcola quando partirà e dice quell'ora.
+
 ### Annunci vocali del server
 
 Quando trasmette il server da solo (diretta autonoma o musica di riserva), può fare annunci a orario con la stessa
@@ -824,7 +827,8 @@ Pannello, menu **☰ → Annunci vocali** (solo amministratori):
    al minuto**, i giorni e **attivo**;
 4. **🎧 Ascolta** per provare, poi **Salva**.
 
-L'annuncio va in onda dopo il brano in corso; con la musica di riserva può slittare di un brano. Se non va in onda
+L'annuncio va in onda dopo il brano in corso; con la musica di riserva dopo il brano successivo. La voce si prepara
+proprio in quel momento, così `{ora}` dice l'ora in cui l'annuncio si sente davvero. Se non va in onda
 entro 10 minuti viene lasciato perdere. Non entra nel registro né nel report SIAE.
 
 ## 13. Programmi, puntate e repliche

@@ -32,7 +32,9 @@ export function useRadio() {
         const next = snap?.queue.find((q) => q.track.kind === 'music')?.track
         const steps = await api.expandEvent(event, {
           track: cur ? { title: cur.title, artist: cur.artist } : null,
-          nextTrack: next ? { title: next.title, artist: next.artist } : null
+          nextTrack: next ? { title: next.title, artist: next.artist } : null,
+          // l'annuncio dice l'ora in cui va in onda (dopo il brano in corso), non quella in cui scatta l'evento
+          startAt: engineRef.current?.eventStartEstimate(event).toISOString()
         })
         // un evento può aver cambiato il profilo di rotazione o acceso/spento il Mix DJ
         if (event.actions.some((a) => a.type === 'rotation' || a.type === 'djMix')) {

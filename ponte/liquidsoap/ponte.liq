@@ -366,7 +366,8 @@ uscita =
 riserva_attesa = float_of_string(default=8., env("RISERVA_ATTESA_SECONDI", "8"))
 def prossimo_riserva() =
   try
-    r = http.get(timeout=5., "#{controllo}/internal/riserva")
+    # fino a 20 secondi: se c'è un annuncio, il controllo produce la voce adesso (con l'ora giusta)
+    r = http.get(timeout=20., "#{controllo}/internal/riserva")
     uri = string.trim(string(r))
     if r.status_code == 200 and uri != "" then request.create(uri) else null() end
   catch _ do

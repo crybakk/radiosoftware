@@ -50,8 +50,15 @@ export class AutonomousPlayer {
   onActive: (on: boolean, by: string) => void = () => {}
   /** Un brano della diretta autonoma è andato in onda (per il registro). */
   onPlay: (t: ServerTrack) => void = () => {}
-  /** Annuncio da mettere prima del prossimo brano (voce sintetica), se ce n'è uno. */
-  interject: () => { id: string; title: string; seconds: number } | null = () => null
+  /**
+   * Annuncio da mettere prima del prossimo brano (voce sintetica), se ce n'è uno.
+   * airsAt = quando andrà in onda: la voce si produce adesso e dice l'ora di quel momento.
+   */
+  interject: (airsAt: Date) => Promise<{ id: string; title: string; seconds: number } | null> = async () => null
+  /** Brani dati alla riserva e non ancora partiti (Liquidsoap li tiene pronti), in ordine. */
+  private reserveQueued: { path: string; seconds: number }[] = []
+  /** Quando finisce il brano della riserva in onda adesso (null = la riserva non suona). */
+  private reserveEndsAt: number | null = null
   private readonly lib: Library
   private readonly lq: LiquidsoapAuto
   private readonly now: () => number
@@ -83,7 +90,7 @@ export class AutonomousPlayer {
         return this.stop(by)
       case 'skip':
         if (!this.active) throw new Error('la diretta autonoma non è attiva')
-        if (!this.prepared) await this.prepareNext()
+        if (!this.prepared) await this.prepareNext(this.now())
         if (!(await this.lq.skip())) throw new Error('il mixer del ponte non risponde')
         return null
       case 'enqueue': {
@@ -117,12 +124,13 @@ export class AutonomousPlayer {
     if (this.active) return null
     if (!this.lib.count()) throw new Error('la libreria del server è vuota')
     // prima il brano, poi l'interruttore: così si sente subito musica
-    await this.prepareNext()
+    await this.prepareNext(this.now())
     if (!(await this.lq.setActive(true))) {
       this.prepared = null
       throw new Error('il mixer del ponte non risponde')
     }
     this.active = true
+    this.reserveEndsAt = null
     this.onActive(true, by)
     this.emit()
     return null
@@ -157,27 +165,34 @@ export class AutonomousPlayer {
     if (this.history.length > RECENT_TRACKS) this.history.shift()
     this.clearTimer()
     const wait = t.duration > 0 ? Math.max(0, t.duration - PREPARE_BEFORE_END_S) : 0
-    this.timer = setTimeout(() => void this.prepareNext().catch(() => {}), wait * 1000)
+    // il prossimo parte alla fine di questo: un annuncio dirà l'ora di quel momento
+    const endsAt = this.onAir.startedAt + Math.max(0, t.duration) * 1000
+    this.timer = setTimeout(() => void this.prepareNext(endsAt).catch(() => {}), wait * 1000)
     this.emit()
   }
 
   /** Brano "virtuale" per un annuncio (il file è nella cartella della musica, fuori dalla libreria). */
-  private announce(): ServerTrack | null {
-    const j = this.interject()
+  private async announce(airsAt: number): Promise<ServerTrack | null> {
+    let j: Awaited<ReturnType<AutonomousPlayer['interject']>> = null
+    try {
+      j = await this.interject(new Date(Math.max(this.now(), airsAt)))
+    } catch {
+      // senza annuncio si va avanti con la musica
+    }
     return j ? { id: j.id, title: j.title, artist: 'Annuncio vocale', duration: j.seconds, bitrate: 128, gainDb: 0, mtime: 0, size: 0 } : null
   }
 
   /** Una preparazione alla volta (timer di fine brano e "salta" insieme): mai due brani nel mixer. */
-  private prepareNext(): Promise<void> {
-    this.preparing ??= this.doPrepareNext().finally(() => (this.preparing = null))
+  private prepareNext(airsAt: number): Promise<void> {
+    this.preparing ??= this.doPrepareNext(airsAt).finally(() => (this.preparing = null))
     return this.preparing
   }
 
-  private async doPrepareNext(): Promise<void> {
+  private async doPrepareNext(airsAt: number): Promise<void> {
     if (this.prepared) return
     // i brani in coda tolti dalla libreria nel frattempo (eliminati, spostati) si saltano:
     // Liquidsoap non li troverebbe e la diretta resterebbe muta
-    const announce = this.announce()
+    const announce = await this.announce(airsAt)
     let queued: (ServerTrack & { uid: string }) | undefined
     while (!announce && !queued && this.queue.length) {
       const q = this.queue.shift()!
@@ -204,18 +219,46 @@ export class AutonomousPlayer {
    * Riserva del ponte: brano a caso per le uscite che non devono mai restare mute
    * (Icecast esterno, dirette video) quando non c'è né regia né diretta autonoma.
    * Usa la stessa memoria dei brani recenti, così non si ripetono artisti.
+   * Liquidsoap chiede il brano successivo appena ne parte uno: quello che si dà adesso andrà in onda
+   * alla fine del brano dato la volta prima (se la riserva sta suonando), altrimenti subito.
    */
-  nextReserve(): string | null {
-    const a = this.announce()
-    if (a) return this.lib.path(a)
+  async nextReserve(): Promise<string | null> {
+    // quello che si dà adesso parte dopo il brano in onda e dopo quelli già dati e non ancora partiti
+    const now = this.now()
+    const base = this.reserveEndsAt !== null && this.reserveEndsAt > now ? this.reserveEndsAt : now
+    const a = await this.announce(base + this.reserveQueued.reduce((n, q) => n + Math.max(0, q.seconds), 0) * 1000)
+    if (a) {
+      this.reserveGiven(this.lib.path(a), a.duration)
+      return this.lib.path(a)
+    }
     const t = this.lib.pickRandom(
       this.history.map((x) => x.id),
       this.history.slice(-RECENT_ARTISTS).map((x) => x.artist)
     )
     if (!t) return null
+    this.reserveGiven(this.lib.path(t), t.duration)
     this.history.push(t)
     if (this.history.length > RECENT_TRACKS) this.history.shift()
     return annotate(this.lib.path(t), t.gainDb, t)
+  }
+
+  private reserveGiven(path: string, seconds: number): void {
+    this.reserveQueued.push({ path, seconds })
+    // Liquidsoap ne tiene pronti al massimo un paio: quelli più vecchi sono stati scartati
+    if (this.reserveQueued.length > 3) this.reserveQueued.shift()
+  }
+
+  /** Liquidsoap avvisa che è partito un brano della riserva (il file, come l'ha avuto). */
+  onReserveStart(file: string): void {
+    const i = this.reserveQueued.findIndex((q) => q.path === file)
+    const seconds = i >= 0 ? this.reserveQueued[i].seconds : (this.lib.all().find((x) => this.lib.path(x) === file)?.duration ?? 0)
+    if (i >= 0) this.reserveQueued.splice(0, i + 1)
+    this.reserveEndsAt = seconds > 0 ? this.now() + seconds * 1000 : null
+  }
+
+  /** La riserva è uscita di onda (è tornata la regia o un'esterna): il brano a metà si scarta. */
+  reserveStopped(): void {
+    this.reserveEndsAt = null
   }
 
   private clearTimer(): void {
