@@ -214,7 +214,14 @@ export interface WeriftOptions {
   stun: string
   /** Altri indirizzi o nomi da annunciare al browser (oltre a quello con cui ha aperto il pannello). */
   addresses: string[]
+  /** Parametri Opus chiesti a chi manda (default: voce del pannello, fino a 128 kbit/s). */
+  opus?: string
 }
+
+/** Voce del pannello e degli ospiti. */
+export const OPUS_VOCE = 'minptime=10;useinbandfec=1;maxaveragebitrate=128000'
+/** App Radio Esterna: stereo (musica dal mixer) fino a 256 kbit/s, con la copia di riserva (FEC). */
+export const OPUS_APP = 'minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=256000'
 
 async function resolveAll(names: string[]): Promise<string[]> {
   const out = new Set<string>()
@@ -248,8 +255,8 @@ export function weriftFactory(o: WeriftOptions): SessionFactory {
             mimeType: 'audio/opus',
             clockRate: 48000,
             channels: 2,
-            // qualità radio: chiede al browser fino a 128 kbit/s
-            parameters: 'minptime=10;useinbandfec=1;maxaveragebitrate=128000'
+            // qualità radio: chiede al browser fino a 128 kbit/s (256 e stereo per l'app) con la FEC
+            parameters: o.opus ?? OPUS_VOCE
           })
         ]
       },

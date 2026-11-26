@@ -279,6 +279,10 @@ export interface EsternaStatus {
   since: string | null
   /** Token per ascoltare l'app (GET /api/esterna/ascolta?t=…), null se non è collegata. */
   ascolto: string | null
+  /** Come arriva l'audio dell'app: WebRTC (UDP) o HTTPS (riserva). null = non collegata. */
+  via?: 'webrtc' | 'https' | null
+  /** Qualità della linea dell'app (null = non collegata o ancora da misurare). */
+  linea?: LineaStato | null
 }
 
 /** Regia → ponte */

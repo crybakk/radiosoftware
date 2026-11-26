@@ -425,6 +425,38 @@ export class Ricevitore {
   }
 }
 
+/**
+ * Linea dell'app quando manda l'audio in HTTPS (riserva quando l'UDP non passa): i pezzi arrivano ogni quarto di
+ * secondo; Liquidsoap ne tiene da parte un secondo, quindi un'attesa fino a un secondo non si sente (ma dice che la
+ * linea fatica) e oltre l'audio in onda si ferma un momento. Si conta quanto si è aspettato negli ultimi 5 secondi.
+ */
+export class LineaArrivi {
+  private arrivi: number[] = []
+
+  reset(): void {
+    this.arrivi = []
+  }
+
+  push(t: number): void {
+    this.arrivi.push(t)
+    while (this.arrivi.length && t - this.arrivi[0] > 6000) this.arrivi.shift()
+  }
+
+  stato(t: number): LineaStato {
+    const a = this.arrivi.filter((x) => t - x <= 5000)
+    const ultimo = this.arrivi[this.arrivi.length - 1] ?? 0
+    let fatica = 0
+    let buchi = 0
+    const gap = (g: number): void => {
+      fatica += Math.max(0, g - 400)
+      buchi += Math.max(0, g - 1000)
+    }
+    for (let i = 1; i < a.length; i++) gap(a[i] - a[i - 1])
+    if (a.length) gap(t - a[a.length - 1])
+    return valutaLinea({ perdita: (100 * fatica) / 5000, buchi: (100 * buchi) / 5000, ritardo: 0, assente: !ultimo || t - ultimo > ASSENTE_MS })
+  }
+}
+
 function silenzioso(pcm: Int16Array): boolean {
   let e = 0
   for (let i = 0; i < pcm.length; i++) e += pcm[i] * pcm[i]

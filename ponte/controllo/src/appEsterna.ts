@@ -12,10 +12,19 @@
  *   - una sola app alla volta. Se la rete cade mentre è in onda l'app si ricollega e resta in onda; se non torna
  *     entro un minuto si passa fuori onda, così alla prossima apertura non si va in onda senza volerlo.
  *   - ascolto: la regia e il pannello sentono l'app anche fuori onda; l'app sente il ritorno dello studio.
+ *
+ * Dal 26/11/2026 (linea più robusta sul 4G, scelte di cristian) l'app prova prima il WebRTC (UDP, porte 40000-40049):
+ * l'audio passa dal ricevitore automatico (ricevitore.ts: buffer che si regola da solo, pezzi persi ricostruiti)
+ * e arriva a Liquidsoap in RTP; nella stessa connessione torna il ritorno in cuffia (regia + voci del pannello,
+ * senza l'app) con mezzo secondo di ritardo o meno. Se l'UDP non passa l'app resta sull'HTTPS di sopra.
+ * La qualità della linea (verde/giallo/rosso) va all'app, al pannello e alla regia.
  */
 import { spawn as nodeSpawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import type { EsternaStatus } from './protocol.ts'
+import type { OpusCodec } from './opus.ts'
+import type { EsternaStatus, LineaStato } from './protocol.ts'
+import { LineaArrivi, Ricevitore } from './ricevitore.ts'
+import type { SessionFactory } from './voce.ts'
 
 export interface AppPeer {
   send(data: string): void
@@ -35,12 +44,18 @@ export type FromApp =
   | { t: 'hello'; versione?: string; inOnda?: boolean; programId?: string | null; testo?: string }
   | { t: 'onda'; on: boolean }
   | { t: 'meta'; programId?: string | null; testo?: string }
+  /** Collegamento WebRTC: offerta dell'app (la risposta arriva con rtc-risposta). */
+  | { t: 'rtc-offerta'; sdp: string }
+  /** L'app chiude il WebRTC (non passa: torna all'HTTPS). */
+  | { t: 'rtc-chiudi' }
 
 /** Messaggi verso l'app. */
 export type ToApp =
   | { t: 'benvenuto'; user: string; ritorno: string; stazione: string }
   | { t: 'stato'; stato: EsternaStatus; regia: boolean }
   | { t: 'errore'; messaggio: string }
+  | { t: 'rtc-risposta'; sdp: string }
+  | { t: 'rtc-errore'; messaggio: string }
 
 export interface AppEsternaDeps {
   /** POST all'HTTP interno di Liquidsoap; true se ha risposto ok. */
@@ -64,6 +79,17 @@ export interface AppEsternaDeps {
   /** Attesa prima di passare fuori onda quando l'app sparisce mentre è in onda (ms). */
   offDelayMs?: number
   now?: () => number
+  /** WebRTC per l'app (assente = solo HTTPS, come prima del 26/11/2026). */
+  rtc?: {
+    factory: SessionFactory
+    codec: OpusCodec | null
+    /** Pacchetto RTP pulito verso Liquidsoap. */
+    sendAudio(pkt: Buffer): void
+    /** false nei test: niente orologio del ricevitore. */
+    timer?: boolean
+  }
+  /** Audio dell'app che arriva al server (HTTPS o WebRTC), per le statistiche del collegamento. */
+  onAudio?: (on: boolean) => void
 }
 
 /** Byte al massimo in attesa verso ffmpeg: oltre si scartano (ffmpeg bloccato). */
@@ -103,6 +129,8 @@ interface Conn {
   ritorno: string
   proc: Proc | null
   pending: number
+  rtc: (Awaited<ReturnType<SessionFactory>>) | null
+  rtcApertura: object | null
 }
 
 export class AppEsterna {
@@ -114,8 +142,17 @@ export class AppEsterna {
   /** Ultimo utente collegato (resta durante una caduta della rete, per il ritorno in onda). */
   private user: string | null = null
   private inOnda = false
-  /** Audio dell'app collegato all'ingresso di Liquidsoap. */
+  /** Audio dell'app collegato all'ingresso HTTPS di Liquidsoap (eventi di Liquidsoap). */
+  private audioHttps = false
+  /** Audio dell'app che arriva in WebRTC. */
+  private audioRtc = false
+  /** Uno dei due. */
   private audio = false
+  private readonly ricevitore: Ricevitore | null
+  private readonly arrivi = new LineaArrivi()
+  private lineaRtc: LineaStato | null = null
+  private lineaTimer: ReturnType<typeof setInterval> | null = null
+  private lineaHttps: LineaStato | null = null
   private effective = false
   private since: number | null = null
   private programId: string | null = null
@@ -130,6 +167,15 @@ export class AppEsterna {
     this.spawn = d.spawn ?? ((cmd, args, opts) => nodeSpawn(cmd, args, opts) as unknown as Proc)
     this.log = d.log ?? ((s) => console.log(`[radio esterna] ${s}`))
     this.now = d.now ?? (() => Date.now())
+    this.ricevitore = d.rtc
+      ? new Ricevitore({
+          codec: d.rtc.codec,
+          send: (pkt) => d.rtc!.sendAudio(pkt),
+          onLinea: (l) => this.rtcLinea(l),
+          now: this.now,
+          timer: d.rtc.timer
+        })
+      : null
   }
 
   enabled(): boolean {
@@ -150,7 +196,9 @@ export class AppEsterna {
       titolo: this.titolo(),
       programId: this.programId,
       since: this.since ? new Date(this.since).toISOString() : null,
-      ascolto: this.conn || this.inOnda ? this.ascolto : null
+      ascolto: this.conn || this.inOnda ? this.ascolto : null,
+      via: this.conn?.rtc ? 'webrtc' : this.conn ? 'https' : null,
+      linea: !this.conn ? null : this.conn.rtc ? this.lineaRtc : this.lineaHttps
     }
   }
 
@@ -181,6 +229,7 @@ export class AppEsterna {
     if (old) {
       this.conn = null
       this.stopAudio(old)
+      this.rtcChiudi(old, false)
       old.peer.close(4000, 'sostituita da una nuova connessione')
     }
     // un altro utente prende il posto di chi era in onda ed è sparito
@@ -188,9 +237,15 @@ export class AppEsterna {
     if (this.offTimer) clearTimeout(this.offTimer)
     this.offTimer = null
     if (!this.inOnda) this.ascolto = randomBytes(18).toString('base64url')
-    const c: Conn = { peer, user, ritorno: randomBytes(18).toString('base64url'), proc: null, pending: 0 }
+    const c: Conn = { peer, user, ritorno: randomBytes(18).toString('base64url'), proc: null, pending: 0, rtc: null, rtcApertura: null }
     this.conn = c
     this.user = user
+    this.arrivi.reset()
+    this.lineaHttps = null
+    if (!this.lineaTimer) {
+      this.lineaTimer = setInterval(() => this.lineaHttpsTick(), 2000)
+      this.lineaTimer.unref?.()
+    }
     this.log(`${user} si è collegato`)
     this.sendTo(peer, { t: 'benvenuto', user, ritorno: c.ritorno, stazione: this.d.stationName })
     this.emit()
@@ -214,12 +269,20 @@ export class AppEsterna {
           void this.setOnda(msg.on === true)
         } else if (msg.t === 'meta') {
           this.setMeta(msg.programId, msg.testo)
+        } else if (msg.t === 'rtc-offerta') {
+          void this.rtcApri(c, typeof msg.sdp === 'string' ? msg.sdp : '')
+        } else if (msg.t === 'rtc-chiudi') {
+          this.rtcChiudi(c)
         }
       },
       close: () => {
         if (this.conn !== c) return
         this.conn = null
         this.stopAudio(c)
+        this.rtcChiudi(c, false)
+        this.lineaHttps = null
+        if (this.lineaTimer) clearInterval(this.lineaTimer)
+        this.lineaTimer = null
         this.log(`${c.user} si è scollegato${this.inOnda ? ': resta in onda per un minuto, se torna' : ''}`)
         if (this.inOnda) {
           this.offTimer = setTimeout(() => {
@@ -236,6 +299,9 @@ export class AppEsterna {
   }
 
   private audioChunk(c: Conn, data: Buffer): void {
+    // in WebRTC l'audio HTTPS non serve più (l'app smette di mandarlo appena il WebRTC è collegato)
+    if (c.rtc && this.audioRtc) return
+    this.arrivi.push(this.now())
     if (!c.proc) {
       // un pezzo che non è l'inizio di un file WebM (app che riprende a metà) non si può leggere: si aspetta l'inizio
       if (data.length < 4 || data.readUInt32BE(0) !== 0x1a45dfa3) return
@@ -337,16 +403,98 @@ export class AppEsterna {
     this.update()
   }
 
-  /** Evento di Liquidsoap: l'audio dell'app arriva (o non arriva più) all'ingresso interno. */
+  /** Evento di Liquidsoap: l'audio dell'app arriva (o non arriva più) all'ingresso HTTPS interno. */
   setAudio(on: boolean): void {
+    this.audioHttps = on
+    this.aggiornaAudio()
+  }
+
+  private aggiornaAudio(): void {
+    const on = this.audioHttps || this.audioRtc
     if (on === this.audio) return
     this.audio = on
+    this.d.onAudio?.(on)
     this.update()
+  }
+
+  // ---------- WebRTC ----------
+
+  private async rtcApri(c: Conn, sdp: string): Promise<void> {
+    if (!this.d.rtc || !this.ricevitore) {
+      this.sendTo(c.peer, { t: 'rtc-errore', messaggio: 'il server non ha il WebRTC per l\'app: si usa l\'HTTPS' })
+      return
+    }
+    this.rtcChiudi(c, false)
+    const ticket = {}
+    c.rtcApertura = ticket
+    try {
+      const s = await this.d.rtc.factory(sdp, {
+        onVoice: (pkt) => {
+          if (c.rtc === s && this.conn === c) this.ricevitore!.push(pkt)
+        },
+        onEnd: () => {
+          if (c.rtc !== s) return
+          this.log(`${c.user}: WebRTC caduto`)
+          this.rtcChiudi(c)
+        }
+      })
+      if (c.rtcApertura !== ticket || this.conn !== c) {
+        s.close()
+        return
+      }
+      c.rtcApertura = null
+      c.rtc = s
+      this.ricevitore.apri()
+      this.lineaRtc = null
+      this.log(`${c.user}: audio in WebRTC`)
+      this.sendTo(c.peer, { t: 'rtc-risposta', sdp: s.answer })
+      this.emit()
+    } catch (e) {
+      if (c.rtcApertura === ticket) c.rtcApertura = null
+      this.sendTo(c.peer, { t: 'rtc-errore', messaggio: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
+  private rtcChiudi(c: Conn, notify = true): void {
+    c.rtcApertura = null
+    const s = c.rtc
+    if (!s) return
+    c.rtc = null
+    s.close()
+    this.ricevitore?.chiudi()
+    this.lineaRtc = null
+    this.audioRtc = false
+    this.aggiornaAudio()
+    if (notify) this.emit()
+  }
+
+  private rtcLinea(l: LineaStato): void {
+    this.lineaRtc = l
+    this.audioRtc = !!this.conn?.rtc && l.livello !== 'assente'
+    // arriva in WebRTC: il flusso HTTPS (se c'era ancora) si chiude, Liquidsoap usa già quello WebRTC
+    if (this.audioRtc && this.conn?.proc) this.stopAudio(this.conn)
+    this.aggiornaAudio()
+    this.emit()
+  }
+
+  /** Ritorno in cuffia da Liquidsoap (regia + voci, senza l'app) verso l'app collegata in WebRTC. */
+  ritornoRtc(pkt: Buffer): void {
+    this.conn?.rtc?.sendReturn(pkt)
+  }
+
+  /** Linea dell'HTTPS: si guarda ogni 2 secondi se i pezzi d'audio arrivano regolari. */
+  private lineaHttpsTick(): void {
+    const c = this.conn
+    const l = c && !c.rtc ? this.arrivi.stato(this.now()) : null
+    if (l?.livello === this.lineaHttps?.livello && l?.buchi === this.lineaHttps?.buchi) return
+    this.lineaHttps = l
+    this.emit()
   }
 
   /** Stato letto da Liquidsoap all'avvio del controllo: l'app resta fuori onda finché qualcuno non preme IN ONDA. */
   sync(audio: boolean): void {
-    this.audio = audio
+    this.audioHttps = audio
+    this.audio = audio || this.audioRtc
     // dopo un riavvio del controllo nessuno sa chi era in onda: si spegne
     void this.d.lq('/app/onda', { on: false })
     this.update()
