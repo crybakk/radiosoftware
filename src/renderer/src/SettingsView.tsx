@@ -470,22 +470,6 @@ export function SettingsView({ radio }: { radio: Radio }) {
         </label>
       </section>
 
-      <section className="panel avanzate" data-sezione="avanzate" data-titolo="Cose avanzate">
-        <div className="section-title">Cose avanzate</div>
-        <p className="hint">
-          Per chi conosce la parte tecnica: mostra le schede Registro e Collegamento, il pulsante Riordina e le impostazioni
-          tecniche. Chi usa la regia tutti i giorni può lasciarle nascoste: non servono per andare in onda.
-        </p>
-        <label className="check grande">
-          <input
-            type="checkbox"
-            checked={radio.settings.mostraAvanzate}
-            onChange={(e) => void radio.saveSettings({ mostraAvanzate: e.target.checked })}
-          />
-          <span>Mostra le cose avanzate</span>
-        </label>
-      </section>
-
       <div className="row end sticky">
         {newsError && dirty && <span className="hint error-text">Notiziari: {newsError}</span>}
         {saved && !dirty && <span className="hint">Impostazioni salvate</span>}
