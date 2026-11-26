@@ -38,3 +38,30 @@ describe('rotazioni preparate da Claude', () => {
     expect(() => parseImportedPlan('ciao, non so')).toThrow('non c\'è un piano valido')
   })
 })
+
+describe('annunci con la voce nel piano importato', () => {
+  it('diventano eventi "voce" ripetuti, con i controlli', async () => {
+    const { planEvents } = await import('../src/core/aiRotation')
+    const { plan, warnings } = cleanPlan(
+      {
+        slots: [],
+        announcements: [
+          { name: 'Ora esatta', days: [1, 2, 3, 4, 5], start: '07:00', end: '19:00', everyMinutes: 60, text: 'Sono le {ora} su {radio}' },
+          { name: 'Troppo spesso', days: [0], start: '10:00', end: '12:00', everyMinutes: 5, text: 'Ciao {nome}' },
+          { name: 'Vuoto', days: [0], start: '10:00', end: null, everyMinutes: 0, text: '' }
+        ]
+      },
+      lib
+    )
+    expect(plan.announcements).toHaveLength(2)
+    expect(plan.announcements![1].everyMinutes).toBe(15)
+    expect(warnings.join('\n')).toContain('{nome} non è un segnaposto')
+    expect(warnings.join('\n')).toContain('"Vuoto": senza testo')
+    const ev = planEvents(plan)
+    expect(ev[0]).toMatchObject({ label: 'AI · annuncio Ora esatta', time: '07:00', repeatMinutes: 60, untilTime: '19:00', actions: [{ type: 'voice', text: 'Sono le {ora} su {radio}' }] })
+  })
+
+  it('il file per Claude spiega gli annunci', () => {
+    expect(exportForClaude('x', lib)).toContain('"announcements"')
+  })
+})

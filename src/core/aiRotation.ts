@@ -28,9 +28,30 @@ export interface AiSlot {
   energyMax?: number | null
 }
 
+/** Annuncio vocale a orario (voce sintetica della regia), ripetuto ogni tanti minuti dentro una fascia. */
+export interface AiAnnouncement {
+  name: string
+  days: number[]
+  /** "HH:MM": primo annuncio. */
+  start: string
+  /** "HH:MM": ultimo orario possibile (compreso); null = solo una volta. */
+  end: string | null
+  /** Ogni quanti minuti (0 = solo una volta). */
+  everyMinutes: number
+  /** Testo letto dalla voce; può contenere {ora}, {data}, {radio}, {programma}… */
+  text: string
+}
+
 export interface AiPlan {
   slots: AiSlot[]
+  /** Solo dai piani importati (Claude in chat): il modello della regia non li prepara. */
+  announcements?: AiAnnouncement[]
 }
+
+/** Segnaposto che la voce sa riempire (come negli annunci degli eventi). */
+const VOICE_KEYS = ['ora', 'data', 'radio', 'brano', 'artista', 'prossimo_brano', 'prossimo_artista', 'programma', 'prossimo_programma', 'ora_prossimo_programma']
+const MAX_ANNOUNCEMENTS = 20
+const MAX_VOICE_CHARS = 300
 
 export interface LibrarySummary {
   /** Generi della musica attiva (file e MusicBrainz, in minuscolo), dal più frequente. */
@@ -206,6 +227,19 @@ export function exportForClaude(description: string, s: LibrarySummary, now = ne
     JSON.stringify(esempio, null, 2),
     '```',
     '',
+    'Facoltativo, accanto a "slots": "announcements" (massimo 20), annunci letti dalla voce sintetica della regia',
+    'a fine brano. "end" è l\'ultimo orario (stesso giorno, dopo "start"), "everyMinutes" ogni quanto ripeterlo (minimo 15;',
+    '0 = una volta sola, con "end": null). Nel testo si possono usare {ora}, {data}, {radio}, {programma},',
+    '{prossimo_programma}, {ora_prossimo_programma}.',
+    '',
+    '```json',
+    JSON.stringify(
+      { announcements: [{ name: 'Ora esatta', days: [1, 2, 3, 4, 5], start: '07:00', end: '19:00', everyMinutes: 60, text: 'Sono le {ora}, state ascoltando {radio}.' }] },
+      null,
+      2
+    ),
+    '```',
+    '',
     '## Libreria',
     '',
     `Brani di musica: ${s.music}. Anni dei brani: ${s.yearMin != null ? `dal ${s.yearMin} al ${s.yearMax}` : 'sconosciuti'}.`,
@@ -323,8 +357,48 @@ export function cleanPlan(input: unknown, s: LibrarySummary): { plan: AiPlan; wa
       if (overlaps(slots[i], slots[j])) warnings.push(`"${slots[i].name}" e "${slots[j].name}" si sovrappongono: vince quella che parte dopo`)
     }
   }
-  if (!slots.length) warnings.push('nessuna fascia valida: prova a descrivere il palinsesto con giorni e orari')
-  return { plan: { slots }, warnings }
+  const announcements = cleanAnnouncements((input as { announcements?: unknown })?.announcements, warnings)
+  if (!slots.length && !announcements.length) warnings.push('nessuna fascia valida: prova a descrivere il palinsesto con giorni e orari')
+  return { plan: announcements.length ? { slots, announcements } : { slots }, warnings }
+}
+
+function cleanAnnouncements(raw: unknown, warnings: string[]): AiAnnouncement[] {
+  const out: AiAnnouncement[] = []
+  for (const [i, x] of (Array.isArray(raw) ? raw : []).slice(0, MAX_ANNOUNCEMENTS).entries()) {
+    const o = (x ?? {}) as Record<string, unknown>
+    const name = String(o.name ?? '').replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim().slice(0, 40) || `Annuncio ${i + 1}`
+    const text = String(o.text ?? '').replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim().slice(0, MAX_VOICE_CHARS)
+    const start = String(o.start ?? '').trim()
+    const endRaw = o.end == null ? '' : String(o.end).trim()
+    if (!text) {
+      warnings.push(`annuncio "${name}": senza testo, tolto`)
+      continue
+    }
+    if (!TIME.test(start) || (endRaw && !TIME.test(endRaw))) {
+      warnings.push(`annuncio "${name}": orario non valido, tolto`)
+      continue
+    }
+    const days = [...new Set((Array.isArray(o.days) ? o.days : []).map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort()
+    if (!days.length) {
+      warnings.push(`annuncio "${name}": nessun giorno, tolto`)
+      continue
+    }
+    let every = intOrNull(o.everyMinutes, 0, 720) ?? 0
+    if (every > 0 && every < 15) {
+      warnings.push(`annuncio "${name}": al massimo uno ogni 15 minuti`)
+      every = 15
+    }
+    const end = every > 0 && endRaw && endRaw > start ? endRaw : null
+    if (every > 0 && !end) {
+      warnings.push(`annuncio "${name}": senza un orario di fine valido (nello stesso giorno) va una volta sola`)
+      every = 0
+    }
+    for (const k of text.matchAll(/\{([a-z_]+)\}/g)) {
+      if (!VOICE_KEYS.includes(k[1])) warnings.push(`annuncio "${name}": {${k[1]}} non è un segnaposto della voce, verrà letto così`)
+    }
+    out.push({ name, days, start, end: every > 0 ? end : null, everyMinutes: every, text })
+  }
+  return out
 }
 
 /** Il profilo di rotazione della fascia. */
@@ -386,6 +460,14 @@ export function planEvents(plan: AiPlan): NewEvent[] {
     const nextDay = minutes(s.end) <= minutes(s.start)
     const endDays = s.days.map((d) => (nextDay ? (d + 1) % 7 : d)).filter((d) => !startsAt.has(`${d} ${s.end}`))
     if (endDays.length) out.push(baseEvent(`${AI_LABEL}fine ${s.name}`, s.end, [...new Set(endDays)].sort(), null))
+  }
+  for (const a of plan.announcements ?? []) {
+    out.push({
+      ...baseEvent(`${AI_LABEL}annuncio ${a.name}`, a.start, a.days, null),
+      repeatMinutes: a.everyMinutes,
+      untilTime: a.everyMinutes > 0 ? a.end : null,
+      actions: [{ type: 'voice', text: a.text }]
+    })
   }
   return out
 }
