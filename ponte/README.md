@@ -56,7 +56,7 @@ Le sezioni seguenti spiegano gli stessi passaggi a mano, per esempio su un serve
 | TCP 8000 (`ICECAST_PORTA`) | ascolto senza https, per i lettori vecchi (facoltativo) |
 | **UDP 9000** (`SRT_PORT`) | audio dalla regia |
 | TCP 9010 (`ESTERNA_PORTA`) | dirette esterne |
-| **UDP 40000-40049** (`WEBRTC_PORTE`) | microfono dal pannello e ospiti |
+| **UDP 40000-40049** (`WEBRTC_PORTE`) | microfono dal pannello, ospiti e app Radio Esterna |
 | UDP 9020 (`VIDEO_OBS_PORTA`) | video da OBS per YouTube e Facebook (solo se lo usi da fuori casa) |
 
 **Banda**: ogni ascoltatore dell'Icecast principale usa 0,128 Mbit/s di upload della connessione di casa
@@ -225,6 +225,16 @@ lo mette in onda, lo toglie, lo chiude. Al massimo **3 ospiti** insieme, più il
 Ognuno sente in cuffia il programma e le altre voci in onda, ma non la propria (mix-minus fatto in Liquidsoap).
 Porte interne (rete Docker): voci 41030/41032/41034/41036, ritorni 41040/41042/41044/41046 (pari, perché RTP usa
 la successiva per RTCP). All'esterno servono solo la 443 e le UDP `WEBRTC_PORTE`.
+
+**Ricevitore automatico (26/11/2026).** Le voci in WebRTC passano dal ricevitore del controllo (`ricevitore.ts`,
+libopus della libreria di sistema): buffer anti-scatti che si regola da solo (40 ms – 1 s, in base a quanto balla
+la linea), pacchetti persi ricostruiti con la copia di riserva di Opus (FEC) o con la ricostruzione di Opus, audio
+ricodificato a 256 kbit/s verso Liquidsoap. Il ricevitore misura la linea: pallino verde/giallo/rosso in pannello,
+regia, pagina dell'ospite e app. Anche i ritorni in cuffia hanno la FEC. Nessuna impostazione.
+
+**App Radio Esterna in WebRTC.** L'app prova prima il WebRTC (stesse porte `WEBRTC_PORTE`); l'audio pulito va a
+Liquidsoap sulla 41050 (ingresso `app_rtp`, che ha la precedenza sull'ingresso HTTPS 9011) e il ritorno in cuffia
+(regia + voci del pannello, senza l'app) torna dalla 41060. Se il WebRTC non si collega l'app resta in HTTPS.
 
 ### Diretta autonoma (musica dal server)
 
