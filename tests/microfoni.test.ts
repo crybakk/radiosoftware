@@ -11,9 +11,9 @@ type Piano = {
   doppio: boolean
   senzaEco: boolean
 }
-const modulo = { exports: {} as { pianoCattura: (s: Scelta[], cuffie: boolean) => Piano } }
+const modulo = { exports: {} as { pianoCattura: (s: Scelta[], cuffie: boolean) => Piano; testoLinea: (l: unknown, via?: string) => { cls: string; testo: string; dettagli: string } | null } }
 runInNewContext(readFileSync(join(__dirname, '..', 'ponte', 'controllo', 'pannello', 'microfoni.js'), 'utf8'), { module: modulo })
-const { pianoCattura } = modulo.exports
+const { pianoCattura, testoLinea } = modulo.exports
 
 describe('due microfoni nel pannello', () => {
   it('un solo microfono: come prima, mono, elaborazione solo senza cuffie', () => {
@@ -51,5 +51,20 @@ describe('due microfoni nel pannello', () => {
     const p = pianoCattura([{ device: 'a', channel: 'boh' }], true)
     expect(p.usati[0].channel).toBe('tutti')
     expect(p.aperture[0].stereo).toBe(false)
+  })
+})
+
+describe('indicatore della linea nel pannello', () => {
+  it('pallino e frase semplice, numeri solo nei dettagli', () => {
+    expect(testoLinea(null)).toBeNull()
+    const b = testoLinea({ livello: 'buona', frase: 'Linea buona', perdita: 0, buchi: 0, ritardo: 60 }, 'webrtc')!
+    expect(b.testo).toBe('🟢 Linea buona')
+    expect(b.cls).toBe('linea buona')
+    expect(b.dettagli).toContain('60 ms')
+    expect(b.dettagli).toContain('WebRTC')
+    const d = testoLinea({ livello: 'pessima', frase: 'Linea molto debole: l\'audio salta', perdita: 12, buchi: 6, ritardo: 0 }, 'https')!
+    expect(d.testo.startsWith('🔴')).toBe(true)
+    expect(d.dettagli).toContain('12%')
+    expect(d.dettagli).toContain('riserva')
   })
 })

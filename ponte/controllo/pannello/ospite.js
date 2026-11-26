@@ -179,6 +179,11 @@ function connect() {
       show('g-join')
     } else if (m.t === 'state') {
       onState(m)
+    } else if (m.t === 'linea') {
+      // la propria linea: pallino e frase (i numeri solo al passaggio del mouse)
+      const l = lineaEl(m.linea)
+      $('g-linea').replaceChildren(...(l ? [l] : []))
+      $('g-linea').hidden = !l
     } else if (m.t === 'reply') {
       const w = waiting.get(m.id)
       if (w) {

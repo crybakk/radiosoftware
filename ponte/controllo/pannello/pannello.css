@@ -326,3 +326,11 @@ button.danger { border-color: #b91c1c; color: #fca5a5; }
 .tp-onda { margin-left: auto; background: var(--red, #ef4444); color: #fff; border-radius: 6px; padding: 2px 8px; }
 #tp-form input { flex: 1; width: auto; min-width: 0; }
 #tp-form { margin-bottom: 6px; }
+
+/* qualità della linea (26/11/2026): pallino e frase, numeri nel suggerimento */
+.linea-box { margin: 6px 0; }
+.linea { display: inline-block; font-weight: 600; padding: 2px 8px; border-radius: 6px; cursor: help; }
+.linea.buona { color: var(--green); }
+.linea.debole { color: #1a1000; background: var(--amber); }
+.linea.pessima, .linea.assente { color: white; background: var(--red); }
+.g-name .linea { display: block; width: fit-content; margin-top: 2px; font-size: 0.85em; }

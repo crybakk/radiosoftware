@@ -10,7 +10,7 @@
  */
 import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import type { GuestCommand, GuestInfo, GuestInvite } from './protocol.ts'
+import type { GuestCommand, GuestInfo, GuestInvite, LineaStato } from './protocol.ts'
 import type { Peer } from './relay.ts'
 import type { VoiceHub } from './voce.ts'
 import { setAsideBroken } from './statoFile.ts'
@@ -26,6 +26,8 @@ export type ToGuest =
   | { t: 'hello'; label: string; station: string; listenUrl: string }
   | { t: 'state'; state: 'attesa' | 'dentro' | 'rifiutato' | 'chiuso' | 'pieno'; onAir: boolean }
   | { t: 'reply'; id: string; ok: boolean; data?: unknown; error?: string }
+  /** Qualità della propria linea (pallino e frase). */
+  | { t: 'linea'; linea: LineaStato | null }
 
 interface Guest {
   id: string
@@ -35,6 +37,8 @@ interface Guest {
   state: 'attesa' | 'dentro'
   slot: VoiceHub | null
   since: number
+  /** Ultima linea mandata all'ospite (per non ripeterla). */
+  ultimaLinea?: string
 }
 
 export interface GuestOptions {
@@ -254,5 +258,13 @@ export class Guests {
 
   private emit(): void {
     this.onChange(this.list())
+    // ogni ospite vede la qualità della sua linea
+    for (const g of this.guests.values()) {
+      const linea = g.slot?.status().linea ?? null
+      if (g.slot && JSON.stringify(linea) !== g.ultimaLinea) {
+        g.ultimaLinea = JSON.stringify(linea)
+        this.send(g, { t: 'linea', linea })
+      }
+    }
   }
 }

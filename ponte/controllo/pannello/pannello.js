@@ -442,6 +442,10 @@ function renderMic() {
   const who = $('mic-who')
   who.textContent = mic.user ? `${mic.user}${mic.onAir ? ' · IN ONDA' : ' · fuori onda'}` : ''
   who.className = `mic-who ${mic.onAir ? 'onair' : ''}`
+  // qualità della linea del microfono (verde/giallo/rosso), misurata dal ponte
+  const linea = mine ? lineaEl(mic.linea) : null
+  $('mic-linea').replaceChildren(...(linea ? [linea] : []))
+  $('mic-linea').hidden = !linea
   const secure = window.isSecureContext && navigator.mediaDevices
   const hint = $('mic-hint')
   if (!secure) {
@@ -625,6 +629,8 @@ function renderGuests() {
     const row = el('div', 'g-row')
     const name = el('div', 'g-name', g.name)
     name.append(el('small', null, g.state === 'attesa' ? `in sala d'attesa da ${hhmm(g.since)}` : g.connected ? (g.onAir ? 'IN ONDA' : 'collegato, fuori onda') : 'si sta collegando…'))
+    const linea = g.connected ? lineaEl(g.linea) : null
+    if (linea) name.append(linea)
     row.append(name)
     if (ctl) {
       if (g.state === 'attesa') {
@@ -1161,6 +1167,9 @@ function renderEsterna(st) {
         : '📡 Esterna collegata, audio non ancora attivo'
   $('esterna-chi').textContent = st.user ? `· ${st.user}` : ''
   $('esterna-titolo').textContent = st.titolo || ''
+  const linea = st.collegata ? lineaEl(st.linea, st.via) : null
+  $('esterna-linea').replaceChildren(...(linea ? [linea] : []))
+  $('esterna-linea').hidden = !linea
   // token cambiato (nuova connessione dell'app): l'ascolto si riapre con quello nuovo
   if (esternaAscolto !== st.ascolto) {
     const eraInAscolto = !audio.paused
