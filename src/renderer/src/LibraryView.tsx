@@ -9,8 +9,10 @@ import { TrackSearch } from './TrackSearch'
 import { PuliziaSection } from './PuliziaSection'
 import type { Radio } from './useRadio'
 import { Riquadri } from './Riquadri'
+import { useConferma } from './Conferma'
 
 export function LibraryView({ radio: _radio }: { radio: Radio }) {
+  const conferma = useConferma()
   const [folders, setFolders] = useState<LibraryFolder[]>([])
   const [status, setStatus] = useState<LibraryStatus | null>(null)
   const [newKind, setNewKind] = useState<TrackKind>('music')
@@ -24,6 +26,14 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
   const [selMsg, setSelMsg] = useState('')
 
   const togli = async (ids: number[], scarti: boolean): Promise<void> => {
+    const ok = await conferma({
+      titolo: ids.length === 1 ? 'Togliere questo brano dalla libreria?' : `Togliere ${ids.length} brani dalla libreria?`,
+      testo: scarti
+        ? 'Non andranno più in onda e i file vengono spostati nella cartella "_Tolti dalla libreria". Li ritrovi in Pulizia → Tolti dalla libreria.'
+        : 'Non andranno più in onda. I file restano dove sono. Li ritrovi in Pulizia → Tolti dalla libreria.',
+      si: 'Sì, togli'
+    })
+    if (!ok) return
     const r = scarti ? await window.radio.spostaNegliScarti(ids) : await window.radio.togliDallaLibreria(ids)
     setSelMsg(
       `${r.fatti} ${r.fatti === 1 ? 'brano tolto' : 'brani tolti'} dalla libreria${scarti ? ' e spostati in "_Tolti dalla libreria"' : ' (i file restano dove sono)'}. Li ritrovi in Pulizia → Tolti dalla libreria.` +
@@ -60,7 +70,17 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
             <li key={f.id}>
               <span className="tag">{KIND_LABEL[f.kind]}</span>
               <span className="folder-path">{f.path}</span>
-              <button className="small danger" onClick={async () => setFolders(await window.radio.removeFolder(f.id))}>
+              <button
+                className="small danger"
+                onClick={async () => {
+                  const ok = await conferma({
+                    titolo: 'Togliere questa cartella dalla regia?',
+                    testo: `${f.path}\n\nI suoi brani spariscono dalla libreria e non vanno più in onda. I file restano sul computer: non viene cancellato niente.`,
+                    si: 'Sì, togli la cartella'
+                  })
+                  if (ok) setFolders(await window.radio.removeFolder(f.id))
+                }}
+              >
                 Rimuovi
               </button>
             </li>

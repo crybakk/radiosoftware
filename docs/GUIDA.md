@@ -6,7 +6,7 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 25/11/2026, **Mix DJ** più preciso: i brani restano a tempo battuta per battuta.
+**Ultimo aggiornamento:** 26/11/2026, regia più semplice: prima accensione guidata, codice di collegamento, conferme sui pulsanti delicati, testo grande.
 
 ## Indice
 
@@ -75,6 +75,11 @@ Telefono (pannello) ───────▶                 └─▶ YouTube /
 
 ## 2. Andare in onda dalla regia
 
+**La prima volta** che apri la regia compare il **Benvenuto**, in tre passi: scegli la cartella della musica,
+controlla le schede audio (il RodeCaster lo trova da solo) e incolla il **codice di collegamento** al server (vedi
+[Collegare la regia al server](#21-collegare-la-regia-al-server)). Ogni passo si può saltare con **Salta, lo faccio
+dopo**.
+
 ![Regia, scheda In onda](immagini/regia-in-onda.png)
 
 1. **AUTOMATICO / MANUALE**. In **automatico** la regia sceglie i brani da sola e non lascia mai il silenzio. In
@@ -99,6 +104,20 @@ compare **🎙 Intro 12 s**, cioè quanto manca prima che parta la voce o il pez
 parlarci sopra. Negli ultimi 3 secondi diventa rosso, poi sparisce. Nella coda i brani con un'intro hanno
 l'etichetta **intro N s**. Vale solo per la musica già analizzata per il Mix DJ (riga "Analisi per il Mix DJ" in
 Libreria). Lo stesso conto e le stesse etichette si vedono nel pannello.
+
+**Pulsanti con conferma.** **■ STOP**, **Svuota** la coda, il passaggio da AUTOMATICO a **MANUALE** e **Rimuovi**
+una cartella chiedono prima "Sei sicuro?". Il pulsante evidenziato è sempre quello che **non** fa niente, così un
+clic distratto non lascia la radio muta.
+
+**Avviso "la musica sta per finire".** In MANUALE, se mancano meno di 30 secondi alla fine del brano e la coda è
+vuota, in alto compare una striscia rossa con il conto alla rovescia e il pulsante **Passa ad AUTOMATICO**. Se la
+regia resta ferma compare una striscia gialla.
+
+**Testo grande.** In **Impostazioni** → **Come si vede** c'è **Testo grande**: scritte e pulsanti diventano più
+grandi.
+
+**Cose avanzate.** Le schede **Registro** e **Collegamento**, il pulsante **⇅ Riordina** e le impostazioni tecniche
+sono nascoste. Per vederle: **Impostazioni** → in fondo **Cose avanzate** → **Mostra le cose avanzate**.
 
 **Dopo un riavvio o un blackout** la regia riparte nella modalità in cui era: se era in AUTOMATICO riprende a
 suonare da sola, se era in MANUALE resta ferma.
@@ -1153,31 +1172,37 @@ allarme; il riquadro Stereo Tool dice il motivo.
 
 ## 21. Collegare la regia al server
 
+Basta un **codice di collegamento**, che contiene già indirizzo, porte e password.
+
+1. Nel **pannello** del server (da amministratore), aperto dal suo **indirizzo internet** (per esempio
+   `https://player.radioattivainformazione.it:9443/dashboard`, non dall'indirizzo di casa `192.168…`): menu **☰** →
+   **Impostazioni server** → riquadro **Collega la regia dello studio** → **Mostra il codice per la regia** →
+   **Copia il codice**.
+2. Nella **regia**: alla prima accensione incollalo nel passo 3 del Benvenuto e premi **Collega**. Più tardi:
+   **Impostazioni** → **Mostra le cose avanzate** → scheda **Collegamento** → **Collega la regia con il codice**.
+
+Fatto: la regia si collega da sola e accende l'invio. Il codice contiene le password del collegamento: non mandarlo a
+chi non deve usare la regia.
+
 ![Regia, scheda Collegamento](immagini/regia-collegamento.png)
 
-Scheda **Collegamento** → **Impostazioni del collegamento**:
-
-1. **Indirizzo del server**: l'indirizzo della radio, senza `https://`.
-2. **Frase segreta**: quella stampata dall'installazione.
-3. **Token del servizio di controllo**: quello stampato dall'installazione.
-4. **Salva**.
-5. **Accendi invio**.
-
-Lascia gli altri campi come sono: **Porta SRT** 9000, **Porta del servizio di controllo** 443 (9443 durante le
-prove) con **"Il servizio di controllo usa HTTPS"** spuntato, **Margine contro i buchi di rete** 2000 ms (se l'audio
-salta, alzalo), **Qualità** 128 kbit/s, **Invia artista e titolo agli ascoltatori** attivo, **Permetti di
-comandare la regia dal pannello remoto** attivo.
+**A mano (solo se serve).** Nella scheda **Collegamento**, **Impostazioni tecniche del collegamento** contiene i singoli
+valori: indirizzo del server (senza `https://`), frase segreta e token stampati dall'installazione, **Porta SRT**
+9000, **Porta del servizio di controllo** 443 (9443 durante le prove) con HTTPS, **Margine contro i buchi di rete**
+2000 ms (se l'audio salta, alzalo), **Qualità** 128 kbit/s.
 
 **Cosa inviare:** *Solo il programma del computer* (musica, jingle ed eventi) oppure *Un ingresso della scheda
 audio* (per esempio il mix del RodeCaster, così va in onda anche il microfono dello studio).
 
-In alto compare la spia **PONTE**:
+In alto, accanto ad AUTOMATICO/MANUALE, una scritta dice com'è il collegamento:
 
-| Spia | Significato |
+| Scritta | Significato |
 |---|---|
-| verde "OK" | la regia è in onda attraverso il server |
-| gialla "NON COLLEGATO" | collegamento in corso o caduto: la regia riprova da sola (intanto va la musica di riserva) |
-| rossa "ALLARMI" | il server segnala un problema (vedi scheda Collegamento) |
+| verde "✓ Gli ascoltatori ti sentono" | la regia è in onda attraverso il server |
+| gialla "… Mi collego al server" | collegamento in corso: la regia riprova da sola (intanto va la musica di riserva) |
+| rossa "✗ Non arrivi agli ascoltatori" | collegamento caduto: la regia riprova da sola, intanto va la musica di riserva |
+| grigia "Non collegata al server" | manca il codice di collegamento: la musica si sente solo in studio |
+| rossa "⚠ 2 avvisi" | il server segnala un problema: premila per leggere cosa succede |
 
 ## 22. La musica sul server
 
@@ -1387,3 +1412,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 24/11/2026 | Scheda Programmi in regia: crea, modifica ed elimina i programmi del server e la loro copertina |
 | 25/11/2026 | Mix DJ più preciso: brani agganciati battuta per battuta e posizione vera del brano in onda; nuova analisi per il Mix DJ in sottofondo |
 | 26/11/2026 | Dirette esterne più stabili: Radio Esterna con collegamento veloce (WebRTC) e riserva HTTPS automatica, ritorno in cuffia quasi senza ritardo, pallino della qualità della linea in app, regia e pannello (anche microfono e ospiti) |
+| 26/11/2026 | Regia più semplice: Benvenuto alla prima accensione, codice di collegamento dal pannello, conferme su STOP / Svuota / MANUALE / Rimuovi cartella, avviso quando la musica sta per finire, scritte chiare sul collegamento, Testo grande, cose avanzate nascoste |

@@ -577,3 +577,29 @@ describe('ospiti', () => {
     expect(again.readyState).toBe(WebSocket.OPEN)
   })
 })
+
+describe('codice di collegamento per la regia', () => {
+  it('solo gli amministratori lo vedono, e contiene token, porta SRT e frase segreta', async () => {
+    const { port } = await startServer({ SRT_PORT: '9100', SRT_PASSPHRASE: 'frase-segreta-prova' })
+    const base = `http://127.0.0.1:${port}`
+    const admin = await login(port, 'admin', 'adminadmin')
+    const url = `${base}/api/impostazioni/collegamento-regia?host=player.radio.it&porta=9443&https=1`
+    expect((await fetch(url)).status).toBe(401)
+    const r = await fetch(url, { headers: { Cookie: admin.cookie! } })
+    expect(r.status).toBe(200)
+    const j = (await r.json()) as { codice: string; locale: boolean }
+    expect(j.locale).toBe(false)
+    const { leggiCodice } = await import('./codiceCollegamento.ts')
+    expect(leggiCodice(j.codice)).toEqual({
+      ok: true,
+      host: 'player.radio.it',
+      controlPort: 9443,
+      controlHttps: true,
+      srtPort: 9100,
+      passphrase: 'frase-segreta-prova',
+      controlToken: TOKEN
+    })
+    const casa = await fetch(`${base}/api/impostazioni/collegamento-regia?host=192.168.1.51&porta=443`, { headers: { Cookie: admin.cookie! } })
+    expect(((await casa.json()) as { locale: boolean }).locale).toBe(true)
+  })
+})

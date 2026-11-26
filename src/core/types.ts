@@ -117,6 +117,12 @@ export interface Settings {
    * o un blackout la regia riparte com'era (in automatico riprende a suonare da sola).
    */
   playoutMode: 'auto' | 'manual'
+  /** Mostra le schede e le impostazioni tecniche (interruttore "Avanzate" in fondo alle Impostazioni). */
+  mostraAvanzate: boolean
+  /** Testo e pulsanti più grandi, per chi vede poco. */
+  testoGrande: boolean
+  /** La prima accensione guidata è stata fatta (o saltata). */
+  benvenutoFatto: boolean
 }
 
 export interface PonteSettings {
@@ -203,7 +209,10 @@ export const DEFAULT_SETTINGS: Settings = {
   mbContact: '',
   acoustidKey: '',
   maxTrackMinutes: 10,
-  playoutMode: 'manual'
+  playoutMode: 'manual',
+  mostraAvanzate: false,
+  testoGrande: false,
+  benvenutoFatto: false
 }
 
 /** Profilo di rotazione attivato da un evento (per esempio "dalle 22 musica tranquilla"). */

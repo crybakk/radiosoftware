@@ -194,6 +194,17 @@ export function SettingsView({ radio }: { radio: Radio }) {
 
   return (
     <Riquadri className="settings-view" chiave="impostazioni" nome="Impostazioni">
+      <section className="panel" data-sezione="aspetto" data-titolo="Come si vede">
+        <div className="section-title">Come si vede</div>
+        <label className="check grande">
+          <input
+            type="checkbox"
+            checked={radio.settings.testoGrande}
+            onChange={(e) => void radio.saveSettings({ testoGrande: e.target.checked })}
+          />
+          <span>Testo grande (scritte e pulsanti più grandi, per vedere meglio)</span>
+        </label>
+      </section>
       <UpdateSection />
       <section className="panel" data-sezione="schede-audio" data-titolo="Schede audio">
         <div className="section-title">Schede audio</div>
@@ -374,6 +385,22 @@ export function SettingsView({ radio }: { radio: Radio }) {
             </label>
           ))}
         </div>
+      </section>
+
+      <section className="panel avanzate" data-sezione="avanzate" data-titolo="Cose avanzate">
+        <div className="section-title">Cose avanzate</div>
+        <p className="hint">
+          Per chi conosce la parte tecnica: mostra le schede Registro e Collegamento, il pulsante Riordina e le impostazioni
+          tecniche. Chi usa la regia tutti i giorni può lasciarle nascoste: non servono per andare in onda.
+        </p>
+        <label className="check grande">
+          <input
+            type="checkbox"
+            checked={radio.settings.mostraAvanzate}
+            onChange={(e) => void radio.saveSettings({ mostraAvanzate: e.target.checked })}
+          />
+          <span>Mostra le cose avanzate</span>
+        </label>
       </section>
 
       <div className="row end sticky">

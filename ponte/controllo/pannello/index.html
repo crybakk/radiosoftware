@@ -415,6 +415,19 @@
           <p class="banner info" id="imp-status" hidden></p>
         </div>
         <div class="card" id="imp-agg" hidden></div>
+        <div class="card" id="imp-regia">
+          <div class="section-title">Collega la regia dello studio</div>
+          <p class="hint">Copia questo codice e incollalo nella regia (alla prima accensione, oppure in Impostazioni → Avanzate → Collegamento).
+            Contiene le password del collegamento: non mandarlo a chi non deve usare la regia.</p>
+          <div class="row">
+            <button class="primary" type="button" id="imp-regia-mostra">Mostra il codice per la regia</button>
+          </div>
+          <div id="imp-regia-box" hidden>
+            <p class="banner warn" id="imp-regia-avviso" hidden></p>
+            <textarea id="imp-regia-codice" readonly rows="3" spellcheck="false"></textarea>
+            <div class="row"><button class="primary" type="button" id="imp-regia-copia">Copia il codice</button> <span class="hint" id="imp-regia-msg"></span></div>
+          </div>
+        </div>
         <form id="imp-form" class="imp-form">
           <div id="imp-groups"></div>
           <div class="card prog-form">

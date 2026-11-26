@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webFrame } from 'electron'
 import type { PonteStatus } from '../main/ponte'
 import type { StatoRegistrazioneProgrammi } from '../core/registrazioneProgrammi'
 import type { ServerSyncStatus } from '../main/serverSync'
@@ -167,6 +167,8 @@ const api: RadioApi = {
   aggiornamentoControlla: call('aggiornamentoControlla'),
   novitaInstallate: call('novitaInstallate'),
   novitaLette: call('novitaLette'),
+  // "Testo grande": ingrandisce tutta la finestra (testo, pulsanti e spazi insieme)
+  setZoom: (f: number) => webFrame.setZoomFactor(f),
   onAggiornamento: (cb: (s: AggiornamentoStato) => void) => {
     const listener = (_e: unknown, s: AggiornamentoStato): void => cb(s)
     ipcRenderer.on('aggiornamento', listener)

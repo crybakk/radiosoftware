@@ -1,6 +1,6 @@
 import { PreviewContext } from './VoiceSection'
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
-import { ConnectionView, uplinkClass } from './ConnectionView'
+import { ConnectionView } from './ConnectionView'
 import { EventsView } from './EventsView'
 import { ProgramsView } from './ProgramsView'
 import { GuideView } from './GuideView'
@@ -10,24 +10,46 @@ import { LogView } from './LogView'
 import { OnAirView } from './OnAirView'
 import { SettingsView } from './SettingsView'
 import { StatsView } from './StatsView'
-import { useRadio } from './useRadio'
+import { useRadio, type Radio } from './useRadio'
+import { ConfermaProvider, useConferma } from './Conferma'
+import { Benvenuto } from './Benvenuto'
+import { AvvisoMuta } from './AvvisoMuta'
 import { RiordinaContext, useOrdineSalvato } from './Riquadri'
 import { salvaOrdine, spostaSezione, unisciOrdine } from './ordine'
 import type { AggiornamentoStato, NovitaInstallate, NovitaVersione } from '../../shared/api'
 
 type Tab = 'onair' | 'library' | 'events' | 'programs' | 'log' | 'stats' | 'link' | 'settings' | 'guide'
 
-const TABS: { id: Tab; label: string }[] = [
+/** avanzata = si vede solo con "Mostra le cose avanzate" acceso in Impostazioni (regia a prova di anziano). */
+const TABS: { id: Tab; label: string; avanzata?: boolean }[] = [
   { id: 'onair', label: 'In onda' },
   { id: 'library', label: 'Libreria' },
   { id: 'events', label: 'Eventi' },
   { id: 'programs', label: 'Programmi' },
-  { id: 'log', label: 'Registro' },
+  { id: 'log', label: 'Registro', avanzata: true },
   { id: 'stats', label: 'Ascoltatori' },
-  { id: 'link', label: 'Collegamento' },
+  { id: 'link', label: 'Collegamento', avanzata: true },
   { id: 'settings', label: 'Impostazioni' },
   { id: 'guide', label: 'Guida' }
 ]
+
+/** Stato del collegamento in una frase, per la barra in alto. */
+function fraseCollegamento(radio: Radio): { testo: string; classe: string; spiega: string } {
+  const st = radio.ponte?.uplink.state
+  if (st === 'collegato')
+    return { testo: '✓ Gli ascoltatori ti sentono', classe: 'ok', spiega: 'La regia è collegata al server della radio.' }
+  if (st === 'connessione' || st === 'riconnessione')
+    return {
+      testo: '… Mi collego al server',
+      classe: 'warn',
+      spiega: 'La regia si sta collegando da sola. Intanto gli ascoltatori sentono la musica di riserva del server.'
+    }
+  return {
+    testo: '✗ Non arrivi agli ascoltatori',
+    classe: 'bad',
+    spiega: 'La regia non è collegata al server: gli ascoltatori sentono la musica di riserva. Riprova da sola; se dura, controlla internet.'
+  }
+}
 
 function Clock() {
   const [now, setNow] = useState(new Date())
@@ -39,18 +61,47 @@ function Clock() {
 }
 
 export function App() {
+  return (
+    <ConfermaProvider>
+      <Regia />
+    </ConfermaProvider>
+  )
+}
+
+function Regia() {
   const radio = useRadio()
+  const conferma = useConferma()
   const [tab, setTab] = useState<Tab>('onair')
+  const avanzate = radio.settings.mostraAvanzate
+  useEffect(() => window.radio.setZoom(radio.settings.testoGrande ? 1.25 : 1), [radio.settings.testoGrande])
   const [riordina, setRiordina] = useState(false)
   const ordineSchede = unisciOrdine(
     TABS.map((t) => t.id),
     useOrdineSalvato('schede')
   )
-  const schede = ordineSchede.map((id) => TABS.find((t) => t.id === id)).filter((t) => !!t)
+  // una scheda avanzata aperta da un avviso (es. "2 avvisi" → Collegamento) resta visibile finché è aperta
+  const schede = ordineSchede
+    .map((id) => TABS.find((t) => t.id === id))
+    .filter((t) => !!t)
+    .filter((t) => avanzate || !t.avanzata || t.id === tab)
   const spostaScheda = (id: Tab, verso: -1 | 1) =>
     salvaOrdine('schede', spostaSezione(ordineSchede, TABS.map((t) => t.id), id, verso))
   const auto = radio.snapshot.mode === 'auto'
   const onAir = radio.snapshot.onAir.length > 0
+  const link = fraseCollegamento(radio)
+  const cambiaModo = async (): Promise<void> => {
+    if (auto) {
+      const ok = await conferma({
+        titolo: 'Passare a MANUALE?',
+        testo:
+          'In MANUALE la regia non sceglie più i brani da sola: sei tu a metterli in coda. Quando la coda finisce, la musica si ferma.',
+        si: 'Sì, passa a MANUALE',
+        no: 'No, resta in AUTOMATICO'
+      })
+      if (!ok) return
+    }
+    radio.engine.setMode(auto ? 'manual' : 'auto')
+  }
 
   return (
     <PreviewContext.Provider value={radio.preview}>
@@ -84,32 +135,41 @@ export function App() {
             )
           )}
         </nav>
-        <button
+        {(avanzate || riordina) && <button
           className={`riordina-btn ${riordina ? 'active' : ''}`}
           onClick={() => setRiordina(!riordina)}
           title="Cambia l'ordine delle schede in alto e dei riquadri di ogni pagina"
         >
           {riordina ? '✓ Fatto' : '⇅ Riordina'}
-        </button>
+        </button>}
         {riordina && ordineSchede.join() !== TABS.map((t) => t.id).join() && (
           <button className="small" onClick={() => salvaOrdine('schede', null)} title="Torna all'ordine originale delle schede">
             Ripristina schede
           </button>
         )}
         {radio.settings.ponte.enabled && (
+          <button className={`link-pill ${link.classe}`} onClick={() => setTab('link')} title={link.spiega}>
+            {link.testo}
+          </button>
+        )}
+        {!radio.settings.ponte.enabled && (
           <button
-            className={`link-pill ${radio.ponte?.alarms.length ? 'bad' : uplinkClass(radio.ponte?.uplink.state)}`}
+            className="link-pill off"
             onClick={() => setTab('link')}
-            title={radio.ponte?.uplink.message}
+            title="La regia suona solo qui in studio. Per collegarla al server serve il codice di collegamento."
           >
-            PONTE: {radio.ponte?.uplink.state === 'collegato' ? 'OK' : radio.ponte?.uplink.state === 'spento' ? 'SPENTO' : 'NON COLLEGATO'}
-            {!!radio.ponte?.alarms.length && ` · ${radio.ponte.alarms.length} ALLARMI`}
+            Non collegata al server
+          </button>
+        )}
+        {radio.settings.ponte.enabled && !!radio.ponte?.alarms.length && (
+          <button className="link-pill bad" onClick={() => setTab('link')} title="Apri per leggere cosa succede">
+            ⚠ {radio.ponte.alarms.length === 1 ? '1 avviso' : `${radio.ponte.alarms.length} avvisi`}
           </button>
         )}
         <button
           className={`mode ${auto ? 'auto' : 'manual'}`}
-          onClick={() => radio.engine.setMode(auto ? 'manual' : 'auto')}
-          title="In automatico la regia sceglie e manda in onda i brani da sola"
+          onClick={() => void cambiaModo()}
+          title={auto ? 'La regia sceglie e manda in onda i brani da sola. Premi per passare a MANUALE.' : 'Sei tu a scegliere i brani. Premi per passare ad AUTOMATICO: la regia sceglie da sola.'}
         >
           {auto ? 'AUTOMATICO' : 'MANUALE'}
         </button>
@@ -120,6 +180,8 @@ export function App() {
       <NovitaBanner />
       <UpdateBanner />
       {radio.snapshot.lastError && <div className="banner warn">{radio.snapshot.lastError}</div>}
+      <AvvisoMuta radio={radio} />
+      <Benvenuto radio={radio} />
       <main>
         {/* sotto useRadio: un errore in una scheda non smonta App e non ferma la messa in onda */}
         <ViewErrorBoundary key={tab}>

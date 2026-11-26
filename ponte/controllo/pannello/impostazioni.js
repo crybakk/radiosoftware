@@ -380,3 +380,33 @@ function drawAgg(st) {
     }, 5000)
   }
 }
+
+// Codice di collegamento per la regia: indirizzo e porta sono quelli con cui si è aperto il pannello.
+$('imp-regia-mostra').addEventListener('click', async () => {
+  $('imp-regia-msg').textContent = ''
+  try {
+    const q = new URLSearchParams({ host: location.hostname, porta: location.port || (location.protocol === 'https:' ? '443' : '80'), https: location.protocol === 'https:' ? '1' : '0' })
+    const r = await api(`/api/impostazioni/collegamento-regia?${q}`)
+    $('imp-regia-codice').value = r.codice
+    const avviso = r.locale
+      ? `Hai aperto il pannello con un indirizzo di casa (${r.host}): dallo studio non funzionerebbe. Apri il pannello dal suo indirizzo internet${r.dominio ? ` (es. https://${r.dominio})` : ''} e premi di nuovo "Mostra il codice".`
+      : location.protocol !== 'https:'
+        ? 'Il pannello è aperto senza https: il codice funziona, ma è meglio aprirlo con https://.'
+        : ''
+    $('imp-regia-avviso').textContent = avviso
+    $('imp-regia-avviso').hidden = !avviso
+    $('imp-regia-box').hidden = false
+  } catch (e) {
+    $('imp-regia-msg').textContent = e.message
+  }
+})
+$('imp-regia-copia').addEventListener('click', async () => {
+  const t = $('imp-regia-codice')
+  try {
+    await navigator.clipboard.writeText(t.value)
+  } catch {
+    t.select()
+    document.execCommand('copy')
+  }
+  $('imp-regia-msg').textContent = 'Copiato. Ora incollalo nella regia.'
+})
