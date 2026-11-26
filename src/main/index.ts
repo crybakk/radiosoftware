@@ -522,7 +522,7 @@ if (primary) app.whenReady().then(async () => {
   /** Crea gli eventi del piano; replace = toglie prima quelli creati dall'AI le volte precedenti. */
   handle('aiApply', (plan: AiPlan, replace: boolean) => {
     const { plan: clean } = cleanPlan(plan, summarize(db.rotationCandidates('music')))
-    if (!clean.slots.length) throw new Error('nessuna fascia da creare')
+    if (!clean.slots.length && !clean.announcements?.length) throw new Error('nessuna fascia da creare')
     if (replace) for (const e of db.listEvents()) if (e.label.startsWith(AI_LABEL)) db.deleteEvent(e.id)
     for (const e of planEvents(clean)) db.saveEvent(e)
     return db.listEvents()

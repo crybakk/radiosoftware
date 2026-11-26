@@ -84,7 +84,7 @@ export function AiRotationSection({
   const setSlot = (i: number, patch: Partial<AiSlot>): void => {
     if (!res) return
     const slots = res.plan.slots.map((s, j) => (j === i ? { ...s, ...patch } : s))
-    setRes({ ...res, plan: { slots } })
+    setRes({ ...res, plan: { ...res.plan, slots } })
   }
   const commit = (): void => {
     if (res) void update(res.plan)
@@ -238,7 +238,7 @@ export function AiRotationSection({
                                 className={`tiny ${s.days.includes(d) ? 'on' : ''}`}
                                 onClick={() => {
                                   const days = s.days.includes(d) ? s.days.filter((x) => x !== d) : [...s.days, d]
-                                  if (days.length) void update({ slots: res.plan.slots.map((x, j) => (j === i ? { ...x, days } : x)) })
+                                  if (days.length) void update({ ...res.plan, slots: res.plan.slots.map((x, j) => (j === i ? { ...x, days } : x)) })
                                 }}
                               >
                                 {DAY_SHORT[d]}
@@ -295,7 +295,7 @@ export function AiRotationSection({
                           <button
                             className="small ghost"
                             title="Togli la fascia"
-                            onClick={() => void update({ slots: res.plan.slots.filter((_, j) => j !== i) })}
+                            onClick={() => void update({ ...res.plan, slots: res.plan.slots.filter((_, j) => j !== i) })}
                           >
                             ✕
                           </button>
@@ -305,6 +305,26 @@ export function AiRotationSection({
                   })}
                 </tbody>
               </table>
+              {!!res.plan.announcements?.length && (
+                <>
+                  <div className="subsection">Annunci con la voce</div>
+                  <ul className="ai-warnings">
+                    {res.plan.announcements.map((a, i) => (
+                      <li key={i}>
+                        <b>{a.name}</b> · {daysLabel(a.days)} ·{' '}
+                        {a.everyMinutes > 0 ? `dalle ${a.start} alle ${a.end}, ogni ${a.everyMinutes} minuti` : `alle ${a.start}`} · «{a.text}»{' '}
+                        <button
+                          className="small ghost"
+                          title="Togli l'annuncio"
+                          onClick={() => void update({ ...res.plan, announcements: res.plan.announcements!.filter((_, j) => j !== i) })}
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
               <p className="hint">
                 Su {res.music} brani di musica. Fuori dalle fasce torna la rotazione normale (tutta la musica). Una fascia
                 con meno di 10 brani usa tutta la musica.
@@ -314,7 +334,7 @@ export function AiRotationSection({
                   <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
                   <span>Sostituisci gli eventi creati prima dall'AI</span>
                 </label>
-                <button className="primary" disabled={!res.plan.slots.length} onClick={() => void apply()}>
+                <button className="primary" disabled={!res.plan.slots.length && !res.plan.announcements?.length} onClick={() => void apply()}>
                   Crea gli eventi
                 </button>
                 <button onClick={() => setRes(null)}>Annulla</button>
