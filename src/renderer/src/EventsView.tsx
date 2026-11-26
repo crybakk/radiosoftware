@@ -16,6 +16,7 @@ import { hhmm, KIND_LABEL } from './format'
 import { TrackSearch } from './TrackSearch'
 import type { Radio } from './useRadio'
 import { Riquadri } from './Riquadri'
+import { useConferma } from './Conferma'
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
@@ -75,6 +76,38 @@ function newAction(type: EventAction['type']): EventAction {
     default:
       return { type } as EventAction
   }
+}
+
+/** Eventi già pronti (regia a prova di anziano): si apre l'editor già compilato, basta premere Salva. */
+function modelli(news: NewsSource[]): { nome: string; spiega: string; manca?: string; draft: () => Draft }[] {
+  return [
+    {
+      nome: '🔔 Jingle a ogni ora',
+      spiega: 'Allo scoccare di ogni ora parte un jingle a caso, alla fine della canzone in onda.',
+      draft: () => ({ ...emptyDraft(), label: 'Jingle orario', time: '*:00', actions: [newAction('random')] })
+    },
+    {
+      nome: '🕐 Ora esatta con la voce',
+      spiega: 'A ogni ora una voce dice che ore sono.',
+      draft: () => ({ ...emptyDraft(), label: 'Ora esatta', time: '*:00', actions: [{ type: 'voice', text: 'Sono le {ora}.' }] })
+    },
+    {
+      nome: '📰 Notiziario a ogni ora',
+      spiega: "A ogni ora va in onda l'ultimo notiziario scaricato.",
+      manca: news.length ? undefined : 'Prima serve una fonte dei notiziari: Impostazioni → Mostra le cose avanzate → Notiziari.',
+      draft: () => ({
+        ...emptyDraft(),
+        label: 'Notiziario',
+        time: '*:00',
+        actions: [{ type: 'news', sourceId: news[0]?.id ?? '', title: news[0]?.name ?? '' }]
+      })
+    },
+    {
+      nome: '🔁 Replica di un programma',
+      spiega: "Ogni sera alle 21 va in onda l'ultima puntata di un programma (scegli quale e cambia l'ora se vuoi).",
+      draft: () => ({ ...emptyDraft(), label: 'Replica', time: '21:00', actions: [newAction('replay')] })
+    }
+  ]
 }
 
 function repeatKind(d: Draft): RepeatKind {
@@ -148,6 +181,7 @@ export function EventsView({ radio }: { radio: Radio }) {
   const [tracks, setTracks] = useState<Map<number, Track>>(new Map())
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(new Date())
+  const conferma = useConferma()
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000)
@@ -200,9 +234,26 @@ export function EventsView({ radio }: { radio: Radio }) {
           </button>
         </div>
         <p className="hint">
-          Ogni evento esegue una sequenza di azioni all'orario scelto: brani, jingle casuali, playlist, flussi esterni,
-          cambi di modalità o di rotazione, comandi. Gli eventi partono anche in modalità manuale.
+          Un evento fa partire qualcosa a un orario: un jingle, un notiziario, una replica, una canzone… Parte anche in
+          MANUALE. Il modo più semplice è partire da un evento già pronto:
         </p>
+        <div className="modelli-eventi">
+          {modelli(radio.settings.news).map((m) => (
+            <button
+              key={m.nome}
+              className="modello"
+              disabled={!!m.manca}
+              title={m.manca ?? m.spiega}
+              onClick={() => {
+                setError(null)
+                setDraft(m.draft())
+              }}
+            >
+              <b>{m.nome}</b>
+              <span>{m.manca ?? m.spiega}</span>
+            </button>
+          ))}
+        </div>
         <div className="upcoming">
           <b>Prossimi:</b>{' '}
           {upcoming.length
@@ -291,7 +342,10 @@ export function EventsView({ radio }: { radio: Radio }) {
                   </button>
                   <button
                     className="small danger"
-                    onClick={async () => radio.reloadEvents(await window.radio.deleteEvent(e.id))}
+                    onClick={async () => {
+                      if (await conferma({ titolo: `Eliminare l'evento "${e.label || whenText(e)}"?`, testo: 'Non partirà più. Se vuoi solo fermarlo per un po\', aprilo con Modifica e togli "Attivo".', si: 'Sì, elimina' }))
+                        await radio.reloadEvents(await window.radio.deleteEvent(e.id))
+                    }}
                   >
                     Elimina
                   </button>
@@ -319,6 +373,7 @@ export function EventsView({ radio }: { radio: Radio }) {
           tracks={tracks}
           onTrackChosen={(t) => setTracks((prev) => new Map(prev).set(t.id, t))}
           news={radio.settings.news}
+          avanzate={radio.settings.mostraAvanzate}
           error={error}
           onSave={() => void save()}
           onClose={() => setDraft(null)}
@@ -334,6 +389,7 @@ function EventEditor({
   tracks,
   onTrackChosen,
   news,
+  avanzate,
   error,
   onSave,
   onClose
@@ -343,6 +399,7 @@ function EventEditor({
   tracks: Map<number, Track>
   onTrackChosen: (t: Track) => void
   news: NewsSource[]
+  avanzate: boolean
   error: string | null
   onSave: () => void
   onClose: () => void
@@ -579,7 +636,10 @@ function EventEditor({
         </ol>
         <div className="row">
           <select value={adding} onChange={(e) => setAdding(e.target.value as EventAction['type'])}>
-            {Object.entries(ACTION_LABELS).map(([k, l]) => (
+            {Object.entries(ACTION_LABELS)
+              // comandi e flussi esterni: solo con le cose avanzate (restano visibili negli eventi che già li usano)
+              .filter(([k]) => avanzate || (k !== 'command' && k !== 'stream'))
+              .map(([k, l]) => (
               <option key={k} value={k}>
                 {l}
               </option>

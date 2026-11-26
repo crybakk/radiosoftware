@@ -25,9 +25,9 @@ describe('argomenti di ffmpeg', () => {
 
 describe('messaggi di errore', () => {
   it('traduce gli errori comuni', () => {
-    expect(explainError('Connection setup failure: connection timed out')).toBe('Il ponte non risponde')
-    expect(explainError('Failed to resolve hostname ponte.example')).toBe('Indirizzo del ponte non trovato')
-    expect(explainError('')).toBe('Collegamento interrotto')
+    expect(explainError('Connection setup failure: connection timed out')).toContain('Il server non risponde')
+    expect(explainError('Failed to resolve hostname ponte.example')).toContain('Non trovo il server')
+    expect(explainError('')).toBe('Collegamento interrotto: la regia riprova da sola.')
   })
   it('attese crescenti fino a 30 secondi', () => {
     expect([1, 2, 3, 4, 5, 6, 20].map(backoffSeconds)).toEqual([2, 4, 8, 16, 30, 30, 30])

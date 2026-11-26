@@ -254,7 +254,7 @@ export function StatsView() {
             </div>
             <div className="hint">
               {r.now && `Adesso: ${r.now.a} sul principale${r.now.b === null ? '' : `, ${r.now.b} sul secondario`}. `}
-              {r.secondary && r.now && r.now.b === null && "L'Icecast secondario non si riesce a leggere (vedi la guida). "}
+              {r.secondary && r.now && r.now.b === null && "Gli ascoltatori del secondo server d'ascolto non si riescono a leggere (vedi la guida). "}
               {!r.series.length && 'Nessun dato in questo periodo.'}
             </div>
           </>

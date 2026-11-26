@@ -163,16 +163,17 @@ I passaggi con ★ sono vistosi: la regia li usa al massimo una volta ogni 4 cam
 brani a tempo cadono comunque sul battito del brano che esce, all'inizio di una frase del finale, e funzionano anche
 con i brani lenti senza ritmo regolare (basta che sia regolare quello che esce).
 
-In **Impostazioni** → **Mix DJ: passaggi che la regia può usare** togli la spunta a quelli che non vuoi.
+In **Impostazioni** (con **Mostra le cose avanzate** acceso) → **Mix DJ: passaggi che la regia può usare** togli la
+spunta a quelli che non vuoi.
 
 Si usa in due modi:
 
-- **🎧 Mixa il prossimo** (sotto PLAY / AVANTI / STOP): solo il prossimo cambio sarà un Mix DJ, anche in manuale.
+- **🎧 Mixa il prossimo** (sotto PLAY / AVANTI / STOP, si vede con **Mostra le cose avanzate**): solo il prossimo cambio sarà un Mix DJ, anche in manuale.
   Ripremilo per annullare. Nel menu accanto scegli il passaggio (**Passaggio automatico** = lo sceglie la regia):
   quello scelto a mano vale anche se l'hai tolto nelle Impostazioni. Accanto la regia dice cosa farà ("Mix lungo:
   16 battute", "Eco", "Frenata") oppure perché userà la dissolvenza normale.
 - **Sempre, in automatico**: con l'azione **Mix DJ** di un evento (per esempio acceso dalle 22 alle 2) oppure in
-  **Impostazioni** → **Mix DJ nei cambi automatici**.
+  **Impostazioni** → **Musica** → **Passaggi da DJ tra una canzone e l'altra**.
 
 Con il Mix DJ acceso, la rotazione automatica **sceglie di preferenza brani mixabili** con quello prima (BPM
 entro il limite e tonalità compatibile). Non è un obbligo: se nessun brano va bene sceglie come sempre. Per non
@@ -497,7 +498,11 @@ avviata. Gli ospiti del pannello vedono cosa suona ma non la comandano.
 
 ## 8. Eventi a orario
 
-Un evento fa una serie di cose, in ordine, a un orario. Scheda **Eventi** → **+ Nuovo evento**.
+Un evento fa una serie di cose, in ordine, a un orario. Il modo più semplice: scheda **Eventi** → premi uno degli
+**eventi già pronti** (**🔔 Jingle a ogni ora**, **🕐 Ora esatta con la voce**, **📰 Notiziario a ogni ora**,
+**🔁 Replica di un programma**): si apre l'evento già compilato, controlla e premi **Salva**. Per farne uno da zero:
+**+ Nuovo evento**. **Elimina** chiede conferma. Le azioni **Comando esterno** e **Flusso esterno** compaiono solo con
+**Mostra le cose avanzate**.
 
 ![Nuovo evento](immagini/regia-nuovo-evento.png)
 
@@ -569,13 +574,17 @@ del 25/11/2026 la regia rifà questa analisi su tutti i brani, per trovare l'ini
 non è rianalizzato il Mix DJ usa i dati di prima. Se un brano non ha un
 ritmo regolare (classica, live, tempi liberi) la scheda lo dice: in quel caso il cambio sarà la dissolvenza normale.
 
+Senza le cose avanzate tutto questo lavoro si vede come una sola riga: **La regia sta preparando i brani: 45%**. Le
+righe separate, e i riquadri **Dati dei brani** (MusicBrainz), **Pulizia** e **Categorie**, compaiono con
+**Impostazioni** → **Mostra le cose avanzate**.
+
 Sotto c'è l'elenco dei brani. **Scheda** apre la scheda del brano, dove puoi:
 
 - correggere titolo, interprete, album, anno, genere e tipo (se cambi titolo o interprete, i dati di MusicBrainz e
   degli altri servizi si cercano di nuovo per il brano corretto);
-- scrivere **autori/compositori**, **editore** e **codice opera SIAE** (servono per il report SIAE);
-- spostare inizio, fine e punto di mix se l'analisi automatica non ti convince;
-- togliere **Attivo** per escludere un brano da rotazione e ricerca senza cancellarlo.
+- aprire **Dati per la SIAE e dati tecnici** per scrivere **autori/compositori**, **editore** e **codice opera
+  SIAE** (servono per il report SIAE) o spostare inizio, fine e punto di mix se l'analisi automatica non ti convince;
+- togliere **Può andare in onda** per escludere un brano da rotazione e ricerca senza cancellarlo.
 
 ### Brani troppo lunghi (premixati)
 
@@ -1027,11 +1036,23 @@ eventi, registro e impostazioni. Il server tiene gli ultimi 14.
 
 Il programma si apre a schermo intero; può esserne aperta una sola copia alla volta. Poi:
 
-1. **Schede audio** (scheda **Impostazioni**): **Uscita in onda** il canale del RodeCaster Duo dedicato al
-   computer; **Uscita preascolto** un'uscita diversa (cuffie del PC o canale chat del RodeCaster). Se un'uscita non
-   compare premi **Aggiorna elenco schede**.
+1. **Schede audio** (scheda **Impostazioni**): premi **Scegli da sola** e la regia mette il RodeCaster in **Musica
+   in onda** e le casse o le cuffie del PC in **Preascolto in cuffia**. Se un'uscita non compare premi **Cerca di
+   nuovo le schede**. Lo stesso lo fa il Benvenuto alla prima accensione.
 2. **Libreria**: aggiungi le cartelle e premi **Aggiorna libreria** ([sezione 9](#9-libreria-e-scheda-brano)).
 3. **Impostazioni** di messa in onda (poi **Salva**):
+
+Nel riquadro **Musica** si sceglie da un elenco, senza numeri:
+
+| Impostazione | Scelte |
+|---|---|
+| Quanto spesso può tornare lo stesso cantante | Spesso (mezz'ora), Normale (un'ora), Di rado (due ore) |
+| Quanto spesso può tornare la stessa canzone | Spesso (un'ora e mezza), Normale (tre ore), Di rado (sei ore) |
+| Jingle tra le canzoni | Mai, ogni 2, 3, 4 o 6 canzoni |
+| Sfumatura quando premi AVANTI | Breve, Normale, Lunga |
+| Passaggi da DJ | cambi a tempo di musica nei cambi automatici |
+
+Con **Mostra le cose avanzate** compare **Musica: regolazioni precise**, con i numeri esatti:
 
 | Impostazione | Cosa fa |
 |---|---|
@@ -1412,4 +1433,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 24/11/2026 | Scheda Programmi in regia: crea, modifica ed elimina i programmi del server e la loro copertina |
 | 25/11/2026 | Mix DJ più preciso: brani agganciati battuta per battuta e posizione vera del brano in onda; nuova analisi per il Mix DJ in sottofondo |
 | 26/11/2026 | Dirette esterne più stabili: Radio Esterna con collegamento veloce (WebRTC) e riserva HTTPS automatica, ritorno in cuffia quasi senza ritardo, pallino della qualità della linea in app, regia e pannello (anche microfono e ospiti) |
-| 26/11/2026 | Regia più semplice: Benvenuto alla prima accensione, codice di collegamento dal pannello, conferme su STOP / Svuota / MANUALE / Rimuovi cartella, avviso quando la musica sta per finire, scritte chiare sul collegamento, Testo grande, cose avanzate nascoste |
+| 26/11/2026 | Regia più semplice: Benvenuto alla prima accensione, codice di collegamento dal pannello, conferme su STOP / Svuota / MANUALE / Rimuovi cartella, avviso quando la musica sta per finire, scritte chiare sul collegamento, Testo grande, cose avanzate nascoste; impostazioni della musica a scelte, una sola barra di preparazione in Libreria, eventi già pronti, messaggi di errore con cosa fare |

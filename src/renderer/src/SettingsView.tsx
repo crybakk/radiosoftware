@@ -8,6 +8,7 @@ import { mmss } from './format'
 import { VoiceSection } from './VoiceSection'
 import type { Radio } from './useRadio'
 import { Riquadri } from './Riquadri'
+import { scegliUscite } from './sceltaSchede'
 
 const NUMBERS: { key: keyof Settings; label: string; hint: string; min: number; max: number; step?: number }[] = [
   { key: 'crossfadeSeconds', label: 'Dissolvenza (secondi)', hint: 'Usata quando premi AVANTI', min: 0, max: 15, step: 0.5 },
@@ -17,6 +18,51 @@ const NUMBERS: { key: keyof Settings; label: string; hint: string; min: number; 
   { key: 'jingleEvery', label: 'Un jingle ogni … brani', hint: '0 = nessun jingle automatico', min: 0, max: 20 },
   { key: 'autoQueueLength', label: 'Brani in coda in automatico', hint: 'Quanti brani preparare in anticipo', min: 2, max: 20 }
 ]
+
+/** Scelte semplici al posto dei numeri (regia a prova di anziano). Un valore fuori elenco si mostra com'è. */
+const SCELTE: { key: keyof Settings; label: string; opzioni: [number, string][]; unita: string }[] = [
+  {
+    key: 'artistSeparationMinutes',
+    label: 'Quanto spesso può tornare lo stesso cantante',
+    opzioni: [[30, 'Spesso (dopo mezz\'ora)'], [60, 'Normale (dopo un\'ora)'], [120, 'Di rado (dopo due ore)']],
+    unita: 'minuti'
+  },
+  {
+    key: 'titleSeparationMinutes',
+    label: 'Quanto spesso può tornare la stessa canzone',
+    opzioni: [[90, 'Spesso (dopo un\'ora e mezza)'], [180, 'Normale (dopo tre ore)'], [360, 'Di rado (dopo sei ore)']],
+    unita: 'minuti'
+  },
+  {
+    key: 'jingleEvery',
+    label: 'Jingle tra le canzoni',
+    opzioni: [[0, 'Mai'], [2, 'Ogni 2 canzoni'], [3, 'Ogni 3 canzoni'], [4, 'Ogni 4 canzoni'], [6, 'Ogni 6 canzoni']],
+    unita: 'canzoni'
+  },
+  {
+    key: 'crossfadeSeconds',
+    label: 'Sfumatura quando premi AVANTI',
+    opzioni: [[1.5, 'Breve'], [3, 'Normale'], [6, 'Lunga']],
+    unita: 'secondi'
+  }
+]
+
+function SceltaSemplice({ c, value, onChange }: { c: (typeof SCELTE)[number]; value: number; onChange: (v: number) => void }) {
+  const fuori = Number.isFinite(value) && !c.opzioni.some(([v]) => v === value)
+  return (
+    <label>
+      <span>{c.label}</span>
+      <select value={String(value)} onChange={(e) => onChange(Number(e.target.value))}>
+        {c.opzioni.map(([v, l]) => (
+          <option key={v} value={String(v)}>
+            {l}
+          </option>
+        ))}
+        {fuori && <option value={String(value)}>Scelta tua: {value} {c.unita}</option>}
+      </select>
+    </label>
+  )
+}
 
 const FALLBACKS: { value: NewsSource['ifMissing']; label: string }[] = [
   { value: 'salta', label: 'Saltalo' },
@@ -191,6 +237,7 @@ export function SettingsView({ radio }: { radio: Radio }) {
   }, [])
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(radio.settings)
+  const avanzate = radio.settings.mostraAvanzate
 
   return (
     <Riquadri className="settings-view" chiave="impostazioni" nome="Impostazioni">
@@ -209,12 +256,12 @@ export function SettingsView({ radio }: { radio: Radio }) {
       <section className="panel" data-sezione="schede-audio" data-titolo="Schede audio">
         <div className="section-title">Schede audio</div>
         <p className="hint">
-          Con il RodeCaster Duo collegato via USB, scegli come uscita "in onda" il canale del RodeCaster dedicato al
-          computer, e come preascolto un'uscita diversa (per esempio il canale chat o le cuffie del PC).
+          La musica in onda esce dal RodeCaster; il preascolto (quello che senti prima di mandarlo in onda) da un'uscita
+          diversa, per esempio le casse o le cuffie del computer. Se non sai cosa scegliere premi "Scegli da sola".
         </p>
         <div className="form-grid">
           <label>
-            <span>Uscita in onda</span>
+            <span>Musica in onda</span>
             <select value={draft.outputDeviceId} onChange={(e) => setDraft({ ...draft, outputDeviceId: e.target.value })}>
               {devices.map((d) => (
                 <option key={d.deviceId || 'default'} value={d.deviceId}>
@@ -224,7 +271,7 @@ export function SettingsView({ radio }: { radio: Radio }) {
             </select>
           </label>
           <label>
-            <span>Uscita preascolto</span>
+            <span>Preascolto in cuffia</span>
             <select value={draft.previewDeviceId} onChange={(e) => setDraft({ ...draft, previewDeviceId: e.target.value })}>
               {devices.map((d) => (
                 <option key={d.deviceId || 'default'} value={d.deviceId}>
@@ -234,13 +281,39 @@ export function SettingsView({ radio }: { radio: Radio }) {
             </select>
           </label>
         </div>
-        <button className="small" onClick={() => void listOutputDevices().then(setDevices)}>
-          Aggiorna elenco schede
-        </button>
+        <div className="row">
+          <button
+            className="small"
+            onClick={async () => {
+              const d = await listOutputDevices()
+              setDevices(d)
+              const sc = scegliUscite(d)
+              setDraft({ ...draft, outputDeviceId: sc.onda, previewDeviceId: sc.preascolto })
+            }}
+          >
+            Scegli da sola
+          </button>
+          <button className="small" onClick={() => void listOutputDevices().then(setDevices)}>
+            Cerca di nuovo le schede
+          </button>
+        </div>
       </section>
 
-      <section className="panel" data-sezione="messa-in-onda" data-titolo="Messa in onda e rotazione">
-        <div className="section-title">Messa in onda e rotazione</div>
+      <section className="panel" data-sezione="musica" data-titolo="Musica">
+        <div className="section-title">Musica</div>
+        <div className="form-grid">
+          {SCELTE.map((c) => (
+            <SceltaSemplice key={c.key} c={c} value={draft[c.key] as number} onChange={(v) => setDraft({ ...draft, [c.key]: v })} />
+          ))}
+          <label className="check grande">
+            <input type="checkbox" checked={draft.djMix} onChange={(e) => setDraft({ ...draft, djMix: e.target.checked })} />
+            <span>Passaggi da DJ tra una canzone e l'altra (a tempo di musica)</span>
+          </label>
+        </div>
+      </section>
+
+      {avanzate && <section className="panel" data-sezione="messa-in-onda" data-titolo="Musica: regolazioni precise">
+        <div className="section-title">Musica: regolazioni precise</div>
         <div className="form-grid">
           {NUMBERS.map((n) => (
             <label key={n.key}>
@@ -260,12 +333,6 @@ export function SettingsView({ radio }: { radio: Radio }) {
               />
             </label>
           ))}
-          <label className="check">
-            <input type="checkbox" checked={draft.djMix} onChange={(e) => setDraft({ ...draft, djMix: e.target.checked })} />
-            <span>
-              Mix DJ nei cambi automatici <em>· brani a tempo, come un DJ; si accende e spegne anche con gli eventi</em>
-            </span>
-          </label>
           <label>
             <span>
               Mix DJ: velocità massima cambiata <em>· quanto può accelerare o rallentare il brano che entra</em>
@@ -307,9 +374,9 @@ export function SettingsView({ radio }: { radio: Radio }) {
             ))}
           </div>
         </div>
-      </section>
+      </section>}
 
-      <section className="panel" data-sezione="notiziari" data-titolo="Notiziari">
+      {avanzate && <section className="panel" data-sezione="notiziari" data-titolo="Notiziari">
         <div className="section-title">Notiziari</div>
         <p className="hint">
           Fonti dei notiziari da mandare in onda con gli eventi (azione "Notiziario"). Metti il link del feed di un
@@ -334,11 +401,11 @@ export function SettingsView({ radio }: { radio: Radio }) {
         >
           Aggiungi fonte
         </button>
-      </section>
+      </section>}
 
-      <VoiceSection draft={draft} setDraft={setDraft} />
+      {avanzate && <VoiceSection draft={draft} setDraft={setDraft} />}
 
-      <section className="panel" data-sezione="servizi-dati" data-titolo="Servizi per i dati dei brani">
+      {avanzate && <section className="panel" data-sezione="servizi-dati" data-titolo="Servizi per i dati dei brani">
         <div className="section-title">Servizi per i dati dei brani</div>
         <p className="hint">
           Oltre a MusicBrainz, la regia può chiedere generi e caratteristiche dei brani ad altri servizi gratuiti. Ognuno
@@ -385,7 +452,7 @@ export function SettingsView({ radio }: { radio: Radio }) {
             </label>
           ))}
         </div>
-      </section>
+      </section>}
 
       <section className="panel avanzate" data-sezione="avanzate" data-titolo="Cose avanzate">
         <div className="section-title">Cose avanzate</div>

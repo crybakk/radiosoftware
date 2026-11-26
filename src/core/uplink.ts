@@ -55,16 +55,16 @@ export function buildFfmpegArgs(c: UplinkConfig, sampleRate: number): string[] {
 
 /** Traduce gli errori di ffmpeg/SRT in un messaggio comprensibile. */
 export function explainError(stderr: string): string {
-  if (/Incorrect passphrase|passphrase/i.test(stderr) && /REJECT|reject/i.test(stderr)) return 'Frase segreta errata'
-  if (/Unknown encoder|libopus/i.test(stderr) && /not found|Unknown/i.test(stderr)) return 'Codifica Opus non disponibile'
-  if (/Connection setup failure|connection timed out|Connection timed out/i.test(stderr)) return 'Il ponte non risponde'
-  if (/Connection.*failed|Input\/output error/i.test(stderr)) return 'Il ponte non risponde'
-  if (/Name or service not known|getaddrinfo|Failed to resolve/i.test(stderr)) return 'Indirizzo del ponte non trovato'
-  if (/Connection was broken|Broken pipe|Connection reset/i.test(stderr)) return 'Collegamento interrotto'
+  if (/Incorrect passphrase|passphrase/i.test(stderr) && /REJECT|reject/i.test(stderr)) return 'Il server rifiuta la regia: il codice di collegamento non è giusto. Copialo di nuovo dal pannello.'
+  if (/Unknown encoder|libopus/i.test(stderr) && /not found|Unknown/i.test(stderr)) return 'Manca un pezzo del programma per inviare l\'audio: reinstalla la regia.'
+  if (/Connection setup failure|connection timed out|Connection timed out/i.test(stderr)) return 'Il server non risponde: controlla che internet funzioni. La regia riprova da sola.'
+  if (/Connection.*failed|Input\/output error/i.test(stderr)) return 'Il server non risponde: controlla che internet funzioni. La regia riprova da sola.'
+  if (/Name or service not known|getaddrinfo|Failed to resolve/i.test(stderr)) return 'Non trovo il server: manca internet oppure l\'indirizzo è sbagliato. La regia riprova da sola.'
+  if (/Connection was broken|Broken pipe|Connection reset/i.test(stderr)) return 'Collegamento interrotto: la regia riprova da sola.'
   const last = stderr.trim().split(/\r?\n/).filter(Boolean).at(-1)
   // l'indirizzo srt:// contiene la frase segreta: non deve finire nei messaggi o nel registro
   const clean = last?.replace(/(passphrase|streamid)=[^&\s'"]*/gi, '$1=***')
-  return clean ? clean.replace(/^\[[^\]]+\]\s*/, '').slice(0, 160) : 'Collegamento interrotto'
+  return clean ? clean.replace(/^\[[^\]]+\]\s*/, '').slice(0, 160) : 'Collegamento interrotto: la regia riprova da sola.'
 }
 
 /** Attesa prima del tentativo n (1, 2, 3…): 2, 4, 8, 16, 30, 30… secondi. */
@@ -89,7 +89,7 @@ export class Uplink {
   private stderr = ''
   private lastBytes = 0
   private lastBytesAt = 0
-  private status: UplinkStatus = { state: 'spento', message: 'Invio al ponte spento', connectedSince: null, reconnects: 0, retryIn: null, retryAt: null, kbps: 0 }
+  private status: UplinkStatus = { state: 'spento', message: 'Collegamento al server spento', connectedSince: null, reconnects: 0, retryIn: null, retryAt: null, kbps: 0 }
   private listeners = new Set<(s: UplinkStatus) => void>()
   private ffmpegPath: string
 
@@ -132,7 +132,7 @@ export class Uplink {
     this.wanted = false
     this.clearRetry()
     this.killProc()
-    this.set({ state: 'spento', message: 'Invio al ponte spento', connectedSince: null, kbps: 0 })
+    this.set({ state: 'spento', message: 'Collegamento al server spento', connectedSince: null, kbps: 0 })
   }
 
   /** Audio PCM s16le stereo interleaved. Se non collegati viene scartato. */
@@ -168,7 +168,7 @@ export class Uplink {
     this.stderr = ''
     this.lastBytes = 0
     this.lastBytesAt = Date.now()
-    this.set({ state: this.attempt ? 'riconnessione' : 'connessione', message: 'Collegamento al ponte…', kbps: 0 })
+    this.set({ state: this.attempt ? 'riconnessione' : 'connessione', message: 'Collegamento al server…', kbps: 0 })
     const proc = spawn(this.ffmpegPath, buildFfmpegArgs(this.config, this.sampleRate), { windowsHide: true })
     this.proc = proc
     proc.stdin.on('error', () => {})
@@ -192,7 +192,7 @@ export class Uplink {
           const kbps = Math.round(((bytes - this.lastBytes) * 8) / Math.max(0.2, (now - this.lastBytesAt) / 1000) / 1000)
           if (this.status.state !== 'collegato') {
             this.attempt = 0
-            this.set({ state: 'collegato', message: 'Collegato al ponte', connectedSince: new Date().toISOString(), kbps })
+            this.set({ state: 'collegato', message: 'Collegata al server', connectedSince: new Date().toISOString(), kbps })
           } else {
             this.set({ kbps })
           }

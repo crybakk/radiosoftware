@@ -410,3 +410,7 @@ label.check.grande { font-size: 17px; gap: 10px; }
 label.check.grande input { width: 22px; height: 22px; }
 .topbar { flex-wrap: wrap; row-gap: 8px; }
 .tabs { flex: 1 1 420px; }
+.modelli-eventi { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin: 6px 0 12px; }
+button.modello { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 12px; }
+button.modello b { font-size: 16px; }
+button.modello span { font-size: 13px; color: var(--muted); }

@@ -105,8 +105,8 @@ export function useRadio() {
         void api.ponteCapture(false, 0)
         setCaptureError(
           p.source === 'ingresso'
-            ? `Ingresso audio per il ponte non disponibile (${e instanceof Error ? e.message : String(e)})`
-            : `Invio al ponte non avviato: ${e instanceof Error ? e.message : String(e)}`
+            ? `L'ingresso audio scelto per il server non si apre: controlla che il RodeCaster sia acceso e collegato (${e instanceof Error ? e.message : String(e)})`
+            : `Il collegamento al server non è partito: chiudi e riapri la regia (${e instanceof Error ? e.message : String(e)})`
         )
       })
     return () => {

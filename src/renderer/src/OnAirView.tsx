@@ -131,7 +131,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
           <button className="big stop" disabled={!main} onClick={() => void stop()}>
             ■ STOP
           </button>
-          <div className="dj-row">
+          {(radio.settings.mostraAvanzate || s.dj.once || s.dj.mixing) && <div className="dj-row">
             <button
               className={`dj-once ${s.dj.once ? 'on' : ''}`}
               disabled={!main || !s.queue.length}
@@ -166,7 +166,7 @@ export function OnAirView({ radio }: { radio: Radio }) {
                     ? 'Mix DJ acceso nei cambi automatici'
                     : ''}
             </span>
-          </div>
+          </div>}
         </div>
 
         <div className="queue" data-sezione="queue" data-titolo="In coda">
