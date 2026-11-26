@@ -228,6 +228,7 @@ export function useRadio() {
               generate: (description) => api.aiGenerate(description),
               cancel: () => api.aiCancelGenerate(),
               preview: (plan) => api.aiPreview(plan),
+              exportText: (description) => api.aiExportText(description),
               apply: async (plan, replace) => {
                 const list = await api.aiApply(plan, replace)
                 await reloadEvents(list)

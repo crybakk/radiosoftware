@@ -173,6 +173,8 @@ export interface RadioApi {
   aiPreview(plan: AiPlan): Promise<AiResult>
   /** Salva il file per Claude; restituisce il percorso o null se annullato. */
   aiExport(description: string): Promise<string | null>
+  /** Testo del file per Claude (per il pannello del server). */
+  aiExportText(description: string): Promise<string>
   /** Apre il piano di Claude e lo ricontrolla; null se annullato. */
   aiImport(): Promise<AiResult | null>
   aiApply(plan: AiPlan, replace: boolean): Promise<ScheduledEvent[]>

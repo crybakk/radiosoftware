@@ -351,6 +351,12 @@
             <button class="primary" type="button" id="ai-go">✨ Prepara le fasce</button>
             <button class="ghost" type="button" id="ai-cancel" hidden>Annulla</button>
           </div>
+          <div class="row">
+            <span class="hint">Oppure fallo preparare a Claude in chat:</span>
+            <button class="small" type="button" id="ai-export">Esporta per Claude</button>
+            <button class="small" type="button" id="ai-import">Importa piano</button>
+            <input type="file" id="ai-import-file" accept=".md,.json,.txt,text/markdown,application/json,text/plain" hidden />
+          </div>
           <p class="hint" id="ai-status"></p>
           <div id="ai-result" hidden>
             <ul class="list" id="ai-warn"></ul>

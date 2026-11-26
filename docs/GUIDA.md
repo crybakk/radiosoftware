@@ -6,7 +6,7 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 26/11/2026, regia più semplice: prima accensione guidata, codice di collegamento, conferme sui pulsanti delicati, testo grande.
+**Ultimo aggiornamento:** 26/11/2026, file .md per Claude (Esporta per Claude / Importa piano) anche nel pannello del server.
 
 ## Indice
 
@@ -723,6 +723,20 @@ L'AI sceglie **solo tra i generi della tua libreria** (del file e dei servizi de
 per avere più generi fai prima la ricerca su MusicBrainz. Se propone qualcosa che non c'è, l'anteprima lo toglie e
 lo scrive in giallo. Le rotazioni con l'AI valgono solo in regia: la musica di riserva del server resta a caso.
 
+### Farlo preparare a Claude in chat (file .md)
+
+Se l'AI della regia non può girare (PC con poca memoria) o preferisci Claude, usi un file:
+
+1. Scrivi il **Palinsesto** e premi **Esporta per Claude**: la regia salva un file `rotazioni-per-claude_….md` con
+   il palinsesto, le regole e i generi della tua libreria.
+2. Manda il file a Claude in chat. Lui risponde con il piano.
+3. Salva la sua risposta in un file (`.md`, `.txt` o `.json`) e premi **Importa piano**.
+4. Le fasce compaiono nella solita **Anteprima**: controlla e premi **Crea gli eventi**.
+
+Gli stessi due tasti ci sono anche nel **pannello** del server (menu ☰ → **Eventi e rotazioni** → **Rotazioni con
+l'AI**, per gli amministratori): il file si scarica nel computer o nel telefono da cui stai usando il pannello e il
+piano si importa da lì. Serve la regia accesa e collegata, ma **non** serve il modello dell'AI scaricato.
+
 ### Energia dei brani
 
 Ogni brano analizzato ha un'**energia** da 1 (molto calmo) a 10 (molto energico), visibile in fondo alla scheda del
@@ -1434,3 +1448,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 25/11/2026 | Mix DJ più preciso: brani agganciati battuta per battuta e posizione vera del brano in onda; nuova analisi per il Mix DJ in sottofondo |
 | 26/11/2026 | Dirette esterne più stabili: Radio Esterna con collegamento veloce (WebRTC) e riserva HTTPS automatica, ritorno in cuffia quasi senza ritardo, pallino della qualità della linea in app, regia e pannello (anche microfono e ospiti) |
 | 26/11/2026 | Regia più semplice: Benvenuto alla prima accensione, codice di collegamento dal pannello, conferme su STOP / Svuota / MANUALE / Rimuovi cartella, avviso quando la musica sta per finire, scritte chiare sul collegamento, Testo grande, cose avanzate nascoste; impostazioni della musica a scelte, una sola barra di preparazione in Libreria, eventi già pronti, messaggi di errore con cosa fare |
+| 26/11/2026 | Rotazioni con l'AI: **Esporta per Claude** e **Importa piano** (file .md) spiegati, ora anche nel pannello del server |

@@ -34,7 +34,8 @@ export const EVENT_COMMANDS: Record<string, 'vedere' | 'comandare' | 'utenti'> =
   aiGenerate: 'utenti',
   aiCancel: 'utenti',
   aiPreview: 'utenti',
-  aiApply: 'utenti'
+  aiApply: 'utenti',
+  aiExport: 'utenti'
 }
 
 /** Comandi in attesa di risposta dalla regia, al massimo, per ogni pannello. */
