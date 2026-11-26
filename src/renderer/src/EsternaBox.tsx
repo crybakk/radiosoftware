@@ -13,25 +13,26 @@ export function EsternaBox({ radio }: { radio: Radio }) {
   const [errore, setErrore] = useState<string | null>(null)
   if (!e || (!e.collegata && !e.inOnda)) return null
   const ascolto = radio.preview.trackId === ID_ESTERNA && radio.preview.playing
+  // frasi semplici (regia a prova di anziano, 27/11/2026)
   const stato = e.inOndaDavvero
-    ? '🔴 Esterna IN ONDA'
+    ? '🔴 In onda da fuori: la radio sente chi è fuori, non lo studio'
     : e.inOnda
-      ? '🟠 Esterna in onda, ma l\'audio non arriva (la regia resta in onda)'
+      ? '🟠 Chi è fuori ha premuto IN ONDA, ma la sua voce non arriva: la radio manda ancora lo studio'
       : e.audio
-        ? '📡 Esterna pronta, fuori onda'
-        : '📡 Esterna collegata, audio non ancora attivo'
+        ? '📡 Collegato da fuori e pronto: non è ancora in onda'
+        : '📡 Si sta collegando da fuori…'
   return (
     <div className={`esterna-box card ${e.inOndaDavvero ? 'live' : ''}`} data-sezione="esterna" data-titolo="Radio Esterna">
       <div className="esterna-head">
         <b>{stato}</b> {e.user && <span className="muted">· {e.user}</span>}
       </div>
       {e.titolo && <div className="esterna-titolo">{e.titolo}</div>}
-      {e.collegata && e.linea && <LineaBadge linea={e.linea} via={e.via ?? null} />}
+      {e.collegata && e.linea && <LineaBadge linea={e.linea} via={e.via ?? null} avanzate={!!radio.settings.mostraAvanzate} />}
       <div className="row">
         <button
           className={`small ${ascolto ? 'on' : ''}`}
           disabled={!e.ascoltoUrl}
-          title="Ascolta l'esterna nell'uscita di preascolto (non va in onda)"
+          title="Lo senti solo tu, nelle cuffie del preascolto: non va alla radio"
           onClick={async () => {
             setErrore(null)
             if (ascolto) radio.preview.stop()
@@ -39,7 +40,7 @@ export function EsternaBox({ radio }: { radio: Radio }) {
             force((n) => n + 1)
           }}
         >
-          {ascolto ? '■ Smetti di ascoltare' : '🎧 Ascolta in preascolto'}
+          {ascolto ? '■ Smetti di ascoltare' : '🎧 Ascolta chi è fuori (solo tu)'}
         </button>
       </div>
       {errore && <div className="esterna-errore">{errore}</div>}
@@ -50,7 +51,7 @@ export function EsternaBox({ radio }: { radio: Radio }) {
 const PALLINI = { buona: '🟢', debole: '🟡', pessima: '🔴', assente: '⚫' } as const
 
 /** Qualità della linea di chi è fuori (26/11/2026): pallino e frase; i numeri solo passando sopra con il mouse. */
-function LineaBadge({ linea, via }: { linea: LineaStato; via: 'webrtc' | 'https' | null }) {
+function LineaBadge({ linea, via, avanzate }: { linea: LineaStato; via: 'webrtc' | 'https' | null; avanzate: boolean }) {
   const dettagli = [
     linea.perdita ? `pacchetti persi o in ritardo ${linea.perdita}%` : '',
     linea.buchi ? `audio ricostruito ${linea.buchi}%` : '',
@@ -60,6 +61,7 @@ function LineaBadge({ linea, via }: { linea: LineaStato; via: 'webrtc' | 'https'
   return (
     <div className={`linea ${linea.livello}`} title={`Dettagli: ${dettagli.join(' · ') || 'nessun problema'}`}>
       {PALLINI[linea.livello]} {linea.frase}
+      {avanzate && dettagli.length > 0 && <div className="muted">{dettagli.join(' · ')}</div>}
     </div>
   )
 }

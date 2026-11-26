@@ -3,6 +3,7 @@ import type { Canale, Impostazioni, ImpostazioniMixer, Programma, StatoRegistraz
 import { DB_MAX, DB_MIN, MAX_CANALI, nuovoCanale } from '../../shared/mixer'
 import { dispositivi, type Motore } from './motore'
 import { testoErrore } from './App'
+import { ConfermaBottone } from './Conferma'
 
 const api = window.esterna
 
@@ -54,11 +55,20 @@ function useLivelli(motore: Motore) {
   return l
 }
 
-function Fader({ db, onChange }: { db: number; onChange: (db: number) => void }) {
+function Fader({ db, onChange, avanzate, normale = 0 }: { db: number; onChange: (db: number) => void; avanzate: boolean; normale?: number }) {
   return (
     <div className="fader">
-      <input type="range" min={DB_MIN} max={DB_MAX} step={0.5} value={db} onChange={(e) => onChange(Number(e.target.value))} onDoubleClick={() => onChange(0)} title="Doppio clic: 0 dB" />
-      <span className="db">{db <= DB_MIN ? '−∞' : `${db > 0 ? '+' : ''}${db.toFixed(1)} dB`}</span>
+      <span className="etichetta">Volume</span>
+      <input type="range" min={DB_MIN} max={DB_MAX} step={0.5} value={db} onChange={(e) => onChange(Number(e.target.value))} onDoubleClick={() => onChange(normale)} title="Doppio clic: volume normale" />
+      {avanzate ? (
+        <span className="db">{db <= DB_MIN ? '−∞' : `${db > 0 ? '+' : ''}${db.toFixed(1)} dB`}</span>
+      ) : (
+        db !== normale && (
+          <button className="piccolo" onClick={() => onChange(normale)} title="Rimette il volume normale">
+            Normale
+          </button>
+        )
+      )}
     </div>
   )
 }
@@ -79,16 +89,18 @@ function Mixer({ imp, cambiaMixer, motore }: { imp: Impostazioni; cambiaMixer: (
     return () => navigator.mediaDevices.removeEventListener('devicechange', leggi)
   }, [motore])
   const canale = (c: Canale, p: Partial<Canale>): void => cambiaMixer({ ...m, canali: m.canali.map((x) => (x.id === c.id ? { ...x, ...p } : x)) })
+  const avanzate = imp.mostraAvanzate
   return (
     <section className="riquadro mixer">
-      <h2>🎚 Mixer</h2>
+      <h2>🎚 Microfoni e audio</h2>
+      <div className="nota">Parla nel microfono: la barra colorata si deve muovere. Se resta ferma, scegli un altro microfono qui sotto.</div>
       <div className="strisce">
         {m.canali.map((c) => (
           <div key={c.id} className={`striscia ${c.muto ? 'muta' : ''}`}>
             <div className="riga">
               <input className="nome" value={c.nome} onChange={(e) => canale(c, { nome: e.target.value })} />
-              <button className={`muto ${c.muto ? 'acceso' : ''}`} onClick={() => canale(c, { muto: !c.muto })}>
-                {c.muto ? '🔇 Muto' : 'Muto'}
+              <button className={`muto ${c.muto ? 'acceso' : ''}`} onClick={() => canale(c, { muto: !c.muto })} title={c.muto ? 'Premi per riaccendere il microfono' : 'Premi per spegnere il microfono'}>
+                {c.muto ? '🔇 Spento: premi per accendere' : '🎙 Acceso'}
               </button>
             </div>
             <div className="riga">
@@ -100,19 +112,26 @@ function Mixer({ imp, cambiaMixer, motore }: { imp: Impostazioni; cambiaMixer: (
                   </option>
                 ))}
               </select>
-              <select value={c.parte} onChange={(e) => canale(c, { parte: e.target.value as Canale['parte'] })} title="Quale canale della scheda audio">
-                <option value="stereo">Stereo</option>
-                <option value="sinistro">Solo ingresso 1</option>
-                <option value="destro">Solo ingresso 2</option>
-              </select>
+              {(avanzate || c.parte !== 'stereo') && (
+                <select value={c.parte} onChange={(e) => canale(c, { parte: e.target.value as Canale['parte'] })} title="Quale ingresso della scheda audio">
+                  <option value="stereo">Tutti e due gli ingressi</option>
+                  <option value="sinistro">Solo ingresso 1</option>
+                  <option value="destro">Solo ingresso 2</option>
+                </select>
+              )}
             </div>
             <Livello valore={l.canali.get(c.id) ?? 0} />
-            <Fader db={c.volumeDb} onChange={(db) => canale(c, { volumeDb: db })} />
+            <Fader db={c.volumeDb} onChange={(db) => canale(c, { volumeDb: db })} avanzate={avanzate} />
             {motore.errori.get(c.id) && <div className="errore">{motore.errori.get(c.id)}</div>}
             {m.canali.length > 1 && (
-              <button className="piccolo togli" onClick={() => cambiaMixer({ ...m, canali: m.canali.filter((x) => x.id !== c.id) })}>
-                Togli
-              </button>
+              <ConfermaBottone
+                className="piccolo togli"
+                domanda={`Togliere "${c.nome}"?`}
+                si="Sì, togli"
+                onSi={() => cambiaMixer({ ...m, canali: m.canali.filter((x) => x.id !== c.id) })}
+              >
+                Togli questo microfono
+              </ConfermaBottone>
             )}
           </div>
         ))}
@@ -120,36 +139,42 @@ function Mixer({ imp, cambiaMixer, motore }: { imp: Impostazioni; cambiaMixer: (
           <div className="riga">
             <b className="nome">💻 Audio del computer</b>
             <label className="interruttore">
-              <input type="checkbox" checked={m.pc.attivo} onChange={(e) => cambiaMixer({ ...m, pc: { ...m.pc, attivo: e.target.checked } })} /> Acceso
+              <input type="checkbox" checked={m.pc.attivo} onChange={(e) => cambiaMixer({ ...m, pc: { ...m.pc, attivo: e.target.checked } })} /> Manda in onda
             </label>
           </div>
           {m.pc.attivo && (
             <>
               <div className="riga">
                 <button className={`muto ${m.pc.muto ? 'acceso' : ''}`} onClick={() => cambiaMixer({ ...m, pc: { ...m.pc, muto: !m.pc.muto } })}>
-                  {m.pc.muto ? '🔇 Muto' : 'Muto'}
+                  {m.pc.muto ? '🔇 Spento: premi per accendere' : '🔊 Acceso'}
                 </button>
-                <label className="interruttore" title="Di solito no: l'audio del computer lo senti già dalle casse o dalle cuffie del computer">
-                  <input type="checkbox" checked={m.pc.inCuffia} onChange={(e) => cambiaMixer({ ...m, pc: { ...m.pc, inCuffia: e.target.checked } })} /> Anche in cuffia
-                </label>
+                {avanzate && (
+                  <label className="interruttore" title="Di solito no: l'audio del computer lo senti già dalle casse o dalle cuffie del computer">
+                    <input type="checkbox" checked={m.pc.inCuffia} onChange={(e) => cambiaMixer({ ...m, pc: { ...m.pc, inCuffia: e.target.checked } })} /> Anche in cuffia
+                  </label>
+                )}
               </div>
               <Livello valore={l.pc} />
-              <Fader db={m.pc.volumeDb} onChange={(db) => cambiaMixer({ ...m, pc: { ...m.pc, volumeDb: db } })} />
+              <Fader db={m.pc.volumeDb} onChange={(db) => cambiaMixer({ ...m, pc: { ...m.pc, volumeDb: db } })} avanzate={avanzate} normale={-6} />
             </>
           )}
-          <small>Tutto quello che suona sul computer (un programma, un video…). Attenzione: se la cuffia è l'uscita principale del computer, va in onda anche quello che senti in cuffia, ritorno compreso.</small>
+          <small>Per mandare in onda quello che suona sul computer (una musica, un video). Usa per la cuffia un'uscita diversa da quella del computer, se no va in onda anche quello che senti in cuffia.</small>
           {motore.errori.get('pc') && <div className="errore">{motore.errori.get('pc')}</div>}
         </div>
       </div>
       <div className="riga uscita">
         {m.canali.length < MAX_CANALI && (
-          <button onClick={() => cambiaMixer({ ...m, canali: [...m.canali, nuovoCanale(m.canali.length + 1)] })}>+ Aggiungi microfono</button>
+          <button onClick={() => cambiaMixer({ ...m, canali: [...m.canali, nuovoCanale(m.canali.length + 1)] })}>+ Aggiungi un microfono</button>
         )}
-        <span className="etichetta">Uscita verso la radio</span>
+        <span className="etichetta">Quello che va alla radio</span>
         <Livello valore={l.uscita} />
-        <span className={`limitatore ${l.riduzione < -3 ? 'attivo' : ''}`} title="Il limitatore abbassa i picchi perché non distorca">
-          Limitatore {l.riduzione < -0.5 ? `${l.riduzione.toFixed(0)} dB` : ''}
-        </span>
+        {avanzate ? (
+          <span className={`limitatore ${l.riduzione < -3 ? 'attivo' : ''}`} title="Il limitatore abbassa i picchi perché non distorca">
+            Limitatore {l.riduzione < -0.5 ? `${l.riduzione.toFixed(0)} dB` : ''}
+          </span>
+        ) : (
+          l.riduzione < -6 && <span className="limitatore attivo">Troppo forte: abbassa un po' il volume</span>
+        )}
       </div>
     </section>
   )
@@ -168,7 +193,7 @@ function Cuffia({ imp, cambiaMixer, stato, motore }: { imp: Impostazioni; cambia
     <section className="riquadro cuffia">
       <h2>🎧 Cuffia</h2>
       <label>
-        Uscita
+        Dove è attaccata la cuffia
         <select value={m.cuffiaId} onChange={(e) => cambiaMixer({ ...m, cuffiaId: e.target.value })}>
           <option value="">Uscita predefinita del computer</option>
           {uscite.map((d) => (
@@ -179,32 +204,32 @@ function Cuffia({ imp, cambiaMixer, stato, motore }: { imp: Impostazioni; cambia
         </select>
       </label>
       <label>
-        I tuoi microfoni in cuffia
+        Volume della tua voce in cuffia
         <input type="range" min={0} max={1} step={0.01} value={m.cuffiaVolume} onChange={(e) => cambiaMixer({ ...m, cuffiaVolume: Number(e.target.value) })} />
       </label>
       <label className="interruttore">
-        <input type="checkbox" checked={m.ritorno} onChange={(e) => cambiaMixer({ ...m, ritorno: e.target.checked })} /> Ritorno dello studio
+        <input type="checkbox" checked={m.ritorno} onChange={(e) => cambiaMixer({ ...m, ritorno: e.target.checked })} /> Senti lo studio in cuffia
         {m.ritorno && (
           <span className="nota">
-            {!stato?.regia && !motore.ritornoVeloce() ? ' (la regia non è collegata)' : motore.ritornoInAscolto() ? (motore.ritornoVeloce() ? ' (lo senti, senza ritardo)' : ' (lo senti)') : ' (in arrivo…)'}
+            {!stato?.regia && !motore.ritornoVeloce() ? ' (lo studio è spento)' : motore.ritornoInAscolto() ? ' (lo senti)' : ' (sta arrivando…)'}
           </span>
         )}
       </label>
       {m.ritorno && (
         <label>
-          Volume del ritorno
+          Volume dello studio in cuffia
           <input type="range" min={0} max={1} step={0.01} value={m.ritornoVolume} onChange={(e) => cambiaMixer({ ...m, ritornoVolume: Number(e.target.value) })} />
         </label>
       )}
       <small>
-        Il ritorno è quello che manda la regia dello studio, più chi parla dal pannello (senza la tua voce). Di solito arriva quasi subito; se la rete
-        blocca il collegamento veloce arriva con un paio di secondi di ritardo. In cuffia non ascoltare la radio: arriva in ritardo e confonde.
+        In cuffia senti lo studio e chi parla dal pannello, così potete parlarvi. Non ascoltare la radio in cuffia: arriva in ritardo e confonde.
       </small>
     </section>
   )
 }
 
 function Registrazione({ imp, programmi, stato }: { imp: Impostazioni; programmi: Programma[]; stato: StatoServer | null }) {
+  const avanzate = imp.mostraAvanzate
   const [s, setS] = useState<StatoRegistrazioneProgrammi | null>(null)
   const [loc, setLoc] = useState<StatoRegistrazioneLocale | null>(null)
   const [errore, setErrore] = useState<string | null>(null)
@@ -235,26 +260,26 @@ function Registrazione({ imp, programmi, stato }: { imp: Impostazioni; programmi
       {c ? (
         <>
           <div>
-            <span className="punto-rec" /> <b>{c.title}</b>: registra dalle {ora(c.startedAt)} ({durata(now - c.startedAt)}, {mb(c.bytes)})
+            <span className="punto-rec" /> Sto registrando <b>{c.title}</b> dalle {ora(c.startedAt)} ({durata(now - c.startedAt)}{avanzate ? `, ${mb(c.bytes)}` : ''})
           </div>
-          <div className="nota">{c.startMark ? `Inizio della puntata segnato alle ${ora(c.startMark)}.` : 'L\'inizio della puntata si segna da solo quando vai IN ONDA.'}</div>
+          <div className="nota">{c.startMark ? `La puntata comincia alle ${ora(c.startMark)}.` : 'La puntata comincia da sola quando premi IN ONDA.'}</div>
           <div className="riga">
-            <button onClick={() => esegui(api.segnaInizio(), setS)}>📍 Segna inizio</button>
-            <button className="pericolo" onClick={() => esegui(api.fineProgramma(), setS)}>
-              ⏹ Fine programma
-            </button>
+            {avanzate && <button onClick={() => esegui(api.segnaInizio(), setS)}>📍 Segna inizio</button>}
+            <ConfermaBottone className="pericolo" domanda="Il programma è finito? La registrazione si ferma." si="Sì, è finito" onSi={() => esegui(api.fineProgramma(), setS)}>
+              ⏹ Programma finito
+            </ConfermaBottone>
           </div>
           {c.problema && <div className="errore">{c.problema}</div>}
         </>
       ) : locale ? (
         <>
           <div>
-            <span className="punto-rec" /> Registra solo sul computer dalle {loc?.inizio ? ora(loc.inizio) : ''} ({loc?.inizio ? durata(now - loc.inizio) : ''}, {mb(loc?.byte ?? 0)})
+            <span className="punto-rec" /> Sto registrando sul computer dalle {loc?.inizio ? ora(loc.inizio) : ''} ({loc?.inizio ? durata(now - loc.inizio) : ''}{avanzate ? `, ${mb(loc?.byte ?? 0)}` : ''})
           </div>
           <div className="riga">
-            <button className="pericolo" onClick={() => esegui(api.registraLocale(false), setLoc)}>
-              ⏹ Ferma
-            </button>
+            <ConfermaBottone className="pericolo" domanda="Fermare la registrazione?" si="Sì, ferma" onSi={() => esegui(api.registraLocale(false), setLoc)}>
+              ⏹ Ferma la registrazione
+            </ConfermaBottone>
           </div>
           {loc?.problema && <div className="errore">{loc.problema}</div>}
         </>
@@ -262,7 +287,7 @@ function Registrazione({ imp, programmi, stato }: { imp: Impostazioni; programmi
         <>
           <div className="riga">
             <select value={scelta} onChange={(e) => setScelta(e.target.value)}>
-              <option value="">Scegli il programma…</option>
+              <option value="">Quale programma fai?</option>
               {programmi.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.title}
@@ -274,11 +299,11 @@ function Registrazione({ imp, programmi, stato }: { imp: Impostazioni; programmi
             </button>
           </div>
           <div className="nota">
-            Registra qui (MP3 320) e sul server. Se il collegamento non cade si tiene quella del server e la puntata si pubblica da sola;
-            altrimenti parte il file del computer e la puntata va in "Puntate da rivedere".
+            La puntata si salva sulla radio e, per sicurezza, anche su questo computer. Quando hai finito premi "Programma finito": la puntata si
+            pubblica da sola (se il collegamento è caduto, la trovi in "Puntate da rivedere" nel pannello).
           </div>
           <div className="riga">
-            <button onClick={() => esegui(api.registraLocale(true), setLoc)}>💾 Registra solo sul computer</button>
+            <button onClick={() => esegui(api.registraLocale(true), setLoc)} title="Un file sul computer, senza puntata sulla radio">💾 Registra solo sul computer</button>
             <button className="piccolo" onClick={() => void api.apriCartella()}>
               Apri la cartella
             </button>
@@ -288,7 +313,7 @@ function Registrazione({ imp, programmi, stato }: { imp: Impostazioni; programmi
       )}
       {s?.invii.map((x) => (
         <div key={x.file} className="nota">
-          {x.title}: {x.stato === 'decidere' ? 'chiedo al server se ha la registrazione completa…' : `invio al server${x.inviatiByte ? ` (${mb(x.inviatiByte)})` : ''}…`}
+          {x.title}: {x.stato === 'decidere' ? 'controllo se la radio ha la registrazione completa…' : `mando la registrazione alla radio${x.inviatiByte && avanzate ? ` (${mb(x.inviatiByte)})` : ''}…`}
           {x.errore && <span className="errore"> {x.errore} (riprovo tra poco)</span>}
         </div>
       ))}
@@ -347,22 +372,23 @@ export function Diretta({
           ) : inOnda ? (
             <>
               <div className="grande">🟠 IN ONDA, ma il tuo audio non arriva</div>
-              <div>La radio sente la regia finché il tuo audio non torna.</div>
+              <div>La radio manda lo studio finché la tua voce non torna. Controlla internet.</div>
             </>
           ) : (
             <>
               <div className="grande">FUORI ONDA</div>
-              <div>{collegato ? 'Prova i livelli: la radio non ti sente ancora.' : 'Non sei collegato al server.'}</div>
+              <div>{collegato ? 'La radio non ti sente ancora. Prova il microfono qui sotto, poi premi IN ONDA.' : 'Aspetta il collegamento alla radio (in alto).'}</div>
             </>
           )}
         </div>
         {inOnda ? (
           conferma ? (
             <div className="riga">
+              <span className="domanda">Hai finito? La radio torna allo studio.</span>
               <button className="enorme fuori" onClick={() => onda(false)}>
                 Sì, FUORI ONDA
               </button>
-              <button onClick={() => setConferma(false)}>Annulla</button>
+              <button onClick={() => setConferma(false)}>No, resto in onda</button>
             </div>
           ) : (
             <button className="enorme fuori" onClick={() => setConferma(true)}>
@@ -370,12 +396,12 @@ export function Diretta({
             </button>
           )
         ) : (
-          <button className="enorme dentro" disabled={!collegato || !!(e && !e.audio && false)} onClick={() => onda(true)}>
+          <button className="enorme dentro" disabled={!collegato} onClick={() => onda(true)} title="Vai in onda al posto dello studio">
             ▶ IN ONDA
           </button>
         )}
-        {collegato && e && !e.audio && <div className="nota">Il server non riceve ancora il tuo audio: aspetta qualche secondo.</div>}
-        {collegato && e?.linea && <Linea linea={e.linea} via={e.via ?? null} />}
+        {collegato && e && !e.audio && <div className="nota">La radio non riceve ancora la tua voce: aspetta qualche secondo.</div>}
+        {collegato && e?.linea && <Linea linea={e.linea} via={e.via ?? null} avanzate={imp.mostraAvanzate} />}
         {errore && <div className="errore">{errore}</div>}
       </section>
 
@@ -399,11 +425,11 @@ export function Diretta({
             onKeyDown={(x) => x.key === 'Enter' && meta(imp.programId, testo)}
           />
           <button onClick={() => meta(imp.programId, testo)} disabled={testo === imp.testo}>
-            Aggiorna
+            Cambia il titolo
           </button>
         </div>
         <div className="nota">
-          Alla radio: <b>{e?.titolo ?? (testo || 'In diretta')}</b>. Quando il server riconosce un brano mostra titolo e artista finché dura, poi torna questo.
+          Gli ascoltatori leggono: <b>{e?.titolo ?? (testo || 'In diretta')}</b>. Se fai sentire una canzone, la radio la riconosce e mostra il suo titolo finché dura.
         </div>
       </section>
 
@@ -419,7 +445,7 @@ export function Diretta({
 const PALLINI = { buona: '🟢', debole: '🟡', pessima: '🔴', assente: '⚫' } as const
 
 /** Qualità della tua linea, misurata dal server (26/11/2026): pallino e frase; i numeri passando sopra col mouse. */
-function Linea({ linea, via }: { linea: LineaStato; via: 'webrtc' | 'https' | null }) {
+function Linea({ linea, via, avanzate }: { linea: LineaStato; via: 'webrtc' | 'https' | null; avanzate: boolean }) {
   const dettagli = [
     linea.perdita ? `pacchetti persi o in ritardo ${linea.perdita}%` : '',
     linea.buchi ? `audio ricostruito ${linea.buchi}%` : '',
@@ -429,6 +455,10 @@ function Linea({ linea, via }: { linea: LineaStato; via: 'webrtc' | 'https' | nu
   return (
     <div className={`linea ${linea.livello}`} title={`Dettagli: ${dettagli.join(' · ') || 'nessun problema'}`}>
       {PALLINI[linea.livello]} {linea.frase}
+      {(linea.livello === 'pessima' || linea.livello === 'debole') && (
+        <div className="nota">Se puoi, avvicinati al router o usa il cavo di rete, e chiudi i programmi che usano internet.</div>
+      )}
+      {avanzate && dettagli.length > 0 && <div className="nota">{dettagli.join(' · ')}</div>}
     </div>
   )
 }

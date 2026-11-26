@@ -44,6 +44,8 @@ interface Salvate {
   programId: string | null
   testo: string
   cartellaRegistrazioni: string
+  testoGrande: boolean
+  mostraAvanzate: boolean
 }
 
 const fileImpostazioni = (): string => join(app.getPath('userData'), 'impostazioni.json')
@@ -58,11 +60,13 @@ function carica(): Salvate {
     mixer: mixerPredefinito(),
     programId: null,
     testo: '',
-    cartellaRegistrazioni: join(app.getPath('documents'), NOME)
+    cartellaRegistrazioni: join(app.getPath('documents'), NOME),
+    testoGrande: false,
+    mostraAvanzate: false
   }
   try {
     const s = JSON.parse(readFileSync(fileImpostazioni(), 'utf8')) as Partial<Salvate>
-    return { ...base, ...s, mixer: pulisciMixer(s.mixer) }
+    return { ...base, ...s, mixer: pulisciMixer(s.mixer), testoGrande: s.testoGrande === true, mostraAvanzate: s.mostraAvanzate === true }
   } catch {
     return base
   }
@@ -104,7 +108,9 @@ function pubbliche(): Impostazioni {
     mixer: salvate.mixer,
     programId: salvate.programId,
     testo: salvate.testo,
-    cartellaRegistrazioni: salvate.cartellaRegistrazioni
+    cartellaRegistrazioni: salvate.cartellaRegistrazioni,
+    testoGrande: salvate.testoGrande,
+    mostraAvanzate: salvate.mostraAvanzate
   }
 }
 
@@ -116,6 +122,11 @@ const manda = (canale: string, ...a: unknown[]): void => {
 }
 /** Solo la finestra dell'app può chiamare il processo principale (non il pannello nella scheda Regia). */
 const dallApp = (e: IpcMainInvokeEvent | Electron.IpcMainEvent): boolean => !!win && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame
+
+/** Testo grande: tutta la finestra un quarto più grande (come la regia). */
+const zoom = (): void => {
+  if (win && !win.isDestroyed()) win.webContents.setZoomFactor(salvate?.testoGrande ? 1.25 : 1)
+}
 
 if (!app.requestSingleInstanceLock()) app.quit()
 app.on('second-instance', () => {
@@ -260,6 +271,7 @@ app.whenReady().then(async () => {
       backgroundThrottling: false
     }
   })
+  win.webContents.on('did-finish-load', zoom)
   // la scheda Regia può aprire solo il pannello del server, senza accessi al computer
   win.webContents.on('will-attach-webview', (e, prefs, params) => {
     delete (prefs as { preload?: string }).preload
@@ -355,6 +367,13 @@ app.whenReady().then(async () => {
     await session.defaultSession.cookies.remove(salvate.server, 'sessione').catch(() => {})
     return pubbliche()
   })
+  handle('aspetto', (a: { testoGrande?: unknown; mostraAvanzate?: unknown }) => {
+    if (typeof a?.testoGrande === 'boolean') salvate.testoGrande = a.testoGrande
+    if (typeof a?.mostraAvanzate === 'boolean') salvate.mostraAvanzate = a.mostraAvanzate
+    salva()
+    zoom()
+    return pubbliche()
+  })
   handle('stato', () => collegamento.stato())
   handle('programmi', async () => {
     const h = http()
@@ -389,7 +408,7 @@ app.whenReady().then(async () => {
   })
   handle('registrazione', () => registrazioni.status())
   handle('registra', async (programId: string) => {
-    if (modo === 'locale') throw new Error('ferma prima la registrazione solo sul computer')
+    if (modo === 'locale') throw new Error('Prima ferma la registrazione solo sul computer.')
     // programma appena creato nel pannello (o elenco non ancora letto): si rilegge
     if (!registrazioni.status().programmi.some((p) => p.id === programId)) await registrazioni.aggiornaProgrammi()
     ultimoFuoriOnda = null

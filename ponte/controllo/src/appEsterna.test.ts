@@ -143,7 +143,7 @@ describe('app Radio Esterna sul server', () => {
     const p = new FakePeer()
     t.app.attach(p, 'Mario')
     expect(p.closed?.code).toBe(4010)
-    expect(p.last('errore').messaggio).toContain('aggiornalo')
+    expect(p.last('errore').messaggio).toContain('aggiornare il server')
   })
 
   it("rete caduta mentre è in onda: resta in onda un minuto; se l'app torna resta in onda", async () => {

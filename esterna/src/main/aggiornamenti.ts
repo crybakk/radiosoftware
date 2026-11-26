@@ -21,7 +21,7 @@ const RELEASE_URL = 'https://api.github.com/repos/crybakk/radiosoftware/releases
 
 async function scaricaRelease(): Promise<unknown> {
   const r = await fetch(RELEASE_URL, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'radio-esterna' }, signal: AbortSignal.timeout(20_000) })
-  if (!r.ok) throw new Error(`GitHub ha risposto ${r.status}`)
+  if (!r.ok) throw new Error('non riesco a controllare: riprova più tardi')
   return r.json()
 }
 
@@ -84,7 +84,7 @@ export class Aggiornamenti {
   async installa(): Promise<void> {
     if (!app.isPackaged) throw new Error('Il programma non è installato')
     if (this.mac) {
-      if (!this.stato.scarica) throw new Error('file per il Mac non trovato nella release')
+      if (!this.stato.scarica) throw new Error('Il file per il Mac non è ancora pronto: riprova tra qualche minuto.')
       await shell.openExternal(this.stato.scarica)
       return
     }

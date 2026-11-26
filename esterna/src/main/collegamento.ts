@@ -18,16 +18,16 @@ export const RIENTRO_MAX_MS = 10 * 60_000
 /** "radio.it:9443", "https://radio.it/" … → "https://radio.it:9443" (sempre HTTPS, tranne localhost per le prove). */
 export function normalizzaServer(s: string): string {
   let t = s.trim()
-  if (!t) throw new Error('scrivi l\'indirizzo del server')
+  if (!t) throw new Error('Scrivi l\'indirizzo della radio.')
   if (!/^[a-z]+:\/\//i.test(t)) t = `https://${t}`
   let u: URL
   try {
     u = new URL(t)
   } catch {
-    throw new Error('indirizzo del server non valido')
+    throw new Error('L\'indirizzo della radio non è scritto bene: copialo dalla barra del browser quando apri il pannello.')
   }
   const locale = u.hostname === 'localhost' || u.hostname === '127.0.0.1'
-  if (u.protocol !== 'https:' && !(locale && u.protocol === 'http:')) throw new Error('il server va raggiunto in https')
+  if (u.protocol !== 'https:' && !(locale && u.protocol === 'http:')) throw new Error('L\'indirizzo della radio deve iniziare con https:// (oppure scrivilo senza niente davanti).')
   return `${u.protocol}//${u.host}`
 }
 
@@ -101,7 +101,7 @@ export class Collegamento {
   private meta: { programId: string | null; testo: string } = { programId: null, testo: '' }
   private s: StatoServer = {
     collegamento: 'scollegato',
-    messaggio: 'Non collegato',
+    messaggio: 'Non collegato alla radio',
     utente: null,
     stazione: '',
     esterna: null,
@@ -134,7 +134,7 @@ export class Collegamento {
 
   /** IN ONDA / FUORI ONDA premuto da chi è fuori. */
   onda(on: boolean): void {
-    if (on && this.s.collegamento !== 'collegato') throw new Error('non sei collegato al server')
+    if (on && this.s.collegamento !== 'collegato') throw new Error('Non sei collegato alla radio: aspetta che torni il collegamento (riprovo da solo).')
     this.inOndaVoluto = on
     if (!on) this.cadutoAlle = null
     this.manda({ t: 'onda', on })
@@ -165,12 +165,12 @@ export class Collegamento {
     }
     this.inOndaVoluto = false
     this.cadutoAlle = null
-    this.cambia({ collegamento: 'scollegato', messaggio: 'Non collegato', esterna: null, ritornoUrl: null, caduto: false, kbps: 0 })
+    this.cambia({ collegamento: 'scollegato', messaggio: 'Non collegato alla radio', esterna: null, ritornoUrl: null, caduto: false, kbps: 0 })
   }
 
   private apri(): void {
     if (!this.voluto) return
-    this.cambia({ collegamento: 'collegamento', messaggio: 'Collegamento al server…' })
+    this.cambia({ collegamento: 'collegamento', messaggio: 'Mi collego alla radio…' })
     const url = `${this.base.replace(/^http/i, 'ws')}/ws/esterna`
     let ws: WsLike
     try {
@@ -189,7 +189,7 @@ export class Collegamento {
       if (!rientra) this.inOndaVoluto = false
       this.cadutoAlle = null
       this.manda({ t: 'hello', versione: this.d.versione, inOnda: rientra, programId: this.meta.programId, testo: this.meta.testo })
-      this.cambia({ collegamento: 'collegato', messaggio: 'Collegato al server', caduto: false })
+      this.cambia({ collegamento: 'collegato', messaggio: 'Collegato alla radio', caduto: false })
       this.d.riavviaInvio()
       this.d.onRtc?.({ t: 'nuova' })
       if (this.ping) clearInterval(this.ping)
@@ -245,19 +245,20 @@ export class Collegamento {
             ? 'Accesso scaduto o ruolo cambiato: entra di nuovo.'
             : code === 4009
               ? this.s.messaggio || 'C\'è già un\'altra esterna collegata.'
-              : this.s.messaggio || 'Il server non ha l\'ingresso per Radio Esterna.'
+              : this.s.messaggio || 'La radio non è ancora pronta per Radio Esterna: chi gestisce la radio deve aggiornare il server dal pannello.'
         this.voluto = false
         this.inOndaVoluto = false
         this.cambia({ collegamento: 'errore', messaggio: msg, esterna: null, ritornoUrl: null, caduto: false })
         return
       }
       if (this.inOndaVoluto && this.cadutoAlle === null) this.cadutoAlle = this.now()
-      this.riprova(testo || 'collegamento interrotto')
+      this.riprova(testo || 'Collegamento alla radio interrotto')
     })
     ws.on('error', (e) => {
       if (this.ws !== ws) return
       // l'errore arriva prima della chiusura: lo si scrive, la chiusura fa ripartire
-      this.cambia({ messaggio: e.message.includes('401') ? 'Accesso non valido: entra di nuovo.' : e.message })
+      // il testo tecnico dell'errore non serve a chi è fuori: si dice cosa fare
+      this.cambia({ messaggio: e.message.includes('401') ? 'Accesso non valido: entra di nuovo.' : 'La radio non risponde: controlla che internet funzioni.' })
       if (e.message.includes('401')) {
         this.voluto = false
         this.cambia({ collegamento: 'errore', messaggio: 'Accesso non valido: entra di nuovo.' })
@@ -269,7 +270,7 @@ export class Collegamento {
     if (!this.voluto) return
     this.tentativo++
     const s = attesa(this.tentativo)
-    this.cambia({ collegamento: 'errore', messaggio: `${motivo}: riprovo tra ${s} s`, caduto: this.inOndaVoluto, kbps: 0 })
+    this.cambia({ collegamento: 'errore', messaggio: `${motivo}. Riprovo da solo tra ${s} secondi: controlla che internet funzioni.`, caduto: this.inOndaVoluto, kbps: 0 })
     this.timer = setTimeout(() => {
       this.timer = null
       this.apri()
@@ -334,15 +335,15 @@ export async function accedi(base: string, utente: string, password: string, fet
       signal: AbortSignal.timeout(15_000)
     })
   } catch (e) {
-    throw new Error(`il server non risponde (${e instanceof Error ? e.message : String(e)}): controlla l'indirizzo e la rete`)
+    throw new Error('La radio non risponde: controlla l\'indirizzo e che internet funzioni.')
   }
   const corpo = (await r.json().catch(() => ({}))) as { error?: string; user?: { name: string; role: string } }
-  if (!r.ok) throw new Error(corpo.error || `il server ha risposto ${r.status}`)
+  if (!r.ok) throw new Error(r.status === 401 || r.status === 403 ? 'Nome o password sbagliati: sono gli stessi del pannello della radio.' : corpo.error || `La radio ha dato un errore (codice ${r.status}): riprova tra poco.`)
   const h = r.headers as Headers & { getSetCookie?: () => string[] }
   const token = tokenDaCookie(h.getSetCookie?.() ?? r.headers.get('set-cookie'))
-  if (!token || !corpo.user) throw new Error('il server non ha dato la sessione: è aggiornato?')
+  if (!token || !corpo.user) throw new Error('La radio non ha risposto come doveva: chi gestisce la radio deve aggiornare il server dal pannello.')
   if (corpo.user.role !== 'amministratore' && corpo.user.role !== 'conduttore') {
-    throw new Error('per andare in onda serve un utente conduttore o amministratore')
+    throw new Error('Questo utente non può andare in onda: serve un utente conduttore o amministratore (lo crea chi gestisce il pannello).')
   }
   return { token, nome: corpo.user.name, ruolo: corpo.user.role }
 }

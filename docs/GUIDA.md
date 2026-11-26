@@ -6,7 +6,7 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 26/11/2026, file .md per Claude (Esporta per Claude / Importa piano) anche nel pannello del server.
+**Ultimo aggiornamento:** 27/11/2026, Radio Esterna più semplice: parole chiare, conferme, testo grande e regolazioni tecniche dietro **Avanzate**.
 
 ## Indice
 
@@ -225,72 +225,75 @@ e, nell'ultima che contiene l'app, scarica:
   Si fa una volta sola. Al primo uso il Mac chiede anche il permesso per il **microfono** (e, se accendi l'audio del
   computer, per la **registrazione dello schermo e dell'audio**): rispondi **Consenti**.
 
-Al primo avvio chiede la **chiave di attivazione**, la stessa della regia e del server. Poi entri con l'**indirizzo
-della radio** (lo stesso del pannello, senza `https://`), il tuo **nome** e la **password** del pannello. Serve il
-ruolo **conduttore** o **amministratore**. L'app resta collegata anche alle aperture successive; **Esci** è in
-**Impostazioni**. Sul router del server servono le stesse porte del microfono dal pannello (UDP 40000-40049): l'app
-usa quel collegamento veloce, che sul 4G regge meglio. Dove la rete lo blocca (alcuni wifi di hotel o aziende)
-l'app passa da sola all'HTTPS, come il pannello: non devi fare niente.
+Al primo avvio chiede la **chiave di attivazione**, la stessa della regia e del server. Poi scrivi gli stessi
+dati che usi per il pannello dal browser: l'**indirizzo della radio** (quello della barra del browser, anche senza
+`https://`), il tuo **nome** e la tua **password**. Serve il ruolo **conduttore** o **amministratore**. Se
+qualcosa non va, l'app dice cosa fare (per esempio "Nome o password sbagliati"). Le volte dopo entra da sola.
 
-**Andare in onda**, scheda **Diretta**:
+In alto vedi sempre due scritte: **✅ Collegato alla radio** (o **⏳ Mi collego alla radio…**) e **Lo studio è
+acceso** o **spento**. Se internet cade, una striscia gialla dice cosa succede e l'app riprova da sola.
 
-1. Appena collegata sei **fuori onda**: la radio continua con la regia (o la musica di riserva). Intanto prova i
-   microfoni e guarda i livelli: in regia e nel pannello compare **Esterna pronta**, e con **🎧 Ascolta l'esterna**
-   lo studio ti sente prima del passaggio.
+**Andare in onda**, scheda **🎙 Diretta**:
+
+1. Appena entri sei **FUORI ONDA**: la radio continua con lo studio (o con la musica di riserva). Parla nel
+   microfono: la barra colorata sotto **Microfoni e audio** si deve muovere. Se resta ferma, scegli un altro
+   microfono nell'elenco. Lo studio intanto vede che sei pronto e può ascoltarti con **🎧 Ascolta chi è fuori**.
 2. **Cosa vedono gli ascoltatori:** scegli il **programma** e, se vuoi, scrivi una riga (es. "In diretta dalla
-   piazza"). Alla radio va "Programma – riga". Quando il server riconosce un brano mostra titolo e artista finché
-   dura, poi torna il tuo titolo. Puoi cambiarlo anche in onda con **Aggiorna**.
-3. Premi **IN ONDA**: sei in onda con una breve dissolvenza, al posto della regia (e della diretta autonoma). Non
-   serve che lo studio accetti.
-4. **FUORI ONDA** (chiede conferma): torna la regia, o la musica di riserva se la regia è spenta. L'app resta
-   collegata, così puoi rientrare quando vuoi.
+   piazza"), poi **Cambia il titolo**. Se fai sentire una canzone, la radio la riconosce e mostra il suo titolo
+   finché dura.
+3. Premi il tasto verde **▶ IN ONDA**: la radio ti sente al posto dello studio. Non serve che lo studio accetti.
+4. Quando hai finito premi **⏹ FUORI ONDA** e poi **Sì, FUORI ONDA** (con **No, resto in onda** torni indietro):
+   la radio torna allo studio. L'app resta collegata, così puoi rientrare quando vuoi.
 
-**Qualità della linea:** sotto il tasto IN ONDA un pallino dice com'è la tua linea, misurata dal server:
-🟢 **Linea buona**; 🟡 **Linea debole** (l'audio arriva ancora intero, o con qualche piccolo salto); 🔴 **Linea
-molto debole: l'audio salta**; ⚫ **L'audio non arriva**. Lo stesso pallino lo vedono lo studio (riquadro
-dell'esterna in regia) e il pannello. Non c'è niente da regolare: l'app e il server si adattano da soli (il
-server tiene un po' più di audio da parte quando la linea balla e ricostruisce i pezzi persi). Se resta giallo o
-rosso, avvicinati a una finestra, spostati dove il telefono ha più tacche o abbassa la **qualità dell'invio**.
-Passando sopra il pallino con il mouse si vedono i numeri (pacchetti persi, ritardo).
+**Il pallino della linea**, accanto al tasto, dice com'è la tua linea: 🟢 **Linea buona**; 🟡 **Linea debole**;
+🔴 **Linea molto debole: l'audio salta**; ⚫ **L'audio non arriva**. Non c'è niente da regolare: l'app e la radio
+si adattano da sole. Se è giallo o rosso l'app ti suggerisce cosa fare: avvicinati al router o usa il cavo di
+rete, spostati dove il telefono ha più tacche, chiudi i programmi che usano internet. Lo stesso pallino lo vedono
+lo studio e il pannello.
 
-Se internet cade, l'app si ricollega da sola: se eri in onda e torna entro 10 minuti rientra in onda da sola;
-intanto va la regia o la musica di riserva. Se l'app si chiude mentre sei in onda, dopo un minuto il server ti
-mette fuori onda.
+Se internet cade mentre sei in onda, la radio torna allo studio; se internet torna entro 10 minuti rientri in onda
+da solo. Se chiudi l'app mentre sei in onda, ti chiede conferma; dopo un minuto la radio torna allo studio.
 
-**Mixer:** fino a **4 microfoni** o ingressi (**+ Aggiungi microfono**; per ognuno scegli il dispositivo e se usare
-il canale sinistro, destro o tutti e due, utile con una scheda audio a due ingressi) e l'**audio del computer**
-(quello che suona sul PC: un programma, un video). Ognuno ha volume, **Muto** e barra del livello. In fondo,
-**Uscita verso la radio** con un limitatore che evita le distorsioni. In **Impostazioni** scegli la **qualità
-dell'invio** (160 kbit/s consigliata, circa 75 MB all'ora; più bassa se la rete è debole). L'audio del computer
-sul Mac richiede macOS 13 o più nuovo.
+**Microfoni e audio:** puoi usare fino a **4 microfoni** (**+ Aggiungi un microfono**; **Togli questo
+microfono** chiede conferma) e l'**audio del computer** (spunta **Manda in onda** per mandare una musica o un
+video del computer). Ognuno ha il suo **Volume** e il tasto **🎙 Acceso** / **🔇 Spento: premi per accendere**. Se
+hai spostato un volume, **Normale** lo rimette com'era. In fondo, **Quello che va alla radio** mostra il livello
+finale; se compare "Troppo forte" abbassa un po' i volumi. Sul Mac l'audio del computer richiede macOS 13 o più
+nuovo.
 
-**Cuffia:** scegli l'uscita e il volume dei tuoi microfoni in cuffia. **Ritorno dello studio** fa sentire in
-cuffia la regia (talkback) e chi parla dal pannello (conduttore e ospiti), senza la tua voce. Arriva quasi
-subito (mezzo secondo o meno); solo se la rete blocca il collegamento veloce arriva con un paio di secondi di
-ritardo. Attenzione: se la cuffia è anche l'uscita principale del
-computer e accendi l'audio del computer, in onda va anche quello che senti in cuffia, ritorno compreso. Usa per la
-cuffia un'uscita diversa (per esempio quella della scheda audio).
+**Cuffia:** scegli **dove è attaccata la cuffia** e il **volume della tua voce in cuffia**. Con **Senti lo studio
+in cuffia** senti lo studio e chi parla dal pannello, così potete parlarvi (quasi senza ritardo). Usa per la cuffia
+un'uscita diversa da quella del computer: se no, con l'audio del computer acceso va in onda anche quello che senti
+in cuffia.
 
 **Registrazione:**
 
-- **Registra la puntata**: scegli il programma e premi **⏺**. Registra sia qui (MP3 320) sia sul server, come i
-  programmi dallo studio ([sezione 13](#programmi-fatti-dallo-studio)). L'inizio della puntata si segna da solo
-  alla prima pressione di **IN ONDA** (o con **📍 Segna inizio**) e la fine all'ultimo **FUORI ONDA**. Premi
-  **⏹ Fine programma** quando hai finito. Se il collegamento non è mai caduto vale la registrazione del server e la
-  puntata si pubblica da sola; altrimenti l'app manda il suo file e la puntata va in "Puntate da rivedere". La
-  registrazione non parte da sola all'orario del programma: va avviata dall'app.
-- **💾 Registra solo sul computer**: un MP3 320 nella cartella scelta in **Impostazioni**, senza puntata.
+- **Registra la puntata**: scegli il programma e premi **⏺ Registra la puntata**. La puntata si salva sulla radio
+  e, per sicurezza, anche sul computer, come i programmi dallo studio
+  ([sezione 13](#programmi-fatti-dallo-studio)). Comincia da sola quando premi IN ONDA. Alla fine premi **⏹
+  Programma finito** e conferma: la puntata si pubblica da sola (se il collegamento è caduto la trovi in "Puntate
+  da rivedere" nel pannello). La registrazione non parte da sola all'orario del programma: va avviata dall'app.
+- **💾 Registra solo sul computer**: un file sul computer, senza puntata sulla radio (**Apri la cartella** per
+  trovarlo).
 
-**Scheda Regia:** è il pannello della radio dentro l'app (playlist, microfono, eventi…), con il tuo utente, per
-comandare la regia principale da fuori.
+**Comandi dello studio:** è il pannello della radio dentro l'app (playlist, microfono, eventi…), con il tuo utente,
+per comandare lo studio da fuori. **📖 Guida** apre questa guida.
 
-**Aggiornamenti:** come la regia, non si aggiorna mai da sola. **Impostazioni** → **Aggiornamenti** → **Controlla
-aggiornamenti**; su Windows **Aggiorna** scarica e riavvia l'app, sul Mac **Scarica la versione nuova** scarica il
-file da installare come la prima volta. Non aggiornare mentre sei in onda.
+**Impostazioni:**
 
-**In regia e nel pannello** compare il riquadro dell'esterna: **Esterna pronta** (collegata, fuori onda) o
-**Esterna IN ONDA**, con chi è collegato, il titolo e il tasto **🎧 Ascolta l'esterna** (si sente solo lì, non
-alla radio).
+- **Chi sei**: con che nome sei entrato; **Esci** (chiede conferma, non si può mentre sei in onda).
+- **Testo grande**: scritte e pulsanti più grandi in tutta l'app.
+- **Aggiornamenti**: l'app non si aggiorna mai da sola. **Controlla se ci sono aggiornamenti**; se c'è una
+  versione nuova vedi cosa cambia e su Windows **Aggiorna adesso** (l'app si chiude e si riapre in un minuto), sul
+  Mac **Scarica la versione nuova** (da installare come la prima volta). Mentre sei in onda non si aggiorna.
+- **Avanzate**: **Mostra le regolazioni avanzate** fa comparire le cose tecniche che di solito non servono:
+  qualità dell'invio (più bassa se internet è molto lento), cartella delle registrazioni sul computer, quale
+  ingresso della scheda audio usare (utile con una scheda a due ingressi), volumi in dB, il limitatore, il segno
+  d'inizio della puntata (**📍 Segna inizio**) e i numeri della linea.
+
+**In regia e nel pannello** compare il riquadro di chi è fuori: **Si sta collegando da fuori…**, **Collegato da
+fuori e pronto: non è ancora in onda** o **🔴 In onda da fuori**, con il nome, il titolo, il pallino della linea e
+il tasto **🎧 Ascolta chi è fuori (solo tu)**: lo senti solo tu, non va alla radio.
 
 ### Con un'app Icecast (BUTT, Larix…)
 
@@ -1320,12 +1323,13 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 
 | Problema | Cosa fare |
 |---|---|
-| Radio Esterna non accetta nome e password | sono quelli del pannello; per andare in onda serve il ruolo conduttore o amministratore |
+| Radio Esterna: "Nome o password sbagliati" | sono gli stessi del pannello; per andare in onda serve il ruolo conduttore o amministratore |
 | Radio Esterna: "Radio Esterna è già collegata da …" | se ne può collegare una sola alla volta: chiudi l'altra (o premi **Esci**) |
-| Radio Esterna: "Il server non ha l'ingresso per Radio Esterna" | il server va aggiornato e riavviato con `riavvia.sh`, che prepara l'ingresso da solo |
-| Radio Esterna: collegata ma "il server non riceve ancora il tuo audio" | aspetta qualche secondo; se resta, il server va aggiornato o riavviato con `riavvia.sh` |
+| Radio Esterna: "La radio non è ancora pronta per Radio Esterna" | il server va aggiornato dal pannello (o riavviato con `riavvia.sh`, che prepara l'ingresso da solo) |
+| Radio Esterna: "La radio non riceve ancora la tua voce" | aspetta qualche secondo; se resta, il server va aggiornato o riavviato con `riavvia.sh` |
+| Radio Esterna: la barra del microfono non si muove | scegli un altro microfono nell'elenco; controlla che il microfono sia **🎙 Acceso** e non **🔇 Spento** |
 | Radio Esterna sul Mac: nessun suono dal microfono o dal computer | Impostazioni di Sistema → Privacy e sicurezza → **Microfono** (e **Registrazione schermo e audio**): attiva Radio Esterna, poi riaprila |
-| In onda si sente il ritorno dello studio o un'eco | la cuffia è l'uscita principale del computer e l'audio del computer è acceso: scegli un'altra uscita per la cuffia o spegni l'audio del computer |
+| In onda si sente lo studio o un'eco | la cuffia è l'uscita principale del computer e l'audio del computer è acceso: scegli un'altra uscita per la cuffia o spegni l'audio del computer |
 | L'app Icecast non si collega | controlla che sul router sia inoltrata la porta **TCP 9010** verso il server; ricontrolla indirizzo, porta, utente e password |
 | L'app dice "mount" o "mountpoint" sbagliato | alcune app vogliono il mount con la barra (`/`), altre senza: prova tutti e due |
 | Si collega ma non si sente nulla | nell'app controlla che sia scelto il microfono o il mixer giusto e che la barra del volume si muova |
@@ -1449,3 +1453,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 26/11/2026 | Dirette esterne più stabili: Radio Esterna con collegamento veloce (WebRTC) e riserva HTTPS automatica, ritorno in cuffia quasi senza ritardo, pallino della qualità della linea in app, regia e pannello (anche microfono e ospiti) |
 | 26/11/2026 | Regia più semplice: Benvenuto alla prima accensione, codice di collegamento dal pannello, conferme su STOP / Svuota / MANUALE / Rimuovi cartella, avviso quando la musica sta per finire, scritte chiare sul collegamento, Testo grande, cose avanzate nascoste; impostazioni della musica a scelte, una sola barra di preparazione in Libreria, eventi già pronti, messaggi di errore con cosa fare |
 | 26/11/2026 | Rotazioni con l'AI: **Esporta per Claude** e **Importa piano** (file .md) spiegati, ora anche nel pannello del server |
+| 27/11/2026 | Radio Esterna a prova di anziano: frasi in alto, pulsanti e messaggi senza parole tecniche, conferme (FUORI ONDA, Programma finito, Togli microfono, Esci), **Testo grande**, regolazioni tecniche dietro **Avanzate**; riquadro di chi è fuori in regia e nel pannello con frasi semplici |

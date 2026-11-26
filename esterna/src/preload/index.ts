@@ -14,6 +14,7 @@ const api: EsternaApi = {
   salvaMixer: call('salvaMixer'),
   accedi: call('accedi'),
   esci: call('esci'),
+  aspetto: call('aspetto'),
   stato: call('stato'),
   onStato: (cb) => ascolta<StatoServer>('stato', cb),
   programmi: call('programmi'),
