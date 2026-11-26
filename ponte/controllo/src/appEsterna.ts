@@ -104,7 +104,9 @@ export function ffmpegArgs(url: string): string[] {
     // l'Opus del browser passa così com'è, senza ricodifica
     '-map', '0:a:0', '-c:a', 'copy',
     // metodo SOURCE delle vecchie versioni di Icecast: è quello che l'ingresso di Liquidsoap accetta da sempre
-    '-content_type', 'audio/ogg', '-legacy_icecast', '1', '-f', 'ogg', url
+    '-content_type', 'audio/ogg', '-legacy_icecast', '1',
+    // pagine Ogg corte e inviate subito: con quelle da 1 secondo (predefinite) l'audio arrivava a scatti
+    '-flush_packets', '1', '-f', 'ogg', '-page_duration', '100000', url
   ]
 }
 
@@ -215,13 +217,13 @@ export class AppEsterna {
   /** Nuova connessione dell'app (utente del pannello già controllato, ruolo da conduttore in su). */
   attach(peer: AppPeer, user: string): { message: (data: Buffer, binary: boolean) => void; close: () => void } {
     if (!this.enabled()) {
-      this.sendTo(peer, { t: 'errore', messaggio: 'Il server non ha ancora l\'ingresso per Radio Esterna: aggiornalo dal pannello.' })
+      this.sendTo(peer, { t: 'errore', messaggio: 'La radio non è ancora pronta per Radio Esterna: chi gestisce la radio deve aggiornare il server dal pannello.' })
       peer.close(4010, 'ingresso spento')
       return { message: () => {}, close: () => {} }
     }
     const old = this.conn
     if (old && old.user.toLowerCase() !== user.toLowerCase()) {
-      this.sendTo(peer, { t: 'errore', messaggio: `Radio Esterna è già collegata da ${old.user}: può esserci una sola esterna alla volta.` })
+      this.sendTo(peer, { t: 'errore', messaggio: `Radio Esterna è già collegata da ${old.user}: si può collegare una sola persona da fuori alla volta.` })
       peer.close(4009, 'già collegata')
       return { message: () => {}, close: () => {} }
     }

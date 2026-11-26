@@ -18,7 +18,7 @@ function Accesso({ imp, onFatto }: { imp: Impostazioni; onFatto: (i: Impostazion
   return (
     <div className="accesso">
       <h1>📡 Radio Esterna</h1>
-      <p>Entra con il tuo utente del pannello della radio (conduttore o amministratore).</p>
+      <p>Scrivi gli stessi dati che usi per entrare nel pannello della radio dal browser.</p>
       <form
         onSubmit={(e) => {
           e.preventDefault()
@@ -34,14 +34,14 @@ function Accesso({ imp, onFatto }: { imp: Impostazioni; onFatto: (i: Impostazion
         <label>
           Indirizzo della radio
           <input value={server} onChange={(e) => setServer(e.target.value)} placeholder="radio.esempio.it" autoFocus required />
-          <small>Lo stesso del pannello, senza https:// (per esempio player.radioattivainformazione.it:9443 durante le prove).</small>
+          <small>È l'indirizzo che scrivi nel browser per aprire il pannello (per esempio radio.esempio.it).</small>
         </label>
         <label>
-          Nome
+          Il tuo nome nel pannello
           <input value={utente} onChange={(e) => setUtente(e.target.value)} autoComplete="username" required />
         </label>
         <label>
-          Password
+          La tua password del pannello
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
         </label>
         <button className="primario" disabled={attesa}>
@@ -116,33 +116,37 @@ export function App() {
   const e = stato?.esterna
   const inOnda = !!e?.inOnda
   const collegato = stato?.collegamento === 'collegato'
+  const avanzate = imp.mostraAvanzate
+  // velocità dell'invio: solo con le regolazioni avanzate
+  const velocita = !avanzate ? '' : motore.rtc.via === 'webrtc' ? (motore.rtc.kbps ? ` · ${motore.rtc.kbps} kbit/s` : '') : stato?.kbps ? ` · ${stato.kbps} kbit/s` : ''
   return (
     <div className={`app ${inOnda ? 'in-onda' : ''}`}>
       <header>
         <div className="titolo">📡 Radio Esterna {stato?.stazione && <span className="stazione">· {stato.stazione}</span>}</div>
         <div className={`pill ${collegato ? 'ok' : 'off'}`} title={stato?.messaggio}>
-          {collegato
-            ? `Server collegato${motore.rtc.via === 'webrtc' ? (motore.rtc.kbps ? ` · ${motore.rtc.kbps} kbit/s` : '') : stato?.kbps ? ` · ${stato.kbps} kbit/s` : ''}`
-            : stato?.collegamento === 'collegamento'
-              ? 'Collegamento…'
-              : 'Server non collegato'}
+          {collegato ? `✅ Collegato alla radio${velocita}` : stato?.collegamento === 'collegamento' ? '⏳ Mi collego alla radio…' : '❌ Non collegato alla radio'}
         </div>
-        <div className={`pill ${stato?.regia ? 'ok' : 'off'}`}>{stato?.regia ? 'Regia collegata' : 'Regia non collegata'}</div>
+        <div className={`pill ${stato?.regia ? 'ok' : 'off'}`} title="La regia è il programma dello studio: quando è accesa la senti in cuffia (ritorno)">
+          {stato?.regia ? 'Lo studio è acceso' : 'Lo studio è spento'}
+        </div>
         <nav>
           <button className={scheda === 'diretta' ? 'attiva' : ''} onClick={() => setScheda('diretta')}>
             🎙 Diretta
           </button>
-          <button className={scheda === 'regia' ? 'attiva' : ''} onClick={() => setScheda('regia')} disabled={!stato?.pannelloUrl}>
-            🎚 Regia
+          <button className={scheda === 'regia' ? 'attiva' : ''} onClick={() => setScheda('regia')} disabled={!stato?.pannelloUrl} title="Il pannello della radio, per comandare lo studio da qui">
+            🎚 Comandi dello studio
           </button>
           <button className={scheda === 'impostazioni' ? 'attiva' : ''} onClick={() => setScheda('impostazioni')}>
             ⚙ Impostazioni{agg?.stato === 'disponibile' || agg?.stato === 'pronto' ? ' •' : ''}
+          </button>
+          <button onClick={() => void api.apriGuida()} title="Apre la guida nel browser">
+            📖 Guida
           </button>
         </nav>
       </header>
       {stato && stato.collegamento !== 'collegato' && (
         <div className={`banner ${stato.caduto ? 'grave' : ''}`}>
-          {stato.caduto ? '⚠ Collegamento caduto mentre eri in onda: la radio è tornata alla regia. ' : ''}
+          {stato.caduto ? '⚠ Il collegamento è caduto mentre eri in onda: la radio è tornata allo studio. Se torna entro 10 minuti rientri in onda da solo. ' : ''}
           {stato.messaggio}
           {stato.collegamento === 'errore' && stato.messaggio.includes('entra di nuovo') && (
             <button className="piccolo" onClick={() => void api.esci().then(setImp)}>
@@ -156,7 +160,7 @@ export function App() {
           <Diretta imp={imp} setImp={setImp} stato={stato} motore={motore} cambiaMixer={cambiaMixer} />
         </div>
         {scheda === 'regia' && stato?.pannelloUrl && <webview className="pannello" src={stato.pannelloUrl} />}
-        {scheda === 'impostazioni' && <ImpostazioniView imp={imp} setImp={setImp} agg={agg} cambiaMixer={cambiaMixer} />}
+        {scheda === 'impostazioni' && <ImpostazioniView imp={imp} setImp={setImp} agg={agg} cambiaMixer={cambiaMixer} inOnda={inOnda} />}
       </main>
     </div>
   )

@@ -1155,16 +1155,17 @@ function renderEsterna(st) {
     esternaAscolto = null
     audio.pause()
     audio.removeAttribute('src')
-    $('esterna-ascolta').textContent = "🎧 Ascolta l'esterna"
+    $('esterna-ascolta').textContent = '🎧 Ascolta chi è fuori (solo tu)'
     return
   }
+  // frasi semplici, come in regia (27/11/2026)
   $('esterna-stato').textContent = st.inOndaDavvero
-    ? '🔴 Esterna IN ONDA'
+    ? '🔴 In onda da fuori'
     : st.inOnda
-      ? '🟠 Esterna in onda, audio non arriva'
+      ? '🟠 Chi è fuori ha premuto IN ONDA, ma la sua voce non arriva: va ancora lo studio'
       : st.audio
-        ? '📡 Esterna pronta (fuori onda)'
-        : '📡 Esterna collegata, audio non ancora attivo'
+        ? '📡 Collegato da fuori e pronto: non è ancora in onda'
+        : '📡 Si sta collegando da fuori…'
   $('esterna-chi').textContent = st.user ? `· ${st.user}` : ''
   $('esterna-titolo').textContent = st.titolo || ''
   const linea = st.collegata ? lineaEl(st.linea, st.via) : null
@@ -1185,7 +1186,7 @@ $('esterna-ascolta').addEventListener('click', () => {
   if (!audio.paused) {
     audio.pause()
     audio.removeAttribute('src')
-    $('esterna-ascolta').textContent = "🎧 Ascolta l'esterna"
+    $('esterna-ascolta').textContent = '🎧 Ascolta chi è fuori (solo tu)'
     return
   }
   if (!esternaAscolto) return

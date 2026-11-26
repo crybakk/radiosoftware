@@ -1,61 +1,62 @@
 import { useEffect, useState } from 'react'
 import type { AggiornamentoStato, Impostazioni, ImpostazioniMixer } from '../../shared/api'
 import { testoErrore } from './App'
+import { ConfermaBottone } from './Conferma'
 
 const api = window.esterna
 
+/**
+ * Impostazioni a prova di anziano (27/11/2026), come la regia: prima le cose di tutti i giorni, le regolazioni
+ * tecniche solo con l'interruttore "Avanzate" in fondo.
+ */
 export function ImpostazioniView({
   imp,
   setImp,
   agg,
-  cambiaMixer
+  cambiaMixer,
+  inOnda
 }: {
   imp: Impostazioni
   setImp: (i: Impostazioni) => void
   agg: AggiornamentoStato | null
   cambiaMixer: (m: ImpostazioniMixer) => void
+  inOnda: boolean
 }) {
   const [versione, setVersione] = useState('')
   const [errore, setErrore] = useState<string | null>(null)
   useEffect(() => {
     void api.versione().then(setVersione)
   }, [])
+  const aspetto = (a: { testoGrande?: boolean; mostraAvanzate?: boolean }): void => void api.aspetto(a).then(setImp)
+  const nuova = agg?.stato === 'disponibile' || agg?.stato === 'pronto' || agg?.stato === 'scarico'
   return (
     <div className="impostazioni">
       <section className="riquadro">
-        <h2>Server</h2>
+        <h2>👤 Chi sei</h2>
         <p>
-          Collegato a <b>{imp.server}</b> come <b>{imp.utente}</b>.
+          Sei entrato come <b>{imp.utente}</b> nella radio <b>{imp.server.replace(/^https:\/\//, '')}</b>.
         </p>
-        <button onClick={() => void api.esci().then(setImp)}>Esci</button>
+        <ConfermaBottone domanda="Uscire? Per rientrare servono di nuovo nome e password." si="Sì, esci" onSi={() => void api.esci().then(setImp)} disabled={inOnda}>
+          Esci
+        </ConfermaBottone>
+        {inOnda && <p className="nota">Per uscire prima vai FUORI ONDA.</p>}
       </section>
+
       <section className="riquadro">
-        <h2>Qualità dell'invio</h2>
-        <select value={imp.mixer.kbps} onChange={(e) => cambiaMixer({ ...imp.mixer, kbps: Number(e.target.value) as ImpostazioniMixer['kbps'] })}>
-          <option value={96}>96 kbit/s (rete molto lenta, circa 45 MB all'ora)</option>
-          <option value={128}>128 kbit/s (circa 60 MB all'ora)</option>
-          <option value={160}>160 kbit/s, consigliata (circa 75 MB all'ora)</option>
-          <option value={256}>256 kbit/s (rete buona, circa 115 MB all'ora)</option>
-        </select>
-        <p className="nota">Opus, la stessa qualità della voce del pannello. Se il collegamento salta spesso, scegli una qualità più bassa.</p>
+        <h2>🔎 Scritte</h2>
+        <label className="interruttore">
+          <input type="checkbox" checked={imp.testoGrande} onChange={(e) => aspetto({ testoGrande: e.target.checked })} /> Testo grande
+        </label>
+        <p className="nota">Ingrandisce scritte e pulsanti di tutta l'app.</p>
       </section>
+
       <section className="riquadro">
-        <h2>Registrazioni solo sul computer</h2>
-        <p>
-          Cartella: <b>{imp.cartellaRegistrazioni}</b>
-        </p>
-        <div className="riga">
-          <button onClick={() => void api.scegliCartella().then(setImp)}>Cambia cartella</button>
-          <button onClick={() => void api.apriCartella()}>Apri</button>
-        </div>
-      </section>
-      <section className="riquadro">
-        <h2>Aggiornamenti</h2>
+        <h2>🔄 Aggiornamenti</h2>
         <p>Versione installata: {versione}</p>
-        {agg?.stato === 'disponibile' || agg?.stato === 'pronto' || agg?.stato === 'scarico' ? (
+        {nuova ? (
           <>
             <p>
-              <b>C'è la versione {agg.versione}.</b>
+              <b>C'è una versione nuova ({agg.versione}).</b> Ecco cosa cambia:
             </p>
             {agg.novita?.map((n) => (
               <div key={n.versione} className="novita">
@@ -69,27 +70,69 @@ export function ImpostazioniView({
             ))}
             <button
               className="primario"
-              disabled={agg.stato === 'scarico'}
+              disabled={agg.stato === 'scarico' || inOnda}
               onClick={() => {
                 setErrore(null)
                 api.installaAggiornamento().catch((e: unknown) => setErrore(testoErrore(e)))
               }}
             >
-              {agg.stato === 'scarico' ? `Scarico… ${agg.percentuale ?? 0}%` : api.piattaforma === 'darwin' ? 'Scarica la versione nuova' : 'Aggiorna'}
+              {agg.stato === 'scarico' ? `Scarico… ${agg.percentuale ?? 0}%` : api.piattaforma === 'darwin' ? 'Scarica la versione nuova' : 'Aggiorna adesso'}
             </button>
-            {api.piattaforma === 'darwin' && <p className="nota">Sul Mac si scarica il file: aprilo e trascina Radio Esterna in Applicazioni, come la prima volta.</p>}
-            <p className="nota">Non aggiornare mentre sei in onda: l'app si chiude e si riapre.</p>
+            {inOnda ? (
+              <p className="nota">Mentre sei in onda non si aggiorna: prima vai FUORI ONDA.</p>
+            ) : (
+              <p className="nota">
+                {api.piattaforma === 'darwin'
+                  ? 'Si scarica un file: aprilo e trascina Radio Esterna in Applicazioni, come la prima volta.'
+                  : "L'app si chiude e si riapre da sola, in circa un minuto."}
+              </p>
+            )}
           </>
         ) : (
-          <p className="nota">Nessun aggiornamento. {agg?.controllo ? `Ultimo controllo: ${agg.controllo}` : ''}</p>
+          <p className="nota">Hai già l'ultima versione.</p>
         )}
         {agg?.errore && <div className="errore">{agg.errore}</div>}
         {errore && <div className="errore">{errore}</div>}
-        <button onClick={() => void api.controllaAggiornamenti()}>Controlla aggiornamenti</button>
+        <button onClick={() => void api.controllaAggiornamenti()}>Controlla se ci sono aggiornamenti</button>
+        {imp.mostraAvanzate && agg?.controllo && <p className="nota">Ultimo controllo: {agg.controllo}</p>}
       </section>
+
       <section className="riquadro">
-        <h2>Guida</h2>
-        <button onClick={() => void api.apriGuida()}>📖 Apri la guida</button>
+        <h2>📖 Guida</h2>
+        <button onClick={() => void api.apriGuida()}>Apri la guida</button>
+      </section>
+
+      {imp.mostraAvanzate && (
+        <>
+          <section className="riquadro">
+            <h2>Qualità dell'invio</h2>
+            <select value={imp.mixer.kbps} onChange={(e) => cambiaMixer({ ...imp.mixer, kbps: Number(e.target.value) as ImpostazioniMixer['kbps'] })}>
+              <option value={96}>Internet molto lento (96 kbit/s, circa 45 MB all'ora)</option>
+              <option value={128}>Internet lento (128 kbit/s, circa 60 MB all'ora)</option>
+              <option value={160}>Normale, consigliata (160 kbit/s, circa 75 MB all'ora)</option>
+              <option value={256}>Internet ottimo (256 kbit/s, circa 115 MB all'ora)</option>
+            </select>
+            <p className="nota">Se l'audio salta spesso, scegli una qualità più bassa.</p>
+          </section>
+          <section className="riquadro">
+            <h2>Registrazioni solo sul computer</h2>
+            <p>
+              Cartella: <b>{imp.cartellaRegistrazioni}</b>
+            </p>
+            <div className="riga">
+              <button onClick={() => void api.scegliCartella().then(setImp)}>Cambia cartella</button>
+              <button onClick={() => void api.apriCartella()}>Apri</button>
+            </div>
+          </section>
+        </>
+      )}
+
+      <section className="riquadro">
+        <h2>⚙ Avanzate</h2>
+        <label className="interruttore">
+          <input type="checkbox" checked={imp.mostraAvanzate} onChange={(e) => aspetto({ mostraAvanzate: e.target.checked })} /> Mostra le regolazioni avanzate
+        </label>
+        <p className="nota">Qualità dell'invio, cartella delle registrazioni, ingressi della scheda audio, volumi in dB e dettagli della linea. Di solito non servono.</p>
       </section>
     </div>
   )

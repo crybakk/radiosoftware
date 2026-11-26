@@ -19,12 +19,12 @@ export class ServerHttp {
         ...(body && typeof (body as ReadableStream).getReader === 'function' ? { duplex: 'half' } : {})
       } as RequestInit)
     } catch (e) {
-      throw new Error(e instanceof Error && e.name === 'TimeoutError' ? 'il server non risponde' : 'server non raggiungibile')
+      throw new Error(e instanceof Error && e.name === 'TimeoutError' ? 'La radio non risponde: controlla che internet funzioni.' : 'La radio non è raggiungibile: controlla che internet funzioni.')
     }
-    if (r.status === 401) throw new Error('accesso scaduto: entra di nuovo')
+    if (r.status === 401) throw new Error('Accesso scaduto: entra di nuovo con nome e password.')
     if (!r.ok) {
       const j = (await r.json().catch(() => null)) as { error?: string } | null
-      throw new Error(j?.error ?? `errore del server (HTTP ${r.status})`)
+      throw new Error(j?.error ?? `La radio ha dato un errore (codice ${r.status}): riprova tra poco.`)
     }
     return r
   }

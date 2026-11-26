@@ -42,6 +42,10 @@ export interface Impostazioni {
   testo: string
   /** Cartella delle registrazioni solo sul computer. */
   cartellaRegistrazioni: string
+  /** Scritte più grandi in tutta l'app. */
+  testoGrande: boolean
+  /** Mostra le regolazioni tecniche (qualità, canali della scheda, dettagli della linea…). */
+  mostraAvanzate: boolean
 }
 
 /** Messaggi WebRTC dal processo principale: connessione nuova (si prova il WebRTC), risposta, errore. */
@@ -101,6 +105,8 @@ export interface EsternaApi {
   salvaMixer(m: ImpostazioniMixer): Promise<void>
   accedi(server: string, utente: string, password: string): Promise<Impostazioni>
   esci(): Promise<Impostazioni>
+  /** Testo grande e regolazioni avanzate. */
+  aspetto(a: { testoGrande?: boolean; mostraAvanzate?: boolean }): Promise<Impostazioni>
   stato(): Promise<StatoServer>
   onStato(cb: (s: StatoServer) => void): () => void
   programmi(): Promise<Programma[]>
