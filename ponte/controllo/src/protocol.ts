@@ -220,6 +220,8 @@ export interface GuestInfo {
   /** Audio collegato (WebRTC). */
   connected: boolean
   since: string
+  /** Qualità della linea dell'ospite (null = audio non collegato). */
+  linea?: LineaStato | null
 }
 
 export type GuestCommand =
@@ -310,10 +312,26 @@ export type FromPanel =
   /** Dirette video. */
   | { t: 'video'; id: string; cmd: VideoCommand }
 
+/** Qualità della linea di una voce o dell'esterna (indicatore verde/giallo/rosso, scelte del 26/11/2026). */
+export type LivelloLinea = 'buona' | 'debole' | 'pessima' | 'assente'
+export interface LineaStato {
+  livello: LivelloLinea
+  /** Frase per chi non sa niente di tecnica. */
+  frase: string
+  /** Pacchetti persi o arrivati tardi sulla rete (%), prima della correzione. */
+  perdita: number
+  /** Audio che si è dovuto inventare (%): sono i salti che si possono sentire. */
+  buchi: number
+  /** Ritardo del buffer (ms). */
+  ritardo: number
+}
+
 export interface MicStatus {
   /** Chi ha il microfono aperto (null = nessuno). */
   user: string | null
   onAir: boolean
+  /** Qualità della linea (null = microfono chiuso). */
+  linea?: LineaStato | null
 }
 
 /** Ponte → pannello */

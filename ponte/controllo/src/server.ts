@@ -64,6 +64,7 @@ import { eventSections } from './eventiBot.ts'
 import { can, ROLES, sameSecret, Users, type PublicUser, type Role } from './users.ts'
 import { INVITE_DAYS, UserInvites } from './invitiUtenti.ts'
 import { VoiceHub, voiceSockets, weriftFactory } from './voce.ts'
+import { loadOpus } from './opus.ts'
 import { Guests } from './ospiti.ts'
 import { AUDIO_EXT, Library } from './libreria.ts'
 import { AutonomousPlayer } from './autonoma.ts'
@@ -203,12 +204,16 @@ if (env('MICROFONO_REMOTO', 'si') !== 'no') {
       .map((x) => x.trim())
       .filter(Boolean)
   })
+  // libopus per il ricevitore delle voci: buffer che si regola da solo, FEC, ricostruzione dei pezzi persi
+  const codec = loadOpus()
+  console.log(codec ? '[microfono] ricevitore automatico attivo (libopus)' : '[microfono] libopus non trovata: voci passate come arrivano')
   const slots = SLOT_NAMES.map((name, n) => {
     const sockets = voiceSockets({ host: VOICE_HOST, port: 41030 + 2 * n }, 41040 + 2 * n, (pkt) => hub.sendReturn(pkt))
     const hub: VoiceHub = new VoiceHub({
       factory,
       sendVoice: (pkt) => sockets.sendVoice(pkt),
-      setOnAir: (on) => setVoiceOnAir(name, on)
+      setOnAir: (on) => setVoiceOnAir(name, on),
+      codec
     })
     return hub
   })

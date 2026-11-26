@@ -11,8 +11,9 @@
 import { createSocket, type Socket } from 'node:dgram'
 import { lookup } from 'node:dns/promises'
 import { MediaStreamTrack, RTCPeerConnection, RTCRtpCodecParameters } from 'werift'
+import type { OpusCodec } from './opus.ts'
 import type { MicStatus } from './protocol.ts'
-import { RtpNormalizer } from './rtp.ts'
+import { Ricevitore } from './ricevitore.ts'
 
 /** Una sessione WebRTC aperta con un browser. */
 export interface RtcSession {
@@ -37,6 +38,13 @@ export interface VoiceOptions {
   setOnAir(on: boolean): Promise<boolean>
   /** Attese (ms) tra un tentativo e l'altro quando il mixer non conferma il "fuori onda". */
   offRetryMs?: number[]
+  /**
+   * libopus per il ricevitore (buffer adattivo, FEC, ricostruzione dei pezzi persi). null o assente =
+   * pacchetti passati come arrivano (prima del 26/11/2026).
+   */
+  codec?: OpusCodec | null
+  /** false nei test: niente orologio del ricevitore. */
+  timer?: boolean
 }
 
 export class VoiceHub {
@@ -48,17 +56,23 @@ export class VoiceHub {
   private opening: object | null = null
   private mixerQueue: Promise<unknown> = Promise.resolve()
   private mixerBusy = 0
-  private normalizer = new RtpNormalizer()
+  private readonly ricevitore: Ricevitore
   onChange: (s: MicStatus) => void = () => {}
 
   private readonly opts: VoiceOptions
 
   constructor(opts: VoiceOptions) {
     this.opts = opts
+    this.ricevitore = new Ricevitore({
+      codec: opts.codec ?? null,
+      send: (pkt) => opts.sendVoice(pkt),
+      onLinea: () => this.emit(),
+      timer: opts.timer
+    })
   }
 
   status(): MicStatus {
-    return { user: this.user, onAir: this.onAir }
+    return { user: this.user, onAir: this.onAir, linea: this.session ? this.ricevitore.stato() : null }
   }
 
   /**
@@ -80,8 +94,7 @@ export class VoiceHub {
       session = await this.opts.factory(offerSdp, {
         onVoice: (pkt) => {
           if (this.session !== session) return
-          const out = this.normalizer.map(pkt)
-          if (out) this.opts.sendVoice(out)
+          this.ricevitore.push(pkt)
         },
         onEnd: () => {
           if (this.session === session) this.close(owner)
@@ -103,6 +116,7 @@ export class VoiceHub {
     }
     this.opening = null
     this.session = session
+    this.ricevitore.apri()
     this.emit()
     return session.answer
   }
@@ -158,6 +172,7 @@ export class VoiceHub {
     const wasOnAir = this.onAir
     this.session?.close()
     this.session = null
+    this.ricevitore.chiudi()
     this.opening = null
     this.owner = null
     this.user = null

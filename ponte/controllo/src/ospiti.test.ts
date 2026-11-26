@@ -126,7 +126,7 @@ describe('ospiti', () => {
     await expect(air).rejects.toThrow(/chiuso/)
     expect(mixer).toEqual(['ospite1 true', 'ospite1 false'])
     expect(p.last('state')).toEqual({ t: 'state', state: 'dentro', onAir: false })
-    expect(slot.status()).toEqual({ user: null, onAir: false })
+    expect(slot.status()).toMatchObject({ user: null, onAir: false })
   })
 
   it('chi viene cacciato non rientra con lo stesso link; gli altri con quel link restano', async () => {

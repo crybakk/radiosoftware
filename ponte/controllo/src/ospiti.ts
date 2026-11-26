@@ -104,6 +104,7 @@ export class Guests {
       state: g.state,
       onAir: g.slot?.status().onAir ?? false,
       connected: !!g.slot && g.slot.status().user !== null,
+      linea: g.slot?.status().linea ?? null,
       since: new Date(g.since).toISOString()
     }))
   }
