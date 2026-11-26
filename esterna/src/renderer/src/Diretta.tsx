@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Canale, Impostazioni, ImpostazioniMixer, Programma, StatoRegistrazioneLocale, StatoRegistrazioneProgrammi, StatoServer } from '../../shared/api'
+import type { Canale, Impostazioni, ImpostazioniMixer, Programma, StatoRegistrazioneLocale, StatoRegistrazioneProgrammi, StatoServer, LineaStato } from '../../shared/api'
 import { DB_MAX, DB_MIN, MAX_CANALI, nuovoCanale } from '../../shared/mixer'
 import { dispositivi, type Motore } from './motore'
 import { testoErrore } from './App'
@@ -184,7 +184,11 @@ function Cuffia({ imp, cambiaMixer, stato, motore }: { imp: Impostazioni; cambia
       </label>
       <label className="interruttore">
         <input type="checkbox" checked={m.ritorno} onChange={(e) => cambiaMixer({ ...m, ritorno: e.target.checked })} /> Ritorno dello studio
-        {m.ritorno && <span className="nota">{!stato?.regia ? ' (la regia non è collegata)' : motore.ritornoInAscolto() ? ' (lo senti)' : ' (in arrivo…)'}</span>}
+        {m.ritorno && (
+          <span className="nota">
+            {!stato?.regia && !motore.ritornoVeloce() ? ' (la regia non è collegata)' : motore.ritornoInAscolto() ? (motore.ritornoVeloce() ? ' (lo senti, senza ritardo)' : ' (lo senti)') : ' (in arrivo…)'}
+          </span>
+        )}
       </label>
       {m.ritorno && (
         <label>
@@ -192,7 +196,10 @@ function Cuffia({ imp, cambiaMixer, stato, motore }: { imp: Impostazioni; cambia
           <input type="range" min={0} max={1} step={0.01} value={m.ritornoVolume} onChange={(e) => cambiaMixer({ ...m, ritornoVolume: Number(e.target.value) })} />
         </label>
       )}
-      <small>Il ritorno è quello che manda la regia dello studio (arriva con un paio di secondi di ritardo). In cuffia non ascoltare la radio: arriva in ritardo e confonde.</small>
+      <small>
+        Il ritorno è quello che manda la regia dello studio, più chi parla dal pannello (senza la tua voce). Di solito arriva quasi subito; se la rete
+        blocca il collegamento veloce arriva con un paio di secondi di ritardo. In cuffia non ascoltare la radio: arriva in ritardo e confonde.
+      </small>
     </section>
   )
 }
@@ -368,6 +375,7 @@ export function Diretta({
           </button>
         )}
         {collegato && e && !e.audio && <div className="nota">Il server non riceve ancora il tuo audio: aspetta qualche secondo.</div>}
+        {collegato && e?.linea && <Linea linea={e.linea} via={e.via ?? null} />}
         {errore && <div className="errore">{errore}</div>}
       </section>
 
@@ -404,6 +412,23 @@ export function Diretta({
         <Cuffia imp={imp} cambiaMixer={cambiaMixer} stato={stato} motore={motore} />
         <Registrazione imp={imp} programmi={programmi} stato={stato} />
       </div>
+    </div>
+  )
+}
+
+const PALLINI = { buona: '🟢', debole: '🟡', pessima: '🔴', assente: '⚫' } as const
+
+/** Qualità della tua linea, misurata dal server (26/11/2026): pallino e frase; i numeri passando sopra col mouse. */
+function Linea({ linea, via }: { linea: LineaStato; via: 'webrtc' | 'https' | null }) {
+  const dettagli = [
+    linea.perdita ? `pacchetti persi o in ritardo ${linea.perdita}%` : '',
+    linea.buchi ? `audio ricostruito ${linea.buchi}%` : '',
+    linea.ritardo ? `ritardo della linea ${linea.ritardo} ms` : '',
+    via === 'webrtc' ? 'collegamento veloce (WebRTC)' : via === 'https' ? 'collegamento di riserva (HTTPS)' : ''
+  ].filter(Boolean)
+  return (
+    <div className={`linea ${linea.livello}`} title={`Dettagli: ${dettagli.join(' · ') || 'nessun problema'}`}>
+      {PALLINI[linea.livello]} {linea.frase}
     </div>
   )
 }

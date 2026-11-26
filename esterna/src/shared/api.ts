@@ -1,8 +1,8 @@
 // Tipi condivisi tra la finestra (renderer) e il processo principale dell'app Radio Esterna.
-import type { EsternaStatus } from '../../../ponte/controllo/src/protocol.ts'
+import type { EsternaStatus, LineaStato } from '../../../ponte/controllo/src/protocol.ts'
 import type { StatoRegistrazioneProgrammi } from '../../../src/core/registrazioneProgrammi.ts'
 
-export type { EsternaStatus, StatoRegistrazioneProgrammi }
+export type { EsternaStatus, LineaStato, StatoRegistrazioneProgrammi }
 
 /** Un ingresso del mixer (microfono o canale di una scheda audio). */
 export interface Canale {
@@ -43,6 +43,9 @@ export interface Impostazioni {
   /** Cartella delle registrazioni solo sul computer. */
   cartellaRegistrazioni: string
 }
+
+/** Messaggi WebRTC dal processo principale: connessione nuova (si prova il WebRTC), risposta, errore. */
+export type MessaggioRtc = { t: 'nuova' } | { t: 'risposta'; sdp: string } | { t: 'errore'; messaggio: string }
 
 export type StatoCollegamento = 'scollegato' | 'collegamento' | 'collegato' | 'errore'
 
@@ -107,6 +110,10 @@ export interface EsternaApi {
   audio(pezzo: ArrayBuffer, inizio: boolean): void
   /** Il processo principale chiede di ricominciare il flusso (nuova connessione): si riparte con l'intestazione. */
   onRiavviaInvio(cb: () => void): () => void
+  /** WebRTC (26/11/2026): offerta al server, rinuncia (si torna all'HTTPS), messaggi dal server. */
+  rtcOfferta(sdp: string): void
+  rtcChiudi(): void
+  onRtc(cb: (m: MessaggioRtc) => void): () => void
   // registrazione della puntata (come la regia dello studio)
   registrazione(): Promise<StatoRegistrazioneProgrammi>
   onRegistrazione(cb: (s: StatoRegistrazioneProgrammi) => void): () => void

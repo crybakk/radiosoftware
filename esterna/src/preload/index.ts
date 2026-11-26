@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AggiornamentoStato, EsternaApi, StatoRegistrazioneLocale, StatoRegistrazioneProgrammi, StatoServer } from '../shared/api'
+import type { AggiornamentoStato, EsternaApi, MessaggioRtc, StatoRegistrazioneLocale, StatoRegistrazioneProgrammi, StatoServer } from '../shared/api'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const call = (c: string): any => (...a: unknown[]) => ipcRenderer.invoke(c, ...a)
@@ -21,6 +21,9 @@ const api: EsternaApi = {
   onda: call('onda'),
   audio: (pezzo, inizio) => ipcRenderer.send('audio', pezzo, inizio),
   onRiavviaInvio: (cb) => ascolta<void>('riavvia-invio', () => cb()),
+  rtcOfferta: (sdp) => ipcRenderer.send('rtc-offerta', sdp),
+  rtcChiudi: () => ipcRenderer.send('rtc-chiudi'),
+  onRtc: (cb) => ascolta<MessaggioRtc>('rtc', cb),
   registrazione: call('registrazione'),
   onRegistrazione: (cb) => ascolta<StatoRegistrazioneProgrammi>('registrazione', cb),
   registra: call('registra'),

@@ -67,7 +67,13 @@ export function App() {
     void api.impostazioni().then(setImp)
     void api.stato().then(setStato)
     void api.aggiornamento().then(setAgg)
-    const off = [api.onStato(setStato), api.onAggiornamento(setAgg), api.onRiavviaInvio(() => motore.riavviaInvio())]
+    const off = [
+      api.onStato(setStato),
+      api.onAggiornamento(setAgg),
+      api.onRiavviaInvio(() => motore.riavviaInvio()),
+      // WebRTC (con riserva HTTPS): connessione nuova, risposta o errore del server
+      api.onRtc((m) => motore.rtc.messaggio(m))
+    ]
     const offPezzi = api.onPezzi((on) => (on ? motore.avviaRegistrazione() : motore.fermaRegistrazione()))
     const t = setInterval(() => motore.controllaRitorno(), 5000)
     return () => {
@@ -92,6 +98,12 @@ export function App() {
     motore.setRitornoUrl(stato?.ritornoUrl ?? null)
   }, [stato?.ritornoUrl, motore])
 
+  // server scollegato: il WebRTC si chiude (al ricollegamento si riprova da capo)
+  const scollegato = !!stato && stato.collegamento !== 'collegato'
+  useEffect(() => {
+    if (scollegato) motore.rtc.ferma()
+  }, [scollegato, motore])
+
   if (!imp) return null
   if (!imp.accesso) return <Accesso imp={imp} onFatto={setImp} />
 
@@ -109,7 +121,11 @@ export function App() {
       <header>
         <div className="titolo">📡 Radio Esterna {stato?.stazione && <span className="stazione">· {stato.stazione}</span>}</div>
         <div className={`pill ${collegato ? 'ok' : 'off'}`} title={stato?.messaggio}>
-          {collegato ? `Server collegato${stato?.kbps ? ` · ${stato.kbps} kbit/s` : ''}` : stato?.collegamento === 'collegamento' ? 'Collegamento…' : 'Server non collegato'}
+          {collegato
+            ? `Server collegato${motore.rtc.via === 'webrtc' ? (motore.rtc.kbps ? ` · ${motore.rtc.kbps} kbit/s` : '') : stato?.kbps ? ` · ${stato.kbps} kbit/s` : ''}`
+            : stato?.collegamento === 'collegamento'
+              ? 'Collegamento…'
+              : 'Server non collegato'}
         </div>
         <div className={`pill ${stato?.regia ? 'ok' : 'off'}`}>{stato?.regia ? 'Regia collegata' : 'Regia non collegata'}</div>
         <nav>
