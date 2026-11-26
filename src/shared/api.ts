@@ -49,6 +49,8 @@ export interface AnnounceCtx {
   nextTrack?: { title: string; artist: string } | null
   /** Nome della radio (se diverso da quello salvato, per le prove). */
   radio?: string
+  /** Quando partirà, più o meno, quello che mette in onda l'evento (ISO): l'ora detta negli annunci. */
+  startAt?: string
 }
 
 /** Aggiornamento della regia dalle release (si installa solo premendo "Aggiorna"). */

@@ -2,9 +2,10 @@
  * Annunci con la voce sintetica sul server: a orario, solo quando trasmette il server
  * (diretta autonoma o musica di riserva). Quando c'è la regia, gli annunci li fa la regia con i suoi eventi.
  *
- * All'ora dell'annuncio il testo si riempie ({ora}, {brano}, ...), si produce l'MP3 e va in onda
- * dopo il brano in corso (con la musica di riserva può slittare di un brano, perché Liquidsoap
- * prepara in anticipo il brano successivo).
+ * All'ora dell'annuncio l'annuncio si mette in attesa; va in onda dopo il brano in corso (con la musica
+ * di riserva dopo il brano successivo, perché Liquidsoap lo prepara in anticipo). Il testo ({ora}, {brano}, ...)
+ * si riempie e la voce si produce solo quando si sa quando andrà in onda: così l'ora detta è quella vera
+ * (prima si diceva l'ora in cui scattava l'annuncio, anche 3-4 minuti prima di andare in onda).
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { rename, writeFile } from 'node:fs/promises'
@@ -86,6 +87,12 @@ export interface Interjection {
   expires: number
 }
 
+/** Annuncio scattato, in attesa di andare in onda (la voce non è ancora prodotta). */
+interface DueAnnounce {
+  item: ScheduledAnnounce
+  expires: number
+}
+
 export interface SchedulerDeps {
   store: AnnounceStore
   speak: (text: string, voice: VoiceSettings) => Promise<{ file: string; seconds: number }>
@@ -102,6 +109,8 @@ export interface SchedulerDeps {
    * ascolta in HLS (in ritardo sulla diretta) lo sente in orario. Il testo usa l'ora prevista, non quella reale.
    */
   anticipoSecondi?: number
+  /** Tempo massimo per produrre la voce quando l'annuncio sta per andare in onda (normale 15 secondi). */
+  speakTimeoutMs?: number
 }
 
 export class AnnounceScheduler {
@@ -111,7 +120,8 @@ export class AnnounceScheduler {
   private lastMinute = ''
   /** Ultima volta che è partito ogni annuncio (per non ripeterlo quando l'ora legale finisce). */
   private fired = new Map<string, string>()
-  private pending: Interjection[] = []
+  private pending: DueAnnounce[] = []
+  private taking = false
   private timer: ReturnType<typeof setInterval> | null = null
 
   constructor(d: SchedulerDeps) {
@@ -151,24 +161,59 @@ export class AnnounceScheduler {
     for (const id of this.fired.keys()) if (!items.some((a) => a.id === id)) this.fired.delete(id)
     if (!due.length) return
     if (!(await this.d.onAir().catch(() => false))) return
-    for (const a of due) {
-      try {
-        const f = this.fill(a.text, undefined, now)
-        if (!f.text.replace(/[\s.,;:!?]/g, '')) continue
-        const r = await this.d.speak(f.text, this.d.store.get().voice)
-        this.pending.push({ id: `${this.d.folder}/${basename(r.file)}`, title: f.text, seconds: r.seconds, expires: this.now().getTime() + 10 * 60_000 })
-        this.log(`pronto: "${f.text}"${f.missing.length ? ` (senza ${f.missing.join(', ')})` : ''}`)
-      } catch (e) {
-        this.log(`annuncio non preparato: ${e instanceof Error ? e.message : String(e)}`)
-      }
+    const expires = this.now().getTime() + 10 * 60_000
+    for (const a of due) this.pending.push({ item: a, expires })
+  }
+
+  /**
+   * Il prossimo annuncio da mandare in onda, se ce n'è uno (quelli troppo vecchi si buttano).
+   * airsAt = quando partirà davvero: il testo dice l'ora di quel momento (più l'anticipo per l'HLS,
+   * cioè l'ora in cui lo sente chi ascolta in ritardo) e la voce si produce adesso.
+   * Se la voce non è pronta in tempo l'annuncio resta in attesa e si riprova al cambio di brano dopo.
+   */
+  async take(airsAt: Date = this.now()): Promise<Interjection | null> {
+    // una voce alla volta: diretta autonoma e riserva insieme non devono mandare in onda lo stesso annuncio
+    if (this.taking) return null
+    this.taking = true
+    try {
+      return await this.doTake(airsAt)
+    } finally {
+      this.taking = false
     }
   }
 
-  /** Il prossimo annuncio da mandare in onda, se ce n'è uno (quelli troppo vecchi si buttano). */
-  take(): Interjection | null {
+  private async doTake(airsAt: Date): Promise<Interjection | null> {
     const t = this.now().getTime()
     this.pending = this.pending.filter((p) => p.expires > t)
-    return this.pending.shift() ?? null
+    while (this.pending.length) {
+      const p = this.pending[0]
+      const at = new Date(Math.max(t, airsAt.getTime()) + Math.max(0, this.d.anticipoSecondi ?? 0) * 1000)
+      const f = this.fill(p.item.text, undefined, at)
+      if (!f.text.replace(/[\s.,;:!?]/g, '')) {
+        this.pending.shift()
+        continue
+      }
+      const limit = this.d.speakTimeoutMs ?? 15_000
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        const r = await Promise.race([
+          this.d.speak(f.text, this.d.store.get().voice),
+          new Promise<never>((_, rej) => (timer = setTimeout(() => rej(new Error('voce troppo lenta: riprovo al prossimo brano')), limit)))
+        ])
+        this.pending.shift()
+        this.log(`in onda: "${f.text}"${f.missing.length ? ` (senza ${f.missing.join(', ')})` : ''}`)
+        return { id: `${this.d.folder}/${basename(r.file)}`, title: f.text, seconds: r.seconds, expires: p.expires }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        this.log(`annuncio non preparato: ${msg}`)
+        // voce lenta (es. si sta scaricando la prima volta): si riprova dopo; un errore vero lo toglie
+        if (!msg.startsWith('voce troppo lenta')) this.pending.shift()
+        return null
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+    return null
   }
 
   /** Annunci pronti in attesa (per il pannello). */

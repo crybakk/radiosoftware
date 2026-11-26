@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import type { RadioDb } from './db'
 import type { EngineStep } from './playout'
+import { airTime } from './rotation'
 import { AUDIO_EXTENSIONS, readFileInfo } from './scanner'
 import type { ScheduledEvent, Track } from './types'
 
@@ -12,9 +13,14 @@ export interface EventEffects {
   /** Puntata da mandare in replica (dal server); null se non c'è. */
   replay?(programId: string, episodeId?: string): Promise<Track | null>
   /** Notiziario da mandare in onda (scaricato al momento); track null = niente, note spiega perché. */
-  news?(sourceId: string): Promise<{ track: Track | null; note: string }>
-  /** Annuncio con la voce sintetica (testo con le parti tra graffe ancora da riempire). */
-  voice?(text: string): Promise<{ track: Track | null; note: string }>
+  news?(sourceId: string, at: Date): Promise<{ track: Track | null; note: string }>
+  /**
+   * Annuncio con la voce sintetica (testo con le parti tra graffe ancora da riempire).
+   * at = quando andrà in onda, più o meno: {ora} dice quell'ora.
+   */
+  voice?(text: string, at: Date): Promise<{ track: Track | null; note: string }>
+  /** Quando parte, più o meno, il primo brano messo in onda dall'evento (normale: adesso). */
+  startAt?: Date
 }
 
 /** Estrae i percorsi da una playlist M3U/M3U8 o PLS. I percorsi relativi sono rispetto alla playlist. */
@@ -184,6 +190,19 @@ export async function expandEvent(db: RadioDb, event: ScheduledEvent, fx: EventE
   const flush = (): void => {
     if (front.length) steps.push({ kind: 'tracks', tracks: front.splice(0), placement: 'front' })
   }
+  // quando andrà in onda quello che si aggiunge adesso: dopo i brani dell'evento messi prima di lui
+  const start = (fx.startAt ?? fx.now()).getTime()
+  const airsAt = (): Date => {
+    let s = 0
+    for (const st of steps) {
+      if (st.kind === 'clear') s = 0
+      if (st.kind !== 'tracks' || st.placement === 'append') continue
+      if (st.placement === 'replace') s = 0
+      s += st.tracks.reduce((n, t) => n + airTime(t), 0)
+    }
+    for (const t of front) s += airTime(t)
+    return new Date(start + s * 1000)
+  }
   for (const a of event.actions) {
     switch (a.type) {
       case 'play': {
@@ -246,7 +265,7 @@ export async function expandEvent(db: RadioDb, event: ScheduledEvent, fx: EventE
       case 'news': {
         let r: { track: Track | null; note: string } = { track: null, note: 'notiziari non disponibili' }
         try {
-          if (fx.news) r = await inTime(fx.news(a.sourceId), 'scaricamento', 'lento')
+          if (fx.news) r = await inTime(fx.news(a.sourceId, airsAt()), 'scaricamento', 'lento')
         } catch (err) {
           r = { track: null, note: err instanceof Error ? err.message : String(err) }
         }
@@ -257,7 +276,7 @@ export async function expandEvent(db: RadioDb, event: ScheduledEvent, fx: EventE
       case 'voice': {
         let r: { track: Track | null; note: string } = { track: null, note: 'voce sintetica non disponibile' }
         try {
-          if (fx.voice) r = await inTime(fx.voice(a.text), 'preparazione', 'lenta')
+          if (fx.voice) r = await inTime(fx.voice(a.text, airsAt()), 'preparazione', 'lenta')
         } catch (err) {
           r = { track: null, note: err instanceof Error ? err.message : String(err) }
         }

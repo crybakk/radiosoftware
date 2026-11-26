@@ -688,7 +688,7 @@ const announcer = new AnnounceScheduler({
   folder: '.annunci',
   anticipoSecondi: num('ANNUNCI_ANTICIPO_SECONDI', 30)
 })
-auto.interject = () => announcer.take()
+auto.interject = (airsAt) => announcer.take(airsAt)
 announcer.start()
 let recorder: Recorder | null = null
 if (env('REGISTRAZIONE_PUNTATE', 'si') !== 'no') {
@@ -1985,7 +1985,10 @@ publicServer.on('upgrade', (req, socket, head) => {
 /** Evento da Liquidsoap (o dall'app Radio Esterna, che entra e esce dall'onda come le altre esterne). */
 function onLqEvent(kind: string, detail: string): void {
   if (kind === 'autonoma_brano') return auto.onTrackStart(detail)
-  if (kind === 'riserva_brano') return logPlay('riserva', detail)
+  if (kind === 'riserva_brano') {
+    auto.onReserveStart(detail)
+    return logPlay('riserva', detail)
+  }
   if (kind === 'esterna_titolo') {
     // titolo mandato dall'app dell'esterna (BUTT, Larix…): da qui in poi vale il suo
     let m: Parameters<typeof appTitle>[0] = {}
@@ -2013,6 +2016,7 @@ function onLqEvent(kind: string, detail: string): void {
   // la sorgente del server non è più in onda: il brano in corso finisce qui
   if (kind === 'esterna_collegata') playLog.end()
   if (kind === 'studio_connesso') playLog.end(['riserva'])
+  if (kind === 'studio_connesso' || kind === 'esterna_collegata') auto.reserveStopped()
   if (kind === 'studio_connesso' || kind === 'studio_scollegato') collegamentoStudio.collegata(kind === 'studio_connesso')
   if (kind === 'esterna_scollegata') esternaSince = null
   if (kind === 'esterna_collegata') spoken.esternaConnected(Date.now())
@@ -2025,7 +2029,7 @@ function onLqEvent(kind: string, detail: string): void {
 const internalServer = createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && req.url === '/internal/riserva') {
-      const uri = auto.nextReserve()
+      const uri = await auto.nextReserve()
       res.writeHead(uri ? 200 : 404, { 'Content-Type': 'text/plain; charset=utf-8' })
       return void res.end(uri ?? '')
     }

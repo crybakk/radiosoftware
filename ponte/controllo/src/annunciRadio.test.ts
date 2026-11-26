@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { AnnounceScheduler, AnnounceStore, dueAt, validateConfig, type ScheduledAnnounce } from './annunciRadio.ts'
 import { AutonomousPlayer } from './autonoma.ts'
 import type { Library, ServerTrack } from './libreria.ts'
@@ -51,15 +51,50 @@ describe('annunci a orario del server', () => {
     onAir = true
     await s.tick()
     await s.tick()
-    expect(spoken).toEqual(['Sono le 23 in punto. Qui Radio Prova. Avete ascoltato Caruso.'])
-    expect(s.take()).toMatchObject({ id: '.annunci/annuncio-1.mp3', seconds: 4 })
-    expect(s.take()).toBeNull()
+    // la voce non si produce allo scatto ma quando l'annuncio sta per andare in onda
+    expect(spoken).toEqual([])
+    expect(s.waiting()).toBe(1)
+    now = new Date(2026, 10, 15, 23, 3, 20)
+    // finisce il brano in corso alle 23:03:40: l'ora detta è quella in cui va in onda
+    expect(await s.take(new Date(2026, 10, 15, 23, 3, 40))).toMatchObject({ id: '.annunci/annuncio-1.mp3', seconds: 4 })
+    expect(spoken).toEqual(['Sono le 23 e 3. Qui Radio Prova. Avete ascoltato Caruso.'])
+    expect(await s.take()).toBeNull()
 
     // un annuncio non andato in onda entro 10 minuti si butta
     now = new Date(2026, 10, 16, 0, 0, 1)
     await s.tick()
     now = new Date(2026, 10, 16, 0, 11, 0)
-    expect(s.take()).toBeNull()
+    expect(await s.take()).toBeNull()
+    expect(spoken).toHaveLength(1)
+  })
+
+  it('voce troppo lenta: l\'annuncio resta in attesa e al brano dopo dice l\'ora nuova', async () => {
+    const store = new AnnounceStore(join(mkdtempSync(join(tmpdir(), 'ann-')), 'annunci.json'))
+    await store.save({ radio: '', items: [item({ text: 'Sono le {ora}.' })] })
+    let now = new Date(2026, 10, 15, 23, 0, 1)
+    let slow = true
+    const spoken: string[] = []
+    const s = new AnnounceScheduler({
+      store,
+      speak: (text) =>
+        slow
+          ? new Promise(() => {})
+          : (spoken.push(text), Promise.resolve({ file: `/m/.annunci/a-${spoken.length}.mp3`, seconds: 3 })),
+      onAir: async () => true,
+      context: () => ({}),
+      stationName: 'R',
+      folder: '.annunci',
+      now: () => now,
+      log: () => {},
+      speakTimeoutMs: 20
+    })
+    await s.tick()
+    expect(await s.take(new Date(2026, 10, 15, 23, 2, 0))).toBeNull()
+    expect(s.waiting()).toBe(1)
+    slow = false
+    now = new Date(2026, 10, 15, 23, 5, 30)
+    expect(await s.take(new Date(2026, 10, 15, 23, 5, 50))).toMatchObject({ title: 'Sono le 23 e 5.' })
+    expect(s.waiting()).toBe(0)
   })
 })
 
@@ -84,13 +119,20 @@ describe('annunci a orario: anticipo per l\'HLS', () => {
       anticipoSecondi: 30
     })
     await s.tick()
-    expect(spoken).toEqual([]) // 22:59:55 per chi ascolta: ancora presto
+    expect(s.waiting()).toBe(0) // 22:59:55 per chi ascolta: ancora presto
     now = new Date(2026, 10, 15, 22, 59, 31)
     await s.tick()
+    expect(s.waiting()).toBe(1)
+    await s.take(now)
     expect(spoken).toEqual(['Sono le 23 in punto.'])
     now = new Date(2026, 10, 15, 23, 0, 5)
     await s.tick()
-    expect(spoken).toHaveLength(1) // non si ripete all'ora vera
+    expect(s.waiting()).toBe(0) // non si ripete all'ora vera
+    // se va in onda dopo un brano, l'ora è quella in cui lo sente chi ascolta in HLS (30 secondi dopo)
+    now = new Date(2026, 10, 16, 22, 59, 31)
+    await s.tick()
+    await s.take(new Date(2026, 10, 16, 23, 2, 40))
+    expect(spoken[1]).toBe('Sono le 23 e 3.')
   })
 })
 
@@ -116,13 +158,19 @@ describe('annunci a orario: ora legale', () => {
         now: () => now,
         log: () => {}
       })
-      await s.tick()
+      const tickAndAir = async (): Promise<void> => {
+        await s.tick()
+        while (await s.take()) {
+          // va in onda subito
+        }
+      }
+      await tickAndAir()
       expect(now.getHours()).toBe(2)
       now = new Date('2026-10-25T00:31:10Z') // il minuto dopo
-      await s.tick()
+      await tickAndAir()
       now = new Date('2026-10-25T01:30:10Z') // di nuovo 02:30, ora solare
       expect(now.getHours()).toBe(2)
-      await s.tick()
+      await tickAndAir()
       expect(spoken).toEqual(['Fisso.', 'Ogni ora.', 'Ogni ora.'])
     } finally {
       if (tz === undefined) delete process.env.TZ
@@ -148,7 +196,7 @@ describe('annuncio nella diretta autonoma e nella riserva', () => {
     const p = new AutonomousPlayer(lib, { setActive: async () => true, push: async (u) => (pushed.push(u), true), skip: async () => true })
     p.onPlay = (t) => played.push(t.id)
     let next: { id: string; title: string; seconds: number } | null = { id: '.annunci/annuncio-x.mp3', title: 'Sono le 23', seconds: 4 }
-    p.interject = () => {
+    p.interject = async () => {
       const n = next
       next = null
       return n
@@ -161,8 +209,45 @@ describe('annuncio nella diretta autonoma e nella riserva', () => {
     expect(played).toEqual(['.annunci/annuncio-x.mp3'])
     // riserva
     next = { id: '.annunci/annuncio-y.mp3', title: 'Ciao', seconds: 2 }
-    expect(p.nextReserve()).toBe('/musica/.annunci/annuncio-y.mp3')
-    expect(p.nextReserve()).toBe('annotate:title="Uno",artist="A":/musica/a/uno.mp3')
+    expect(await p.nextReserve()).toBe('/musica/.annunci/annuncio-y.mp3')
+    expect(await p.nextReserve()).toBe('annotate:title="Uno",artist="A":/musica/a/uno.mp3')
+    await p.run({ type: 'stop' })
+  })
+
+  it('dice all\'annuncio quando andrà in onda: alla fine del brano in corso', async () => {
+    let now = 1_000_000
+    const p = new AutonomousPlayer(lib, { setActive: async () => true, push: async () => true, skip: async () => true }, () => now)
+    const asked: number[] = []
+    p.interject = async (at) => (asked.push(at.getTime()), null)
+    // riserva ferma: il primo brano parte subito
+    await p.nextReserve()
+    expect(asked.at(-1)).toBe(now)
+    // Liquidsoap chiede il successivo appena parte il primo (prima o dopo averlo detto)
+    await p.nextReserve()
+    expect(asked.at(-1)).toBe(now + 200_000)
+    p.onReserveStart('/musica/a/uno.mp3')
+    now += 200_000
+    p.onReserveStart('/musica/a/uno.mp3')
+    await p.nextReserve()
+    expect(asked.at(-1)).toBe(now + 200_000)
+    // torna la regia: la riserva non suona più, alla ripartenza c'è ancora il brano tenuto pronto
+    p.reserveStopped()
+    now += 3600_000
+    await p.nextReserve()
+    expect(asked.at(-1)).toBe(now + 200_000)
+
+    // diretta autonoma: all'avvio subito, poi alla fine del brano in onda
+    asked.length = 0
+    await p.run({ type: 'start' })
+    expect(asked).toEqual([now])
+    vi.useFakeTimers()
+    try {
+      p.onTrackStart('/musica/a/uno.mp3')
+      await vi.advanceTimersByTimeAsync(180_000)
+      expect(asked).toEqual([now, now + 200_000])
+    } finally {
+      vi.useRealTimers()
+    }
     await p.run({ type: 'stop' })
   })
 })

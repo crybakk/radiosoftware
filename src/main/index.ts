@@ -155,11 +155,14 @@ if (primary) app.whenReady().then(async () => {
   const voicesDir = join(app.getPath('userData'), 'voci')
   const announceDir = join(app.getPath('userData'), 'annunci')
   const synth = new Synth({ voicesDir, outDir: announceDir, ffmpeg: ffmpegPath() ?? 'ffmpeg' })
-  type Ctx = Pick<AnnounceContext, 'track' | 'nextTrack'> & { radio?: string }
-  /** Annuncio pronto da mandare in onda: riempie le parti tra graffe e produce l'audio. */
-  const speakTrack = async (text: string, ctx: Ctx, voice?: VoiceSettings): Promise<{ track: Track | null; note: string }> => {
+  type Ctx = Pick<AnnounceContext, 'track' | 'nextTrack'> & { radio?: string; startAt?: string }
+  /**
+   * Annuncio pronto da mandare in onda: riempie le parti tra graffe e produce l'audio.
+   * at = quando andrà in onda (es. dopo il brano in corso): {ora} dice quell'ora, non quella di adesso.
+   */
+  const speakTrack = async (text: string, ctx: Ctx, voice?: VoiceSettings, at?: Date): Promise<{ track: Track | null; note: string }> => {
     const s = db.getSettings()
-    const now = new Date()
+    const now = at && at.getTime() > Date.now() ? at : new Date()
     // programma in onda e prossimo: dal palinsesto del server, se raggiungibile (al massimo 3 secondi)
     let progs = { program: null as string | null, nextProgram: null as { title: string; at: Date } | null }
     if (/\{(prossimo_|ora_prossimo_)?programma\}/.test(text)) {
@@ -177,10 +180,10 @@ if (primary) app.whenReady().then(async () => {
       note: filled.missing.length ? `non so ancora ${filled.missing.map((m) => `{${m}}`).join(', ')}: detto senza` : ''
     }
   }
-  const newsForAir = async (src: NewsSource, ctx: Ctx = {}): Promise<{ track: Track | null; note: string }> => {
+  const newsForAir = async (src: NewsSource, ctx: Ctx = {}, at?: Date): Promise<{ track: Track | null; note: string }> => {
     const r = await news.forAir(src)
     if (!r.item && r.speak) {
-      const v = await speakTrack(r.speak, ctx)
+      const v = await speakTrack(r.speak, ctx, undefined, at)
       return { track: v.track, note: r.note }
     }
     return { track: r.item ? newsTrack(src.name, r.item) : null, note: r.note }
@@ -395,13 +398,14 @@ if (primary) app.whenReady().then(async () => {
   })
   handle('expandEvent', (event: ScheduledEvent, ctx: Ctx = {}) =>
     expandEvent(db, event, {
-      voice: (text) => speakTrack(text, ctx),
+      voice: (text, at) => speakTrack(text, ctx, undefined, at),
       now: () => new Date(),
+      startAt: ctx.startAt ? new Date(ctx.startAt) : undefined,
       replay: (programId) => ponte.replayTrack(programId),
-      news: async (sourceId) => {
+      news: async (sourceId, at) => {
         const src = db.getSettings().news.find((n) => n.id === sourceId)
         if (!src) return { track: null, note: 'fonte non trovata (tolta dalle impostazioni?)' }
-        return newsForAir(src, ctx)
+        return newsForAir(src, ctx, at)
       },
       runCommand: (command) => {
         const child = spawn(command, { shell: true, detached: true, windowsHide: true, stdio: 'ignore' })

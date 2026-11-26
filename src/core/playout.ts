@@ -549,6 +549,11 @@ export class PlayoutEngine {
 
   /** Orario stimato di partenza di ogni brano in coda. */
   private etas(): Date[] {
+    return this.etasAndEnd().slice(0, -1)
+  }
+
+  /** Come etas(), con in fondo l'orario stimato di fine dell'ultimo brano in coda. */
+  private etasAndEnd(): Date[] {
     const now = this.now().getTime()
     const cur = this.current()
     let t = now
@@ -557,11 +562,29 @@ export class PlayoutEngine {
       const at = dj?.ok ? dj.plan.aStart : this.mixPoint(cur.item.track)
       t += Math.max(0, at - cur.player.position()) * 1000
     }
-    return this.queue.map((q) => {
+    const out = this.queue.map((q) => {
       const at = new Date(t)
       t += airTime(q.track) * 1000
       return at
     })
+    out.push(new Date(t))
+    return out
+  }
+
+  /**
+   * Quando partirà, più o meno, quello che mette in onda l'evento (stesse regole di runEvent):
+   * serve agli annunci con la voce, che dicono l'ora in cui vanno in onda e non quella in cui scatta l'evento.
+   */
+  eventStartEstimate(event: ScheduledEvent): Date {
+    const now = this.now()
+    if (!this.current() || event.mode === 'hard' || event.actions.some((a) => a.type === 'stop')) return now
+    // i brani dell'evento vanno dopo quelli degli eventi già in coda (o in testa, se l'evento svuota la coda)
+    const clears = event.actions.some((a) => a.type === 'clear' || (a.type === 'playlist' && a.placement === 'replace'))
+    let insertAt = 0
+    if (!clears) while (insertAt < this.queue.length && this.queue[insertAt].origin === 'event') insertAt++
+    let at = this.etasAndEnd()[insertAt].getTime()
+    if (event.toleranceSeconds > 0) at = Math.min(at, now.getTime() + event.toleranceSeconds * 1000)
+    return new Date(Math.max(now.getTime(), at))
   }
 
   private fade(slot: Slot, seconds: number): void {
