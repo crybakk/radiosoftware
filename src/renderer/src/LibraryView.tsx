@@ -11,7 +11,8 @@ import type { Radio } from './useRadio'
 import { Riquadri } from './Riquadri'
 import { useConferma } from './Conferma'
 
-export function LibraryView({ radio: _radio }: { radio: Radio }) {
+export function LibraryView({ radio }: { radio: Radio }) {
+  const avanzate = radio.settings.mostraAvanzate
   const conferma = useConferma()
   const [folders, setFolders] = useState<LibraryFolder[]>([])
   const [status, setStatus] = useState<LibraryStatus | null>(null)
@@ -56,6 +57,10 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
   }, [])
 
   const analyzed = status ? status.total - status.pendingAnalysis : 0
+  // una sola barra per chi non vuole i dettagli: analisi del volume, impronte e Mix DJ insieme
+  const lavoro = status ? status.total + status.fingerprintTotal + status.djTotal : 0
+  const fatto = status ? analyzed + status.fingerprints + status.djDone : 0
+  const preparazione = lavoro > 0 && fatto < lavoro ? Math.floor((fatto / lavoro) * 100) : null
 
   return (
     <Riquadri className="library-view" chiave="libreria" nome="Libreria">
@@ -114,7 +119,15 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
                 .map(([k, n]) => `${KIND_LABEL[k] ?? k}: ${n}`)
                 .join(' · ')}
             </div>
-            {status.hiddenLong > 0 && (
+            {!avanzate && preparazione !== null && (
+              <div>
+                La regia sta preparando i brani: {preparazione}% (puoi lavorare e andare in onda lo stesso)
+                <div className="progress thin">
+                  <div className="progress-fill" style={{ width: `${preparazione}%` }} />
+                </div>
+              </div>
+            )}
+            {avanzate && status.hiddenLong > 0 && (
               <div>
                 {status.hiddenLong} brani più lunghi di {status.maxTrackMinutes} minuti (premixati) nascosti: non compaiono
                 qui, nelle rotazioni e sul server. Il limite si cambia dal pannello del server (☰ → Impostazioni server →
@@ -127,7 +140,7 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
                 aggiornati
               </div>
             )}
-            {status.total > 0 && (
+            {avanzate && status.total > 0 && (
               <div>
                 Analisi volume e punti di mix: {analyzed} di {status.total}
                 {status.analyzing ? ' (in corso, puoi continuare a lavorare)' : ''}
@@ -136,7 +149,7 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
                 </div>
               </div>
             )}
-            {status.fingerprintTotal > 0 && (
+            {avanzate && status.fingerprintTotal > 0 && (
               <div>
                 Impronte audio per riconoscere i brani nelle esterne: {status.fingerprints} di {status.fingerprintTotal}
                 {status.fingerprinting ? ' (in corso)' : ''}
@@ -148,7 +161,7 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
                 </div>
               </div>
             )}
-            {status.djTotal > 0 && (
+            {avanzate && status.djTotal > 0 && (
               <div>
                 Analisi per il Mix DJ (BPM, battiti, tonalità, energia, intro e outro): {status.djDone} di {status.djTotal}
                 {status.djAnalyzing ? ' (in corso, qualche secondo a brano)' : ''}
@@ -161,11 +174,17 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
         )}
       </section>
 
-      <MusicBrainzSection onEdit={setEditing} refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} />
+      {!avanzate && (
+        <p className="hint" data-sezione="altri-strumenti" data-titolo="Altri strumenti">
+          Altri strumenti (dati per la SIAE, pulizia dei brani, categorie): Impostazioni → Mostra le cose avanzate.
+        </p>
+      )}
 
-      <PuliziaSection refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} onChanged={() => setRefresh((x) => x + 1)} status={status} />
+      {avanzate && <MusicBrainzSection onEdit={setEditing} refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} />}
 
-      <CategoriesSection
+      {avanzate && <PuliziaSection refreshKey={`${refresh}-${status?.total}-${status?.scanning ? 1 : 0}`} onChanged={() => setRefresh((x) => x + 1)} status={status} />}
+
+      {avanzate && <CategoriesSection
         selected={category}
         onSelect={setCategory}
         label={label}
@@ -174,7 +193,7 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
           setLabelMsg('')
         }}
         refreshKey={`${refresh}-${status?.total}`}
-      />
+      />}
 
       <section className="panel grow" data-sezione="brani" data-titolo="Brani">
         <div className="section-title">
@@ -277,6 +296,9 @@ export function LibraryView({ radio: _radio }: { radio: Radio }) {
   )
 }
 
+/** Campi sempre in vista nella scheda brano; gli altri sono in "Dati per la SIAE e dati tecnici". */
+const BASE_FIELDS: (keyof TrackEdit)[] = ['title', 'artist', 'album', 'genre']
+
 const TEXT_FIELDS: { key: keyof TrackEdit; label: string; hint?: string }[] = [
   { key: 'title', label: 'Titolo' },
   { key: 'artist', label: 'Interprete' },
@@ -304,7 +326,7 @@ export function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose
         {track.dcGenres && <div className="hint">Generi da Discogs: {track.dcGenres}</div>}
         {track.lfmTags && <div className="hint">Etichette da Last.fm: {track.lfmTags}</div>}
         <div className="form-grid">
-          {TEXT_FIELDS.map((f) => (
+          {TEXT_FIELDS.filter((f) => BASE_FIELDS.includes(f.key)).map((f) => (
             <label key={f.key}>
               <span>
                 {f.label}
@@ -334,6 +356,19 @@ export function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose
               ))}
             </select>
           </label>
+        </div>
+        <details className="tecniche">
+          <summary className="section-title">Dati per la SIAE e dati tecnici</summary>
+        <div className="form-grid">
+          {TEXT_FIELDS.filter((f) => !BASE_FIELDS.includes(f.key)).map((f) => (
+            <label key={f.key}>
+              <span>
+                {f.label}
+                {f.hint && <em> · {f.hint}</em>}
+              </span>
+              <input value={String(value(f.key) ?? '')} onChange={(e) => setEdit({ ...edit, [f.key]: e.target.value })} />
+            </label>
+          ))}
           <label>
             <span>Inizio audio (s)</span>
             <input
@@ -361,18 +396,21 @@ export function TrackEditor({ track, onClose, onSaved }: { track: Track; onClose
               onChange={(e) => setEdit({ ...edit, cueOut: Number(e.target.value) })}
             />
           </label>
+        </div>
+        </details>
+        <div className="form-grid">
           <label className="check">
             <input
               type="checkbox"
               checked={!!value('enabled')}
               onChange={(e) => setEdit({ ...edit, enabled: e.target.checked })}
             />
-            <span>Attivo (in rotazione e nella ricerca)</span>
+            <span>Può andare in onda (se lo togli, la canzone non viene più scelta né trovata)</span>
           </label>
         </div>
         <div className="info-line">
-          Durata {mmss(track.duration)} · {track.bitrate ? `${track.bitrate} kbps` : 'bitrate sconosciuto'} ·{' '}
-          {track.loudness != null ? `${track.loudness.toFixed(1)} LUFS` : 'non ancora analizzato'}
+          Durata {mmss(track.duration)} · {track.bitrate ? `qualità ${track.bitrate} kbps` : 'qualità sconosciuta'} ·{' '}
+          {track.loudness != null ? 'volume già livellato' : 'volume non ancora analizzato'}
         </div>
         <div className="info-line">{djLine(track)}</div>
         <div className="row end">

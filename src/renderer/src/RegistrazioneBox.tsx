@@ -43,6 +43,8 @@ export function RegistrazioneBox() {
   const c = s.corrente
   const f = s.fascia
   const invii = s.invii
+  // niente da registrare né da inviare: il riquadro non serve (regia a prova di anziano)
+  if (!c && !(s.fase === 'pronta' && f) && !s.programmi.length && !invii.length && !errore) return null
 
   return (
     <div className={`registrazione card ${c ? 'rec' : s.fase === 'pronta' ? 'pronta' : ''}`} data-sezione="registrazione" data-titolo="Registrazione del programma">
@@ -60,7 +62,7 @@ export function RegistrazioneBox() {
           {c.stopAt && s.fase !== 'avviso-fine' && <div className="hint">Si ferma da sola alle {ora(c.stopAt)}.</div>}
           {!c.stopAt && <div className="hint">Non si ferma da sola: premi "Fine programma" quando hai finito.</div>}
           {c.problema && <div className="error-text">⚠️ {c.problema}</div>}
-          {c.bytes === 0 && now - c.startedAt > 10_000 && <div className="error-text">⚠️ Non arriva audio: controlla che l'invio al ponte sia acceso.</div>}
+          {c.bytes === 0 && now - c.startedAt > 10_000 && <div className="error-text">⚠️ Non arriva audio: controlla che la regia sia collegata al server (scritta in alto).</div>}
           <div className="row">
             <button title="Segna qui l'inizio vero del programma (per il taglio della puntata)" onClick={() => esegui(api.registrazioneRegistra())}>
               📍 Segna inizio programma
@@ -105,9 +107,7 @@ export function RegistrazioneBox() {
                 ⏺ Registra
               </button>
             </>
-          ) : (
-            <span className="hint">nessun programma "Va in onda dallo studio" nel pannello</span>
-          )}
+          ) : null}
         </div>
       )}
       {errore && <div className="error-text">{errore}</div>}
@@ -116,7 +116,7 @@ export function RegistrazioneBox() {
           {x.stato === 'decidere' ? '⏳ ' : '⬆ '}
           {x.title} del {new Date(x.startedAt).toLocaleDateString('it-IT')}:{' '}
           {x.stato === 'decidere'
-            ? 'chiedo al ponte se ha la registrazione completa'
+            ? 'controllo se il server ha la registrazione completa'
             : x.inviatiByte !== undefined
             ? `invio al server, ${mb(x.inviatiByte)}`
             : 'da inviare al server'}

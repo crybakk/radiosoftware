@@ -195,7 +195,7 @@ export class RemoteLink {
 
   private open(): void {
     if (!this.wanted) return
-    this.set('connessione', 'Collegamento al ponte…')
+    this.set('connessione', 'Collegamento al server…')
     let ws: WebSocket
     try {
       ws = new this.Ws(this.url)
@@ -230,7 +230,7 @@ export class RemoteLink {
       } else if (msg.t === 'auth-ok') {
         authed = true
         this.attempt = 0
-        this.set('collegato', 'Pannello remoto collegato al ponte')
+        this.set('collegato', 'Pannello remoto collegato al server')
         if (this.pendingState) this.flushState()
       } else if (msg.t === 'cmd') {
         const { id, cmd, by } = msg

@@ -182,7 +182,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           <>
             <div className="link-status">
               <span className={`dot ${st?.controlOk ? 'ok' : st?.controlOk === false ? 'bad' : 'off'}`} />
-              <strong>{st?.controlOk ? 'Servizio di controllo raggiungibile' : st?.controlOk === false ? 'Ponte non raggiungibile' : 'In attesa…'}</strong>
+              <strong>{st?.controlOk ? 'Server raggiungibile' : st?.controlOk === false ? 'Server non raggiungibile' : 'In attesa…'}</strong>
               {st?.controlError && <span>{st.controlError}</span>}
             </div>
             {st && st.alarms.length > 0 ? (
@@ -198,14 +198,14 @@ export function ConnectionView({ radio }: { radio: Radio }) {
             )}
             {remote && (
               <p className="info-line">
-                Il ponte riceve la regia: {remote.liquidsoap?.studio ? 'sì' : remote.liquidsoap ? 'no' : 'Liquidsoap non risponde'}
+                Il server riceve la regia: {remote.liquidsoap?.studio ? 'sì' : remote.liquidsoap ? 'no' : "la parte audio del server non risponde"}
                 {remote.liquidsoap?.esterna ? ' · in onda c\'è la diretta esterna' : ''} · notifiche:{' '}
                 {remote.notifiche.length ? remote.notifiche.join(', ') : 'nessuna configurata'}
               </p>
             )}
             <div className="row">
               <button className="small" disabled={busy} onClick={() => void run(async () => setRemote(await api.ponteState()))}>
-                Controlla il ponte
+                Controlla il server
               </button>
               <button
                 className="small"
@@ -213,7 +213,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
                 onClick={() =>
                   void run(async () => {
                     const r = await api.ponteTestNotification()
-                    if (!r.results.length) return 'Sul ponte non sono configurate notifiche (Telegram o email)'
+                    if (!r.results.length) return 'Sul server non sono configurate notifiche (Telegram o email)'
                     return r.results.map((x) => `${x.channel}: ${x.ok ? 'inviata' : `errore (${x.error})`}`).join(' · ')
                   })
                 }
@@ -230,17 +230,17 @@ export function ConnectionView({ radio }: { radio: Radio }) {
         <section className="panel" data-sezione="backup" data-titolo="Backup del database">
           <div className="section-title">Backup del database</div>
           <p className="hint">
-            Ogni giorno la regia salva sul ponte una copia di libreria, eventi, registro e impostazioni. Il ripristino
+            Ogni giorno la regia salva sul server una copia di libreria, eventi, registro e impostazioni. Il ripristino
             riavvia la regia (la messa in onda si ferma per qualche secondo) e conserva a parte il database attuale.
             {st?.lastBackup ? ` Ultimo backup: ${new Date(st.lastBackup).toLocaleString('it-IT')}.` : ' Nessun backup ancora.'}
           </p>
           {st?.backupError && <div className="banner error inline-banner">Ultimo backup non riuscito: {st.backupError}</div>}
           <div className="row">
-            <button className="small" disabled={busy || st?.backupRunning} onClick={() => void run(async () => `Backup salvato sul ponte: ${await api.ponteBackupNow()}`)}>
+            <button className="small" disabled={busy || st?.backupRunning} onClick={() => void run(async () => `Backup salvato sul server: ${await api.ponteBackupNow()}`)}>
               {st?.backupRunning ? 'Backup in corso…' : 'Fai un backup adesso'}
             </button>
             <button className="small" disabled={busy} onClick={() => void run(async () => setBackups(await api.ponteListBackups()))}>
-              Mostra i backup sul ponte
+              Mostra i backup sul server
             </button>
           </div>
           {backups && (
@@ -255,7 +255,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
               <tbody>
                 {backups.length === 0 && (
                   <tr>
-                    <td colSpan={3}>Nessun backup sul ponte.</td>
+                    <td colSpan={3}>Nessun backup sul server.</td>
                   </tr>
                 )}
                 {backups.map((b) => (
@@ -383,7 +383,7 @@ export function ConnectionView({ radio }: { radio: Radio }) {
           </label>
           <label className="check">
             <input type="checkbox" checked={draft.sendMetadata} onChange={(e) => set('sendMetadata', e.target.checked)} />
-            <span>Invia artista e titolo agli ascoltatori (Icecast)</span>
+            <span>Fai vedere agli ascoltatori artista e titolo della canzone</span>
           </label>
         </div>
         <div className="row end">
