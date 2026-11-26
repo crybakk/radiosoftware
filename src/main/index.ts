@@ -506,6 +506,12 @@ if (primary) app.whenReady().then(async () => {
     writeFileSync(res.filePath, exportForClaude(description, summarize(db.rotationCandidates('music'))), 'utf8')
     return res.filePath
   })
+  /** Lo stesso file per Claude, come testo: lo chiede il pannello del server, che lo fa scaricare. */
+  handle('aiExportText', (description: string) => {
+    const d = String(description ?? '').slice(0, 4000)
+    db.saveSettings({ aiDescription: d })
+    return exportForClaude(d, summarize(db.rotationCandidates('music')))
+  })
   /** Il piano preparato da Claude (file .json, .md o .txt con il blocco JSON) → stessa anteprima dell'AI. */
   handle('aiImport', async () => {
     const res = await dialog.showOpenDialog(win!, {

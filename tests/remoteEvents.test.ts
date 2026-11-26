@@ -157,6 +157,35 @@ describe("rotazioni con l'AI da remoto", () => {
     expect((await run({ type: 'aiStatus' })).job.state).toBe('libero')
   })
 
+  it('il file .md per Claude si esporta anche senza modello, e il piano importato va in anteprima', async () => {
+    const { deps } = setup()
+    let saved = ''
+    deps.now = () => new Date(2026, 10, 26, 22, 0)
+    deps.ai = {
+      status: async () => ({ installed: false, modelName: 'Qwen', busy: false }),
+      generate: async () => ({}) as never,
+      cancel: async () => {},
+      preview: async (p) => ({ plan: p, warnings: [], counts: [12], music: 100, seconds: 0 }),
+      apply: async () => [],
+      exportText: async (d) => {
+        saved = d
+        return `# Rotazioni\n\n${d}`
+      }
+    }
+    const job = new RemoteAiJob()
+    const out = (await execAny({ type: 'aiExport', description: 'la sera jazz' }, deps, 'anna', job)) as { name: string; text: string }
+    expect(out).toEqual({ name: 'rotazioni-per-claude_2026-11-26.md', text: '# Rotazioni\n\nla sera jazz' })
+    expect(saved).toBe('la sera jazz')
+    const st = (await execAny({ type: 'aiPreview', plan }, deps, 'anna', job)) as RemoteAiInfo
+    expect(st.job).toMatchObject({ state: 'pronto', result: { counts: [12], seconds: 0 } })
+  })
+
+  it('una regia vecchia senza esportazione chiede di aggiornarla', async () => {
+    const { deps } = setup()
+    deps.ai = { status: async () => ({ installed: true, modelName: 'Qwen', busy: false }), generate: async () => ({}) as never, cancel: async () => {}, preview: async () => ({}) as never, apply: async () => [] }
+    await expect(execAny({ type: 'aiExport', description: 'x' }, deps, 'a', new RemoteAiJob())).rejects.toThrow('aggiorna la regia')
+  })
+
   it('senza modello scaricato lo dice (si scarica dalla regia)', async () => {
     const { deps } = setup()
     deps.ai = { status: async () => ({ installed: false, modelName: 'Qwen', busy: false }), generate: async () => ({}) as never, cancel: async () => {}, preview: async () => ({}) as never, apply: async () => [] }

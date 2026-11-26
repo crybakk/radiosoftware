@@ -57,6 +57,8 @@ export type RemoteCommand =
   | { type: 'aiPreview'; plan: RemoteAiPlan }
   /** Crea gli eventi del piano (replace = toglie prima quelli creati dall'AI): risponde con RemoteEventsInfo. */
   | { type: 'aiApply'; plan: RemoteAiPlan; replace: boolean }
+  /** File .md per far preparare il piano a Claude in chat (risponde con RemoteAiExport); il piano si importa con aiPreview. */
+  | { type: 'aiExport'; description: string }
 
 /** Profilo di rotazione (uguale a quello della regia). */
 export interface RemoteRotationProfile {
@@ -138,6 +140,12 @@ export interface RemoteAiResult {
   counts: number[]
   music: number
   seconds: number
+}
+
+/** File per Claude preparato dalla regia (il pannello lo fa scaricare). */
+export interface RemoteAiExport {
+  name: string
+  text: string
 }
 
 /** Stato delle rotazioni con l'AI nella regia. */

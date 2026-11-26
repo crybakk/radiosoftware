@@ -567,6 +567,8 @@ function drawAi(info) {
   if (document.activeElement !== $('ai-text') && !$('ai-text').value) $('ai-text').value = info.description || ''
   const running = j.state === 'in_corso'
   $('ai-go').disabled = running || !info.installed || !studio
+  $('ai-export').disabled = running || !studio
+  $('ai-import').disabled = running || !studio
   $('ai-cancel').hidden = !(running || j.state === 'pronto' || j.state === 'errore')
   $('ai-badge').textContent = info.installed ? info.modelName : ''
   let st = ''
@@ -650,5 +652,62 @@ $('ai-apply').addEventListener('click', async () => {
     loadAi(true)
   } catch (e) {
     notice(evError(e))
+  }
+})
+
+// ---------- piano preparato da Claude in chat (file .md), come in regia ----------
+
+/** Il piano dalla risposta di Claude: JSON puro, oppure un testo con dentro un blocco ```json o un oggetto {…}. */
+function aiParsePlan(text) {
+  const tries = [text.trim()]
+  for (const m of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) tries.push(m[1].trim())
+  const a = text.indexOf('{')
+  const b = text.lastIndexOf('}')
+  if (a >= 0 && b > a) tries.push(text.slice(a, b + 1))
+  for (const t of tries) {
+    try {
+      const v = JSON.parse(t)
+      if (v && typeof v === 'object' && Array.isArray(v.slots)) {
+        // solo i campi delle fasce (la regia ricontrolla comunque tutto)
+        const keys = ['name', 'days', 'start', 'end', 'genres', 'yearFrom', 'yearTo', 'artistSeparationMinutes', 'jingleEvery', 'energyMin', 'energyMax']
+        return { slots: v.slots.slice(0, 30).map((s) => Object.fromEntries(keys.filter((k) => s && k in s).map((k) => [k, s[k]]))) }
+      }
+    } catch {
+      // prova il prossimo
+    }
+  }
+  throw new Error('Nel file non c\'è un piano valido: serve la risposta di Claude con il blocco JSON con "slots".')
+}
+
+$('ai-export').addEventListener('click', async () => {
+  try {
+    const r = await send({ type: 'aiExport', description: $('ai-text').value })
+    const url = URL.createObjectURL(new Blob([r.text], { type: 'text/markdown;charset=utf-8' }))
+    const a = Object.assign(document.createElement('a'), { href: url, download: r.name })
+    document.body.append(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    $('ai-status').textContent = `File scaricato: ${r.name}. Mandalo a Claude in chat; poi salva la sua risposta in un file e premi "Importa piano".`
+  } catch (e) {
+    $('ai-status').textContent = /comando sconosciuto/.test(e.message) ? 'Aggiorna la regia dello studio per esportare il file per Claude.' : evError(e)
+  }
+})
+$('ai-import').addEventListener('click', () => {
+  $('ai-import-file').value = ''
+  $('ai-import-file').click()
+})
+$('ai-import-file').addEventListener('change', async () => {
+  const f = $('ai-import-file').files[0]
+  if (!f) return
+  try {
+    if (f.size > 2_000_000) throw new Error('File troppo grande: serve solo la risposta di Claude.')
+    const plan = aiParsePlan(await f.text())
+    // un piano nuovo: si toglie quello di prima, così non resta il tempo della generazione
+    if (aiInfo && (aiInfo.job.state === 'pronto' || aiInfo.job.state === 'errore')) await send({ type: 'aiCancel' })
+    drawAi(await send({ type: 'aiPreview', plan }))
+    notice('Piano importato: controlla le fasce e crea gli eventi')
+  } catch (e) {
+    $('ai-status').textContent = evError(e)
   }
 })

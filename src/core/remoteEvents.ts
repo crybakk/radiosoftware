@@ -5,6 +5,7 @@
  * (programma lanciato sul PC di regia) da remoto si vedono soltanto, e da remoto non se ne creano.
  */
 import type {
+  RemoteAiExport,
   RemoteAiInfo,
   RemoteAiPlan,
   RemoteAiResult,
@@ -37,6 +38,7 @@ export type EventCommand = Extract<
       | 'aiCancel'
       | 'aiPreview'
       | 'aiApply'
+      | 'aiExport'
   }
 >
 
@@ -52,7 +54,8 @@ const EVENT_TYPES = new Set([
   'aiGenerate',
   'aiCancel',
   'aiPreview',
-  'aiApply'
+  'aiApply',
+  'aiExport'
 ])
 
 export function isEventCommand(cmd: RemoteCommand): cmd is EventCommand {
@@ -81,6 +84,8 @@ export interface RemoteAiDeps {
   preview(plan: RemoteAiPlan): Promise<RemoteAiResult>
   /** Crea gli eventi e restituisce l'elenco aggiornato (già ricaricato nel motore). */
   apply(plan: RemoteAiPlan, replace: boolean): Promise<ScheduledEvent[]>
+  /** Testo del file .md per Claude (salva anche il palinsesto); assente nelle regie vecchie. */
+  exportText?(description: string): Promise<string>
 }
 
 /**
@@ -97,7 +102,7 @@ export class RemoteAiJob {
     return { installed: st.installed, modelName: st.modelName, description: s.aiDescription, job: this.job }
   }
 
-  async run(cmd: Extract<EventCommand, { type: `ai${string}` }>, deps: RemoteEventsDeps, by: string): Promise<RemoteAiInfo | RemoteEventsInfo> {
+  async run(cmd: Extract<EventCommand, { type: `ai${string}` }>, deps: RemoteEventsDeps, by: string): Promise<RemoteAiInfo | RemoteEventsInfo | RemoteAiExport> {
     const ai = need(deps)
     switch (cmd.type) {
       case 'aiStatus':
@@ -133,6 +138,13 @@ export class RemoteAiJob {
         const list = await ai.apply(cmd.plan, cmd.replace !== false)
         this.job = { state: 'libero', by: null, startedAt: null, result: null, error: null }
         return eventsInfo(deps, list)
+      }
+      case 'aiExport': {
+        if (!ai.exportText) throw new Error('aggiorna la regia dello studio per esportare il file per Claude')
+        const text = await ai.exportText(str(cmd.description, 4000))
+        const now = deps.now?.() ?? new Date()
+        const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+        return { name: `rotazioni-per-claude_${day}.md`, text }
       }
     }
   }
@@ -301,13 +313,14 @@ async function findEvent(deps: RemoteEventsDeps, id: unknown): Promise<Scheduled
 }
 
 /** Esegue un comando su eventi e rotazioni e restituisce lo stato aggiornato. */
-export async function executeEventCommand(cmd: EventCommand, deps: RemoteEventsDeps, by = '', job: RemoteAiJob = remoteAi): Promise<RemoteEventsInfo | RemoteAiInfo> {
+export async function executeEventCommand(cmd: EventCommand, deps: RemoteEventsDeps, by = '', job: RemoteAiJob = remoteAi): Promise<RemoteEventsInfo | RemoteAiInfo | RemoteAiExport> {
   switch (cmd.type) {
     case 'aiStatus':
     case 'aiGenerate':
     case 'aiCancel':
     case 'aiPreview':
     case 'aiApply':
+    case 'aiExport':
       return job.run(cmd, deps, by)
     case 'events':
       return eventsInfo(deps)
