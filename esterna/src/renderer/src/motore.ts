@@ -24,6 +24,7 @@ interface Ingresso {
 }
 
 type AudioConUscita = HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }
+type ContestoConUscita = AudioContext & { setSinkId?: (id: string) => Promise<void> }
 
 /** Picco (0…1) di un analizzatore. */
 function picco(a: AnalyserNode, buf: Float32Array<ArrayBuffer>): number {
@@ -39,14 +40,17 @@ function picco(a: AnalyserNode, buf: Float32Array<ArrayBuffer>): number {
 const MIME = 'audio/webm;codecs=opus'
 
 export class Motore {
-  readonly ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' })
+  // frequenza della scheda audio (niente ricampionamento continuo) e buffer un po' più ampio di "interactive":
+  // su Windows con buffer minimi l'audio si interrompeva (anche quello mandato alla radio)
+  readonly ctx: ContestoConUscita = new AudioContext({ latencyHint: 'balanced' })
   private readonly bus = this.ctx.createGain()
   private readonly limitatore = this.ctx.createDynamicsCompressor()
   private readonly uscita = this.ctx.createGain()
   private readonly analizzatoreUscita = this.ctx.createAnalyser()
   private readonly dest = this.ctx.createMediaStreamDestination()
   private readonly cuffiaBus = this.ctx.createGain()
-  private readonly cuffiaDest = this.ctx.createMediaStreamDestination()
+  /** Solo se il sistema non sa scegliere l'uscita del mixer: cuffia tramite un elemento audio (meno stabile). */
+  private readonly cuffiaDiretta = typeof this.ctx.setSinkId === 'function'
   private readonly cuffia: AudioConUscita = new Audio()
   private readonly ritorno: AudioConUscita = new Audio()
   private readonly ingressi = new Map<string, Ingresso>()
@@ -90,9 +94,15 @@ export class Motore {
     this.uscita.connect(this.analizzatoreUscita)
     this.uscita.connect(this.dest)
     this.analizzatoreUscita.fftSize = 2048
-    this.cuffiaBus.connect(this.cuffiaDest)
-    this.cuffia.srcObject = this.cuffiaDest.stream
-    void this.cuffia.play().catch(() => {})
+    if (this.cuffiaDiretta) {
+      // la cuffia esce direttamente dal mixer, senza passare da un flusso intermedio
+      this.cuffiaBus.connect(this.ctx.destination)
+    } else {
+      const d = this.ctx.createMediaStreamDestination()
+      this.cuffiaBus.connect(d)
+      this.cuffia.srcObject = d.stream
+      void this.cuffia.play().catch(() => {})
+    }
     this.ritorno.preload = 'none'
   }
 
@@ -161,8 +171,7 @@ export class Motore {
               echoCancellation: false,
               noiseSuppression: false,
               autoGainControl: false,
-              channelCount: { ideal: 2 },
-              sampleRate: 48000
+              channelCount: { ideal: 2 }
             }
           })
           i = this.crea(c.id, chiave, stream, c.parte)
@@ -246,8 +255,13 @@ export class Motore {
     }
   }
 
+  private cuffiaId: string | null = null
+
   private async setCuffia(id: string): Promise<void> {
-    for (const a of [this.cuffia, this.ritorno]) {
+    if (id === this.cuffiaId) return
+    this.cuffiaId = id
+    if (this.cuffiaDiretta) await this.ctx.setSinkId!(id).catch(() => {})
+    for (const a of this.cuffiaDiretta ? [this.ritorno] : [this.cuffia, this.ritorno]) {
       if (a.setSinkId) await a.setSinkId(id).catch(() => {})
     }
   }

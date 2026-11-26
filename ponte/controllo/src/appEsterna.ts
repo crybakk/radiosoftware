@@ -104,7 +104,9 @@ export function ffmpegArgs(url: string): string[] {
     // l'Opus del browser passa così com'è, senza ricodifica
     '-map', '0:a:0', '-c:a', 'copy',
     // metodo SOURCE delle vecchie versioni di Icecast: è quello che l'ingresso di Liquidsoap accetta da sempre
-    '-content_type', 'audio/ogg', '-legacy_icecast', '1', '-f', 'ogg', url
+    '-content_type', 'audio/ogg', '-legacy_icecast', '1',
+    // pagine Ogg corte e inviate subito: con quelle da 1 secondo (predefinite) l'audio arrivava a scatti
+    '-flush_packets', '1', '-f', 'ogg', '-page_duration', '100000', url
   ]
 }
 
