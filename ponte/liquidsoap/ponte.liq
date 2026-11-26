@@ -134,7 +134,7 @@ esterna = titoli_esterna
 # chi è fuori prova i livelli e va in onda solo premendo IN ONDA (il controllo accende app_in_onda).
 # In onda ha la precedenza sulla regia, con la stessa dissolvenza delle altre esterne.
 app_in_onda = ref(false)
-app_ingresso =
+app_harbor =
   if
     app_password != ""
   then
@@ -152,6 +152,27 @@ app_ingresso =
     log.important("APP_ESTERNA_PASSWORD_INTERNA vuota: ingresso dell'app Radio Esterna disattivato")
     source.fail()
   end
+# Dal 26/11/2026 l'app manda l'audio in WebRTC (UDP, più robusto sul 4G): il controllo lo riceve, lo ripulisce
+# (buffer automatico, pezzi persi ricostruiti) e lo passa qui in RTP sulla porta 41050. Se la rete di chi è
+# fuori blocca l'UDP, l'app torna da sola all'HTTPS (ingresso qui sopra). Vale quello che arriva in WebRTC.
+app_rtp =
+  if
+    app_password != ""
+  then
+    s =
+      input.ffmpeg(
+        id="app_rtp",
+        self_sync=true,
+        max_buffer=0.5,
+        string_args=[("protocol_whitelist", "file,udp,rtp")],
+        format="sdp",
+        "/cfg/app.sdp"
+      )
+    buffer(id="buffer_app_rtp", buffer=0.06, max=0.5, s)
+  else
+    source.fail()
+  end
+app_ingresso = fallback(id="app_ingresso", track_sensitive=false, [app_rtp, app_harbor])
 # titolo del programma scritto nell'app (e brani riconosciuti), inviato dal controllo
 app_titoli = insert_metadata(app_ingresso)
 app_esterna = switch(id="app_in_onda", track_sensitive=false, [({app_in_onda()}, app_titoli)])
@@ -218,6 +239,35 @@ thread.run(
     end
 )
 
+# Ritorno in cuffia per l'app Radio Esterna collegata in WebRTC (26/11/2026): quello che manda la regia più le
+# voci in onda dal pannello (conduttore e ospiti), ma non l'app stessa (mix-minus). Va al controllo in RTP
+# sulla porta 41060, il controllo lo rimanda all'app con mezzo secondo di ritardo o meno.
+def ritorno_app(voci_in_onda) =
+  if
+    app_password != ""
+  then
+    ignore(
+      output.url(
+        id="ritorno_app",
+        fallible=true,
+        url="rtp://#{ritorno_host}:41060?pkt_size=1200",
+        %ffmpeg(
+          format = "rtp",
+          %audio(
+            codec = "libopus",
+            samplerate = 48000,
+            channels = 2,
+            b = "128k",
+            fec = 1,
+            packet_loss = 10
+          )
+        ),
+        mksafe(add(normalize=false, list.cons((studio:source), voci_in_onda)))
+      )
+    )
+  end
+end
+
 def con_voce(programma) =
   musica = amplify({g_musica()}, programma)
   ingressi =
@@ -252,7 +302,15 @@ def con_voce(programma) =
             url="rtp://#{ritorno_host}:#{v.porta_ritorno}?pkt_size=1200",
             %ffmpeg(
               format = "rtp",
-              %audio(codec = "libopus", samplerate = 48000, channels = 2, b = "96k")
+              # correzione degli errori (FEC): sul 4G un pacchetto perso si ricostruisce da quello dopo
+              %audio(
+                codec = "libopus",
+                samplerate = 48000,
+                channels = 2,
+                b = "96k",
+                fec = 1,
+                packet_loss = 10
+              )
             ),
             mksafe(add(normalize=false, list.cons(musica, altre)))
           )
@@ -260,6 +318,8 @@ def con_voce(programma) =
       end,
     voci
   )
+
+  ritorno_app(list.map(fun (x) -> (snd(x):source), ingressi))
 
   # le voci si aggiungono solo quando c'è un programma (regia, esterna o autonoma): senza,
   # va in onda la riserva del ponte
@@ -277,6 +337,7 @@ programma =
     con_voce(programma)
   else
     log.important("MICROFONO_REMOTO=no: microfono dal pannello disattivato")
+    ritorno_app([])
     programma
   end
 

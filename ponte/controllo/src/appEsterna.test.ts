@@ -197,3 +197,117 @@ describe('app Radio Esterna sul server', () => {
     expect(t.app.validAscolto(ascolto)).toBe(false)
   })
 })
+
+describe('app Radio Esterna in WebRTC (26/11/2026)', () => {
+  function rtcSetup() {
+    let now = 1_000_000
+    const sessions: { sdp: string; h: { onVoice(p: Buffer): void; onEnd(): void }; returned: Buffer[]; closed: boolean }[] = []
+    const toLq: Buffer[] = []
+    const audio: boolean[] = []
+    const t = setup({
+      now: () => now,
+      rtc: {
+        factory: async (sdp, h) => {
+          const s = { sdp, h, returned: [] as Buffer[], closed: false }
+          sessions.push(s)
+          return { answer: `risposta:${sdp}`, sendReturn: (p: Buffer) => s.returned.push(p), close: () => (s.closed = true) }
+        },
+        codec: null,
+        sendAudio: (p) => toLq.push(p),
+        timer: false
+      },
+      onAudio: (on) => audio.push(on)
+    })
+    return { ...t, sessions, toLq, audio, avanza: (ms: number) => (now += ms) }
+  }
+  const pkt = (seq: number) => {
+    const b = Buffer.alloc(20)
+    b[0] = 0x80
+    b[1] = 111
+    b.writeUInt16BE(seq, 2)
+    b.writeUInt32BE(seq * 960, 4)
+    b.writeUInt32BE(99, 8)
+    return b
+  }
+
+  it('offerta → risposta; la voce va a Liquidsoap, il ritorno torna all\'app, la linea si misura', async () => {
+    const t = rtcSetup()
+    const peer = new FakePeer()
+    const h = t.app.attach(peer, 'Mario')
+    h.message(Buffer.from(JSON.stringify({ t: 'rtc-offerta', sdp: 'offerta' })), false)
+    await flush()
+    expect(peer.last('rtc-risposta')).toEqual({ t: 'rtc-risposta', sdp: 'risposta:offerta' })
+    expect(t.status()).toMatchObject({ via: 'webrtc' })
+    const s = t.sessions[0]
+    // 3 secondi di audio regolare
+    for (let i = 0; i < 150; i++) {
+      t.avanza(20)
+      s.h.onVoice(pkt(i))
+      if (i % 50 === 49) (t.app as any).ricevitore.tick()
+    }
+    expect(t.toLq.length).toBe(150)
+    expect(t.status()).toMatchObject({ audio: true, linea: { livello: 'buona' } })
+    expect(t.audio).toEqual([true])
+    t.app.ritornoRtc(Buffer.from([1, 2, 3]))
+    expect(s.returned).toHaveLength(1)
+    // il WebRTC cade: torna l'HTTPS, l'audio non c'è più
+    s.h.onEnd()
+    expect(s.closed).toBe(true)
+    expect(t.status()).toMatchObject({ via: 'https', audio: false })
+    expect(t.audio).toEqual([true, false])
+  })
+
+  it('con WebRTC attivo i pezzi HTTPS si ignorano e il flusso HTTPS si chiude', async () => {
+    const t = rtcSetup()
+    const peer = new FakePeer()
+    const h = t.app.attach(peer, 'Mario')
+    h.message(EBML, true)
+    expect(t.procs).toHaveLength(1)
+    h.message(Buffer.from(JSON.stringify({ t: 'rtc-offerta', sdp: 'o' })), false)
+    await flush()
+    for (let i = 0; i < 120; i++) {
+      t.avanza(20)
+      t.sessions[0].h.onVoice(pkt(i))
+      if (i % 50 === 49) (t.app as any).ricevitore.tick()
+    }
+    expect(t.procs[0].p.ended).toBe(true)
+    h.message(EBML, true)
+    expect(t.procs).toHaveLength(1)
+  })
+
+  it('server senza WebRTC: l\'app riceve un errore e resta in HTTPS', async () => {
+    const t = setup()
+    const peer = new FakePeer()
+    const h = t.app.attach(peer, 'Mario')
+    h.message(Buffer.from(JSON.stringify({ t: 'rtc-offerta', sdp: 'o' })), false)
+    await flush()
+    expect(peer.last('rtc-errore')).toBeTruthy()
+    expect(t.status()).toMatchObject({ via: 'https' })
+  })
+
+  it('app chiusa: si chiude anche il WebRTC', async () => {
+    const t = rtcSetup()
+    const peer = new FakePeer()
+    const h = t.app.attach(peer, 'Mario')
+    h.message(Buffer.from(JSON.stringify({ t: 'rtc-offerta', sdp: 'o' })), false)
+    await flush()
+    h.close()
+    expect(t.sessions[0].closed).toBe(true)
+  })
+})
+
+describe('linea in HTTPS', async () => {
+  const { LineaArrivi } = await import('./ricevitore.ts')
+  it('pezzi regolari = buona; pause lunghe = debole o pessima; niente = assente', () => {
+    const l = new LineaArrivi()
+    for (let t = 0; t <= 5000; t += 250) l.push(t)
+    expect(l.stato(5000).livello).toBe('buona')
+    const m = new LineaArrivi()
+    for (let t = 0; t <= 6000; t += 2000) m.push(t)
+    expect(m.stato(6000).livello).toBe('pessima')
+    const d = new LineaArrivi()
+    for (let t = 0; t <= 5000; t += 250) if (t < 2500 || t > 3000) d.push(t)
+    expect(d.stato(5000)).toMatchObject({ livello: 'debole', frase: expect.stringContaining('intero') })
+    expect(d.stato(8000).livello).toBe('assente')
+  })
+})

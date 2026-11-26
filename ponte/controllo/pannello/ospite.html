@@ -32,6 +32,7 @@
 
         <div id="g-in" hidden>
           <div id="g-air" class="guest-state">Collegato · FUORI ONDA</div>
+          <div id="g-linea" class="linea-box" hidden></div>
           <p class="hint" id="g-in-hint">In cuffia senti la radio e il conduttore. Quando sei in onda la scritta diventa rossa.</p>
           <div class="meter"><div id="g-level2" class="meter-fill"></div></div>
           <label class="vol">Volume <input type="range" id="g-vol" min="0" max="1" step="0.05" value="0.9" /></label>
@@ -47,6 +48,7 @@
         <audio id="g-ret" autoplay></audio>
       </div>
     </section>
+    <script src="microfoni.js"></script>
     <script src="ospite.js"></script>
   </body>
 </html>

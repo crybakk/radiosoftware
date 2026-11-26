@@ -208,7 +208,9 @@ e, nell'ultima che contiene l'app, scarica:
 Al primo avvio chiede la **chiave di attivazione**, la stessa della regia e del server. Poi entri con l'**indirizzo
 della radio** (lo stesso del pannello, senza `https://`), il tuo **nome** e la **password** del pannello. Serve il
 ruolo **conduttore** o **amministratore**. L'app resta collegata anche alle aperture successive; **Esci** è in
-**Impostazioni**. Non serve aprire porte sul router: l'audio passa in HTTPS come il pannello.
+**Impostazioni**. Sul router del server servono le stesse porte del microfono dal pannello (UDP 40000-40049): l'app
+usa quel collegamento veloce, che sul 4G regge meglio. Dove la rete lo blocca (alcuni wifi di hotel o aziende)
+l'app passa da sola all'HTTPS, come il pannello: non devi fare niente.
 
 **Andare in onda**, scheda **Diretta**:
 
@@ -223,6 +225,14 @@ ruolo **conduttore** o **amministratore**. L'app resta collegata anche alle aper
 4. **FUORI ONDA** (chiede conferma): torna la regia, o la musica di riserva se la regia è spenta. L'app resta
    collegata, così puoi rientrare quando vuoi.
 
+**Qualità della linea:** sotto il tasto IN ONDA un pallino dice com'è la tua linea, misurata dal server:
+🟢 **Linea buona**; 🟡 **Linea debole** (l'audio arriva ancora intero, o con qualche piccolo salto); 🔴 **Linea
+molto debole: l'audio salta**; ⚫ **L'audio non arriva**. Lo stesso pallino lo vedono lo studio (riquadro
+dell'esterna in regia) e il pannello. Non c'è niente da regolare: l'app e il server si adattano da soli (il
+server tiene un po' più di audio da parte quando la linea balla e ricostruisce i pezzi persi). Se resta giallo o
+rosso, avvicinati a una finestra, spostati dove il telefono ha più tacche o abbassa la **qualità dell'invio**.
+Passando sopra il pallino con il mouse si vedono i numeri (pacchetti persi, ritardo).
+
 Se internet cade, l'app si ricollega da sola: se eri in onda e torna entro 10 minuti rientra in onda da sola;
 intanto va la regia o la musica di riserva. Se l'app si chiude mentre sei in onda, dopo un minuto il server ti
 mette fuori onda.
@@ -235,7 +245,9 @@ dell'invio** (160 kbit/s consigliata, circa 75 MB all'ora; più bassa se la rete
 sul Mac richiede macOS 13 o più nuovo.
 
 **Cuffia:** scegli l'uscita e il volume dei tuoi microfoni in cuffia. **Ritorno dello studio** fa sentire in
-cuffia la regia (talkback), quando la regia è collegata. Attenzione: se la cuffia è anche l'uscita principale del
+cuffia la regia (talkback) e chi parla dal pannello (conduttore e ospiti), senza la tua voce. Arriva quasi
+subito (mezzo secondo o meno); solo se la rete blocca il collegamento veloce arriva con un paio di secondi di
+ritardo. Attenzione: se la cuffia è anche l'uscita principale del
 computer e accendi l'audio del computer, in onda va anche quello che senti in cuffia, ritorno compreso. Usa per la
 cuffia un'uscita diversa (per esempio quella della scheda audio).
 
@@ -1046,7 +1058,7 @@ automatico).
     - TCP 8000 (ascolto senza https, facoltativo)
     - UDP 9000 (audio dalla regia)
     - TCP 9010 (dirette esterne)
-    - UDP 40000-40049 (microfono dal pannello e ospiti)
+    - UDP 40000-40049 (microfono dal pannello, ospiti e app Radio Esterna)
     - UDP 9020 (video da OBS, solo se lo usi da fuori casa)
 
    Appena le porte 80 e 443 arrivano alla VM, il certificato si attiva da solo.
@@ -1312,6 +1324,7 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | "Permesso del microfono negato dal browser" | nelle impostazioni del sito nel browser consenti il microfono, poi ricarica la pagina |
 | L'ospite dice "Link non valido o scaduto" | il link ha più di 24 ore o è stato revocato: creane uno nuovo |
 | L'ospite entra ma non si sente | porte UDP 40000-40049 non inoltrate, oppure la rete dell'ospite blocca l'audio: prova con i dati del telefono |
+| Pallino giallo o rosso accanto al microfono, a un ospite o all'esterna | la linea di chi parla è debole: il server si adatta da solo; se resta rosso, chi parla si sposta dove la rete prende meglio |
 | Diretta video "in attesa del video da OBS" | OBS non trasmette, oppure non raggiunge la porta UDP 9020 |
 | "OBS manda 1920x1080" | in OBS, Impostazioni → Video: risoluzione di uscita 1280×720 |
 | "manca la chiave di YouTube/Facebook" | un amministratore deve inserirla nelle impostazioni delle dirette video |
@@ -1373,3 +1386,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 24/11/2026 | App **Radio Esterna** per Windows e Mac: installazione, accesso con l'utente del pannello, fuori onda e IN ONDA, titolo del programma, mixer con microfoni e audio del computer, cuffia e ritorno, registrazione della puntata, scheda Regia; riquadro dell'esterna in regia e nel pannello |
 | 24/11/2026 | Scheda Programmi in regia: crea, modifica ed elimina i programmi del server e la loro copertina |
 | 25/11/2026 | Mix DJ più preciso: brani agganciati battuta per battuta e posizione vera del brano in onda; nuova analisi per il Mix DJ in sottofondo |
+| 26/11/2026 | Dirette esterne più stabili: Radio Esterna con collegamento veloce (WebRTC) e riserva HTTPS automatica, ritorno in cuffia quasi senza ritardo, pallino della qualità della linea in app, regia e pannello (anche microfono e ospiti) |

@@ -135,6 +135,7 @@ app.whenReady().then(async () => {
   let eraCollegato = false
   const collegamento = new Collegamento({
     riavviaInvio: () => manda('riavvia-invio'),
+    onRtc: (m) => manda('rtc', m),
     onStato: (s) => {
       manda('stato', s)
       // appena collegati si rilegge l'elenco dei programmi (per le puntate)
@@ -370,6 +371,13 @@ app.whenReady().then(async () => {
     const reg = registrazioni.status().corrente
     if (on && reg && reg.startMark === null) registrazioni.registra()
     if (!on) ultimoFuoriOnda = Date.now()
+  })
+  ipcMain.on('rtc-offerta', (e, sdp: string) => {
+    if (!dallApp(e) || typeof sdp !== 'string' || sdp.length > 20_000) return
+    collegamento.rtcOfferta(sdp)
+  })
+  ipcMain.on('rtc-chiudi', (e) => {
+    if (dallApp(e)) collegamento.rtcChiudi()
   })
   ipcMain.on('audio', (e, pezzo: ArrayBuffer, inizio: boolean) => {
     if (!dallApp(e)) return

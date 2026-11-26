@@ -122,4 +122,31 @@ async function elencoIngressi(chiediPermesso) {
     .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Ingresso ${i + 1}` }))
 }
 
-if (typeof module !== 'undefined') module.exports = { pianoCattura, livelloMic, CANALI_MIC }
+/**
+ * Indicatore della linea (26/11/2026, "a prova di anziano"): pallino colorato e frase semplice; i numeri solo nei
+ * dettagli (al passaggio del mouse). linea = { livello, frase, perdita, buchi, ritardo } dal ponte, o null.
+ */
+function testoLinea(linea, via) {
+  if (!linea) return null
+  const pallino = { buona: '🟢', debole: '🟡', pessima: '🔴', assente: '⚫' }[linea.livello] || '⚪'
+  const dettagli = []
+  if (linea.perdita) dettagli.push(`pacchetti persi o in ritardo ${linea.perdita}%`)
+  if (linea.buchi) dettagli.push(`audio ricostruito ${linea.buchi}%`)
+  if (linea.ritardo) dettagli.push(`ritardo della linea ${linea.ritardo} ms`)
+  if (via === 'webrtc') dettagli.push('collegamento WebRTC (UDP)')
+  if (via === 'https') dettagli.push('collegamento di riserva (HTTPS)')
+  return { cls: `linea ${linea.livello}`, testo: `${pallino} ${linea.frase}`, dettagli: dettagli.length ? dettagli.join(' · ') : 'nessun problema' }
+}
+
+/** Elemento <span> dell'indicatore (null = niente da mostrare). */
+function lineaEl(linea, via) {
+  const t = testoLinea(linea, via)
+  if (!t) return null
+  const s = document.createElement('span')
+  s.className = t.cls
+  s.textContent = t.testo
+  s.title = `Dettagli: ${t.dettagli}`
+  return s
+}
+
+if (typeof module !== 'undefined') module.exports = { pianoCattura, livelloMic, CANALI_MIC, testoLinea }

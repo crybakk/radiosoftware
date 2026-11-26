@@ -1,11 +1,13 @@
 /**
  * Mixer di Radio Esterna (Web Audio): fino a 4 microfoni o canali di schede audio, più l'audio del computer.
  * Ogni ingresso ha volume, muto e indicatore; dopo la somma c'è un limitatore, così non distorce.
- * L'uscita va al server (MediaRecorder WebM/Opus a pezzi di un quarto di secondo) e, quando si registra,
+ * L'uscita va al server in WebRTC (rtc.ts, dal 26/11/2026) o, se l'UDP non passa, in HTTPS (MediaRecorder
+ * WebM/Opus a pezzi di un quarto di secondo) e, quando si registra,
  * al registratore del computer (stesso audio, qualità più alta). La cuffia ha un mix a parte, più il ritorno
- * dello studio (un flusso MP3 dal server su un altro lettore, sulla stessa uscita).
+ * dello studio (in WebRTC, o un flusso MP3 dal server se si è in HTTPS, su un altro lettore, sulla stessa uscita).
  */
 import { guadagno } from '../../shared/mixer'
+import { InvioRtc } from './rtc'
 import type { Canale, ImpostazioniMixer } from '../../shared/api'
 
 const api = window.esterna
@@ -58,6 +60,19 @@ export class Motore {
   private registra: MediaRecorder | null = null
   private ritornoUrl: string | null = null
   private ritornoAcceso = false
+  /** Ritorno dello studio in WebRTC (più veloce dell'MP3). */
+  private ritornoRtc: MediaStream | null = null
+  /** Invio in HTTPS acceso (spento quando il WebRTC è collegato). */
+  private httpsAcceso = true
+  readonly rtc = new InvioRtc({
+    rtcOfferta: (sdp) => api.rtcOfferta(sdp),
+    rtcChiudi: () => api.rtcChiudi(),
+    stream: () => this.dest.stream,
+    https: (on) => this.inviaHttps(on),
+    ritorno: (st) => this.setRitornoRtc(st),
+    kbps: () => this.kbps,
+    onCambio: () => this.onCambio()
+  })
   /** Errori degli ingressi, per la finestra. */
   errori = new Map<string, string>()
   onCambio: () => void = () => {}
@@ -176,6 +191,7 @@ export class Motore {
     if (m.kbps !== this.kbps) {
       this.kbps = m.kbps
       this.riavviaInvio()
+      this.rtc.aggiornaKbps()
     }
     this.onCambio()
   }
@@ -244,7 +260,26 @@ export class Motore {
     this.aggiornaRitorno(true)
   }
 
+  /** Ritorno in WebRTC arrivato (o finito): prende il posto dell'MP3. */
+  setRitornoRtc(st: MediaStream | null): void {
+    if (st === this.ritornoRtc) return
+    this.ritornoRtc = st
+    this.aggiornaRitorno(true)
+  }
+
   private aggiornaRitorno(forza = false): void {
+    if (this.ritornoAcceso && this.ritornoRtc) {
+      if (forza || this.ritorno.srcObject !== this.ritornoRtc || this.ritorno.paused) {
+        this.ritorno.removeAttribute('src')
+        this.ritorno.srcObject = this.ritornoRtc
+        void this.ritorno.play().catch(() => {})
+      }
+      return
+    }
+    if (this.ritorno.srcObject) {
+      this.ritorno.pause()
+      this.ritorno.srcObject = null
+    }
     const vuole = this.ritornoAcceso && !!this.ritornoUrl
     if (!vuole) {
       if (!this.ritorno.paused || this.ritorno.src) {
@@ -262,11 +297,20 @@ export class Motore {
 
   /** Il ritorno si è fermato (rete, regia spenta): si riprova ogni tanto. */
   controllaRitorno(): void {
+    if (this.ritornoRtc) {
+      if (this.ritornoAcceso && this.ritorno.paused) this.aggiornaRitorno(true)
+      return
+    }
     if (this.ritornoAcceso && this.ritornoUrl && (this.ritorno.paused || this.ritorno.error || this.ritorno.ended)) this.aggiornaRitorno(true)
   }
 
   ritornoInAscolto(): boolean {
     return !this.ritorno.paused && !this.ritorno.error
+  }
+
+  /** Il ritorno arriva in WebRTC (mezzo secondo di ritardo o meno). */
+  ritornoVeloce(): boolean {
+    return !!this.ritornoRtc
   }
 
   // ---------- invio al server ----------
@@ -275,8 +319,23 @@ export class Motore {
     this.riavviaInvio()
   }
 
+  /** HTTPS acceso (riserva) o spento (WebRTC collegato). */
+  inviaHttps(on: boolean): void {
+    this.httpsAcceso = on
+    if (on) {
+      if (!this.invio) this.riavviaInvio()
+      return
+    }
+    const vecchio = this.invio
+    this.invio = null
+    this.generazione++
+    if (vecchio && vecchio.state !== 'inactive') vecchio.stop()
+  }
+
   /** Ricomincia il flusso verso il server (nuova connessione o qualità cambiata): il primo pezzo ha l'intestazione. */
   riavviaInvio(): void {
+    // in WebRTC l'HTTPS resta spento
+    if (!this.httpsAcceso) return
     const vecchio = this.invio
     this.invio = null
     this.generazione++

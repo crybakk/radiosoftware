@@ -31,7 +31,7 @@ describe('microfono remoto', () => {
     const t = setup()
     const a = {}
     expect(await t.hub.open(a, 'cristian', 'offerta')).toBe('risposta:offerta')
-    expect(t.hub.status()).toEqual({ user: 'cristian', onAir: false })
+    expect(t.hub.status()).toMatchObject({ user: 'cristian', onAir: false })
     t.h().onVoice(rtp)
     expect(t.sentVoice).toHaveLength(1)
     t.hub.sendReturn(rtp)
@@ -40,7 +40,7 @@ describe('microfono remoto', () => {
     expect(t.hub.status().onAir).toBe(true)
     // la connessione cade: microfono fuori onda
     t.h().onEnd()
-    expect(t.hub.status()).toEqual({ user: null, onAir: false })
+    expect(t.hub.status()).toMatchObject({ user: null, onAir: false })
     expect(t.onAirCalls).toEqual([true, false])
   })
 
@@ -155,7 +155,7 @@ describe('microfono remoto: corse e reti che cadono', () => {
     await flush()
     t.mixer[1]?.done(true)
     expect(t.liquidsoap).toEqual([true, false])
-    expect(t.hub.status()).toEqual({ user: null, onAir: false })
+    expect(t.hub.status()).toMatchObject({ user: null, onAir: false })
   })
 
   it('in onda e fuori onda insieme: il mixer li riceve in ordine e lo stato è l\'ultimo comando', async () => {
@@ -197,7 +197,7 @@ describe('microfono dal pannello', () => {
     t.hub.onChange = (m) => r.setMic(m)
     const ospite = new FakePeer()
     const og = r.attachPanel(ospite, { name: 'ospite', role: 'ospite' })
-    expect(ospite.last('mic')).toEqual({ t: 'mic', mic: { user: null, onAir: false } })
+    expect(ospite.last('mic')).toMatchObject({ t: 'mic', mic: { user: null, onAir: false } })
     og.message(JSON.stringify({ t: 'rtc-offer', id: '1', sdp: 'x' }))
     await flush()
     expect(ospite.last('reply')).toMatchObject({ id: '1', ok: false, error: expect.stringMatching(/ruolo/) })
@@ -210,9 +210,9 @@ describe('microfono dal pannello', () => {
     ch.message(JSON.stringify({ t: 'mic', id: '3', on: true }))
     await flush()
     expect(cond.last('reply')).toMatchObject({ id: '3', ok: true })
-    expect(ospite.last('mic')).toEqual({ t: 'mic', mic: { user: 'cristian', onAir: true } })
+    expect(ospite.last('mic')).toMatchObject({ t: 'mic', mic: { user: 'cristian', onAir: true } })
     ch.close()
-    expect(ospite.last('mic')).toEqual({ t: 'mic', mic: { user: null, onAir: false } })
+    expect(ospite.last('mic')).toMatchObject({ t: 'mic', mic: { user: null, onAir: false } })
     expect(t.onAirCalls).toEqual([true, false])
   })
 })

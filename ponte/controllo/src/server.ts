@@ -63,7 +63,8 @@ import { Relay } from './relay.ts'
 import { eventSections } from './eventiBot.ts'
 import { can, ROLES, sameSecret, Users, type PublicUser, type Role } from './users.ts'
 import { INVITE_DAYS, UserInvites } from './invitiUtenti.ts'
-import { VoiceHub, voiceSockets, weriftFactory } from './voce.ts'
+import { OPUS_APP, VoiceHub, voiceSockets, weriftFactory } from './voce.ts'
+import { loadOpus } from './opus.ts'
 import { Guests } from './ospiti.ts'
 import { AUDIO_EXT, Library } from './libreria.ts'
 import { AutonomousPlayer } from './autonoma.ts'
@@ -194,21 +195,28 @@ const SLOT_NAMES = ['voce', 'ospite1', 'ospite2', 'ospite3']
 const VOICE_HOST = env('VOCE_LIQUIDSOAP_HOST', 'liquidsoap')
 const setVoiceOnAir = (slot: string, on: boolean): Promise<boolean> => lqPost('/voce', { slot, on })
 
+// WebRTC (microfono, ospiti, app Radio Esterna) e libopus per il ricevitore automatico: buffer che si regola
+// da solo, correzione degli errori (FEC), ricostruzione dei pezzi persi
+const rtcOptions = {
+  portRange: portRange(env('WEBRTC_PORTE', '40000-40049')),
+  stun: env('WEBRTC_STUN', 'stun:stun.l.google.com:19302'),
+  addresses: env('WEBRTC_INDIRIZZI')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+}
+const codec = loadOpus()
+console.log(codec ? '[microfono] ricevitore automatico attivo (libopus)' : '[microfono] libopus non trovata: voci passate come arrivano')
+
 if (env('MICROFONO_REMOTO', 'si') !== 'no') {
-  const factory = weriftFactory({
-    portRange: portRange(env('WEBRTC_PORTE', '40000-40049')),
-    stun: env('WEBRTC_STUN', 'stun:stun.l.google.com:19302'),
-    addresses: env('WEBRTC_INDIRIZZI')
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean)
-  })
+  const factory = weriftFactory(rtcOptions)
   const slots = SLOT_NAMES.map((name, n) => {
     const sockets = voiceSockets({ host: VOICE_HOST, port: 41030 + 2 * n }, 41040 + 2 * n, (pkt) => hub.sendReturn(pkt))
     const hub: VoiceHub = new VoiceHub({
       factory,
       sendVoice: (pkt) => sockets.sendVoice(pkt),
-      setOnAir: (on) => setVoiceOnAir(name, on)
+      setOnAir: (on) => setVoiceOnAir(name, on),
+      codec
     })
     return hub
   })
@@ -351,8 +359,18 @@ const appEsterna = new AppEsterna({
     esternaTitolo = titolo
     setNowPlaying({ artist: '', title: titolo, duration: 0, at: Date.now(), source: 'esterna' })
   },
-  onChange: (st) => relay.setEsterna(st)
+  onChange: (st) => relay.setEsterna(st),
+  // audio dell'app in WebRTC: a Liquidsoap sulla 41050, ritorno in cuffia da Liquidsoap sulla 41060 (rete interna)
+  rtc: APP_PASSWORD
+    ? {
+        factory: weriftFactory({ ...rtcOptions, opus: OPUS_APP }),
+        codec,
+        sendAudio: (pkt) => appSockets?.sendVoice(pkt)
+      }
+    : undefined,
+  onAudio: (on) => collegamentoEsterna.collegata(on)
 })
+const appSockets = APP_PASSWORD ? voiceSockets({ host: VOICE_HOST, port: 41050 }, 41060, (pkt) => appEsterna.ritornoRtc(pkt)) : null
 
 
 // ---------- titolo parlato: cosa va come titolo quando non suona nessun brano (vedi titoloParlato.ts) ----------
@@ -1968,7 +1986,7 @@ function onLqEvent(kind: string, detail: string): void {
   }
   // audio dell'app Radio Esterna collegato o caduto (non vuol dire in onda: lo decide chi è fuori)
   if (kind === 'app_collegata' || kind === 'app_scollegata') {
-    collegamentoEsterna.collegata(kind === 'app_collegata')
+    // le statistiche del collegamento (collegamentoEsterna) le aggiorna appEsterna (onAudio): HTTPS o WebRTC
     appEsterna.setAudio(kind === 'app_collegata')
     return
   }

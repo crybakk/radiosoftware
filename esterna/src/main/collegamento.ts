@@ -5,6 +5,9 @@
  *   che l'app conserva cifrato e usa per tutto il resto (anche per aprire il pannello nella scheda Regia).
  * - WebSocket /ws/esterna in HTTPS (porta 443 o quella dell'indirizzo): comandi in JSON e audio in binario.
  * - Se la rete cade si ricollega da sola; se si era in onda, al ritorno resta in onda (entro 10 minuti).
+ * - Dal 26/11/2026 l'audio prova prima il WebRTC (UDP, più robusto sul 4G): la finestra fa l'offerta e qui si
+ *   passa al server sullo stesso WebSocket (rtc-offerta → rtc-risposta). Finché il WebRTC non è collegato, o se
+ *   non passa, l'audio va in HTTPS come prima.
  */
 import WebSocket from 'ws'
 import type { EsternaStatus, StatoServer } from '../shared/api'
@@ -58,9 +61,14 @@ type WsLike = {
 }
 export type WsFactory = (url: string, headers: Record<string, string>) => WsLike
 
+/** Messaggi WebRTC verso la finestra: connessione nuova (si prova il WebRTC), risposta del server, errore. */
+export type MessaggioRtc = { t: 'nuova' } | { t: 'risposta'; sdp: string } | { t: 'errore'; messaggio: string }
+
 export interface CollegamentoDeps {
   /** Il flusso audio va ricominciato (nuova connessione): l'app rimanda l'intestazione WebM. */
   riavviaInvio: () => void
+  /** WebRTC: connessione nuova o risposta del server. */
+  onRtc?: (m: MessaggioRtc) => void
   onStato: (s: StatoServer) => void
   ws?: WsFactory
   now?: () => number
@@ -183,6 +191,7 @@ export class Collegamento {
       this.manda({ t: 'hello', versione: this.d.versione, inOnda: rientra, programId: this.meta.programId, testo: this.meta.testo })
       this.cambia({ collegamento: 'collegato', messaggio: 'Collegato al server', caduto: false })
       this.d.riavviaInvio()
+      this.d.onRtc?.({ t: 'nuova' })
       if (this.ping) clearInterval(this.ping)
       this.ping = setInterval(() => {
         if (this.ws !== ws) return
@@ -217,6 +226,10 @@ export class Collegamento {
         this.cambia({ esterna: e, regia: m.regia === true })
       } else if (m.t === 'errore') {
         this.cambia({ messaggio: String(m.messaggio ?? 'errore del server') })
+      } else if (m.t === 'rtc-risposta' && typeof m.sdp === 'string') {
+        this.d.onRtc?.({ t: 'risposta', sdp: m.sdp })
+      } else if (m.t === 'rtc-errore') {
+        this.d.onRtc?.({ t: 'errore', messaggio: String(m.messaggio ?? 'WebRTC non disponibile') })
       }
     })
     ws.on('close', (code, reason) => {
@@ -271,6 +284,16 @@ export class Collegamento {
     } catch {
       // la chiusura fa ripartire
     }
+  }
+
+  /** Offerta WebRTC della finestra, verso il server. */
+  rtcOfferta(sdp: string): void {
+    this.manda({ t: 'rtc-offerta', sdp })
+  }
+
+  /** La finestra lascia il WebRTC (non passa o è caduto): si torna all'HTTPS. */
+  rtcChiudi(): void {
+    this.manda({ t: 'rtc-chiudi' })
   }
 
   /** Pezzo d'audio del mixer: va al server solo se il collegamento è aperto e non è intasato. */
