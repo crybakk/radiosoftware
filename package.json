@@ -32,6 +32,7 @@
       "node_modules/ffmpeg-static/**",
       "node_modules/essentia.js/**",
       "out/main/djWorker.js",
+      "out/main/chunks/**",
       "node_modules/sherpa-onnx-*/**",
       "node_modules/node-llama-cpp/**",
       "node_modules/@node-llama-cpp/**"

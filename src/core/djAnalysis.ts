@@ -30,8 +30,12 @@ export interface DjAnalysis {
   downbeats?: number[]
 }
 
-/** Versione dell'analisi DJ: i brani analizzati con una versione precedente vengono rianalizzati in background. */
-export const DJ_ANALYSIS_VERSION = 2
+/**
+ * Versione dell'analisi DJ: i brani analizzati con una versione precedente vengono rianalizzati in background.
+ * 3: con la 2 nella regia installata il thread di analisi non partiva (file mancante) e ogni brano risultava
+ * "senza ritmo regolare": si rifà tutto.
+ */
+export const DJ_ANALYSIS_VERSION = 3
 
 /** Sotto questa affidabilità della griglia il brano non si mixa sul battito. */
 export const MIN_GRID_CONFIDENCE = 0.6
