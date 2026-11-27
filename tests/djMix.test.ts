@@ -194,7 +194,19 @@ describe('tipi di passaggio', () => {
     expect((planTransition(djTrack(), djTrack({ dj: { energy: 9 } }), { sinceShowy: 0 }) as { plan: MixPlan }).plan.style).toBe('blend')
   })
 
-  it('tempi lontani: stacco se il nuovo parte pieno, frenata se è molto più calmo, altrimenti eco e riverbero alternati', () => {
+  it('tempi lontani: di solito sfumatura incrociata (nessun piano), gli effetti solo ogni 4 cambi', () => {
+    const a = djTrack()
+    expect(planTransition(a, djTrack({ bpm: 90 }), { sinceShowy: 0 })).toMatchObject({ ok: false, reason: /sfumatura incrociata/ })
+    expect(planTransition(a, djTrack({ bpm: 90, intro: 0 }), { sinceShowy: 2 })).toMatchObject({ ok: false })
+    expect(planTransition(a, djTrack({ dj: { bpm: 0, gridConfidence: 0 } }), { sinceShowy: 1 })).toMatchObject({ ok: false })
+    // a tempo il mix lungo resta sempre
+    expect((planTransition(a, djTrack(), { sinceShowy: 0 }) as { plan: MixPlan }).plan.style).toBe('blend')
+    // se il mix a tempo è escluso nelle impostazioni, niente eco al suo posto: sfumatura incrociata
+    expect(planTransition(a, djTrack(), { sinceShowy: 0, allowed: ['echo', 'cut'] }).ok).toBe(false)
+    expect((planTransition(a, djTrack({ bpm: 90 }), { sinceShowy: 3 }) as { plan: MixPlan }).plan.style).toBe('echo')
+  })
+
+  it('tempi lontani, quando tocca a un effetto: stacco se il nuovo parte pieno, frenata se è molto più calmo, altrimenti eco e riverbero alternati', () => {
     const a = djTrack()
     const style = (b: Track, ctx = {}): string => (planTransition(a, b, ctx) as { plan: MixPlan }).plan.style
     expect(style(djTrack({ bpm: 90, intro: 0 }))).toBe('cut')

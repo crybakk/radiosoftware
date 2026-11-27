@@ -26,9 +26,9 @@ export type MixStyle = 'blend' | 'filter' | 'echo' | 'reverb' | 'cut' | 'roll' |
 export const MIX_STYLES: { id: MixStyle; label: string; help: string; showy?: boolean }[] = [
   { id: 'blend', label: 'Mix lungo', help: 'i due brani a tempo per 8 o 16 battute, con lo scambio dei bassi' },
   { id: 'filter', label: 'Filtro', help: 'a tempo; il brano che esce si chiude in un filtro, quello che entra si apre' },
-  { id: 'echo', label: 'Eco', help: 'il brano che esce si ripete in eco sul battito, il nuovo entra sulla battuta dopo' },
-  { id: 'reverb', label: 'Riverbero', help: 'il brano che esce si scioglie in un riverbero lungo' },
-  { id: 'cut', label: 'Stacco', help: 'stacco secco sul primo tempo, il nuovo brano parte pieno' },
+  { id: 'echo', label: 'Eco', help: 'il brano che esce si ripete in eco sul battito, il nuovo entra sulla battuta dopo', showy: true },
+  { id: 'reverb', label: 'Riverbero', help: 'il brano che esce si scioglie in un riverbero lungo', showy: true },
+  { id: 'cut', label: 'Stacco', help: 'stacco secco sul primo tempo, il nuovo brano parte pieno', showy: true },
   { id: 'roll', label: 'Rullo', help: 'loop che si accorcia (1, 1/2, 1/4, 1/8 di battito) e il nuovo brano "esplode"', showy: true },
   { id: 'brake', label: 'Frenata', help: 'il brano si ferma come un giradischi spento', showy: true },
   { id: 'spinback', label: 'Riavvolto', help: 'il disco gira all\'indietro (spinback) e parte il nuovo', showy: true }
@@ -42,7 +42,11 @@ export function mixStyleLabel(s: MixStyle): string {
 
 /** Passaggi a tempo: chiedono BPM vicini. */
 const SYNCED: MixStyle[] = ['blend', 'filter']
-/** Passaggi vistosi: la scelta automatica li usa al massimo una volta ogni SHOWY_EVERY cambi. */
+/**
+ * Passaggi vistosi (tutti quelli che non sovrappongono i brani a tempo): la scelta automatica li usa al massimo una
+ * volta ogni SHOWY_EVERY cambi. Negli altri cambi con tempi lontani va la sfumatura incrociata normale, così i brani
+ * si sovrappongono sempre e non suonano "uno in coda all'altro".
+ */
 export const SHOWY_EVERY = 4
 
 export interface MixPlan {
@@ -366,8 +370,9 @@ function planStyle(a: Track, b: Track, style: MixStyle, maxStretch: number): Mix
 /**
  * Sceglie il passaggio da A a B, come farebbe un DJ:
  * - BPM vicini: mix lungo, o filtro se le tonalità stridono; rullo ogni tanto se B è molto più carico;
- * - BPM lontani: stacco se B parte pieno ed è carico almeno quanto A; frenata o riavvolto ogni tanto se B è
- *   molto più calmo; rullo ogni tanto se è molto più carico; altrimenti eco e riverbero, alternati.
+ * - BPM lontani: di solito nessun piano (il motore fa la sfumatura incrociata, i brani si sovrappongono); ogni
+ *   SHOWY_EVERY cambi un effetto: stacco se B parte pieno ed è carico almeno quanto A; frenata o riavvolto se B è
+ *   molto più calmo; rullo se è molto più carico; altrimenti eco e riverbero, alternati.
  */
 export function planTransition(a: Track, b: Track, ctx: TransitionContext = {}): MixDecision {
   const maxStretch = ctx.maxStretch ?? DEFAULT_MAX_STRETCH
@@ -390,6 +395,8 @@ export function planTransition(a: Track, b: Track, ctx: TransitionContext = {}):
     else if (!keysCompatible(a.dj!.key, b.dj!.key)) wanted = 'filter'
     else wanted = 'blend'
   } else {
+    // tempi lontani: di solito la sfumatura incrociata normale (decide il motore), ogni tanto un effetto
+    if (!showyOk) return { ok: false, reason: 'ritmi diversi, sfumatura incrociata' }
     const intro = introBars(b)
     if (intro !== null && intro < 2 && (!known || eb >= ea)) wanted = 'cut'
     else if (showyOk && down) wanted = ctx.last === 'brake' ? 'spinback' : 'brake'
@@ -398,14 +405,14 @@ export function planTransition(a: Track, b: Track, ctx: TransitionContext = {}):
   }
   let first: MixDecision | null = null
   for (const s of FALLBACK[wanted]) {
-    if (!allowed.includes(s)) continue
+    if (!allowed.includes(s) || (isShowy(s) && !showyOk)) continue
     const d = planStyle(a, b, s, maxStretch)
     if (d.ok) return d
     first ??= d
   }
   // nessun passaggio di quel tipo va bene: si prova il mix lungo e poi l'eco
   for (const s of ['blend', 'echo'] as MixStyle[]) {
-    if (!allowed.includes(s) || FALLBACK[wanted].includes(s)) continue
+    if (!allowed.includes(s) || FALLBACK[wanted].includes(s) || (isShowy(s) && !showyOk)) continue
     const d = planStyle(a, b, s, maxStretch)
     if (d.ok) return d
   }

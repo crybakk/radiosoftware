@@ -80,11 +80,34 @@ describe('motore di messa in onda', () => {
     expect(engine.snapshot().queue.length).toBeGreaterThanOrEqual(3)
     await run(19.5) // posizione ~ 20.5 > punto di mix 20 (inizio da 1)
     expect(backend.players).toHaveLength(2)
-    // per qualche secondo due brani in onda insieme (dissolvenza)
-    expect(engine.snapshot().onAir.length).toBe(2)
+    // sfumatura incrociata: il primo sfuma fino alla sua fine (24) mentre parte il secondo
+    expect(backend.players[0].fadingFor).toBeGreaterThan(3)
+    expect(backend.players[0].fadingFor).toBeLessThanOrEqual(4)
     await run(60)
     expect(log.length).toBeGreaterThanOrEqual(4)
     expect(engine.snapshot().onAir.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('le canzoni che finiscono secche si sovrappongono lo stesso: la successiva parte 4 s prima della fine', async () => {
+    const secche = [1, 2, 3].map((i) => makeTrack({ cueIn: 0, mixPoint: 30, cueOut: 30, duration: 30, artist: `S${i}` }))
+    const { engine, backend, run } = setup(secche)
+    engine.setMode('auto')
+    await run(25.5)
+    expect(backend.players).toHaveLength(1)
+    await run(1) // posizione oltre 26 = 30 - 4
+    expect(backend.players).toHaveLength(2)
+    expect(backend.players[0].fadingFor).toBeGreaterThan(3.5)
+  })
+
+  it('jingle e voci non si accorciano: il successivo parte alla loro fine', async () => {
+    const { engine, backend, run } = setup()
+    engine.enqueue(makeTrack({ kind: 'jingle', cueIn: 0, mixPoint: 10, cueOut: 10, duration: 10 }))
+    engine.enqueue(makeTrack({ artist: 'dopo' }))
+    engine.setMode('auto')
+    await engine.play()
+    await run(9.5)
+    expect(backend.players).toHaveLength(1)
+    expect(backend.players[0].fadingFor).toBeNull()
   })
 
   it('applica il guadagno di livellamento', async () => {

@@ -30,6 +30,9 @@ export interface AudioBackend {
  */
 export const DJ_LEAD_SECONDS = 8
 
+/** Sovrapposizione minima tra due canzoni nei cambi automatici (secondi). */
+export const MIN_MUSIC_OVERLAP_SECONDS = 4
+
 /** Anticipo del Mix DJ per questo piano: in più il tratto di B prima del punto da cui entra (al massimo 20 s). */
 export function djLeadSeconds(plan: MixPlan): number {
   return DJ_LEAD_SECONDS + Math.min(20, Math.max(0, plan.bStart - plan.bIn) / Math.max(0.5, plan.rate))
@@ -320,7 +323,15 @@ export class PlayoutEngine {
         await this.startDjMix(cur, dj.plan)
       } else if (!dj?.ok && pos >= this.mixPoint(cur.item.track)) {
         cur.mixTriggered = true
-        if (this.mode === 'auto' || this.queue[0]?.origin === 'event') await this.startNext()
+        if (this.mode === 'auto' || this.queue[0]?.origin === 'event') {
+          // un cambio senza effetti conta per il prossimo passaggio vistoso del Mix DJ
+          if (this.djWanted()) this.djSinceShowy++
+          await this.startNext()
+          // sfumatura incrociata: la canzone che esce sfuma fino alla sua fine mentre entra la successiva
+          if (cur.item.track.kind === 'music' && this.current() !== cur) {
+            this.fade(cur, Math.max(0.5, this.endPoint(cur.item.track) - cur.player.position()))
+          }
+        }
       }
     }
 
@@ -532,9 +543,15 @@ export class PlayoutEngine {
     }
   }
 
+  /**
+   * Dove parte il brano successivo. Le canzoni si sovrappongono sempre almeno MIN_MUSIC_OVERLAP_SECONDS, anche
+   * quelle che finiscono secche (punto di mix = fine) o non ancora analizzate: niente "una in coda all'altra".
+   */
   private mixPoint(t: Track): number {
-    if (t.mixPoint > t.cueIn) return t.mixPoint
-    return this.endPoint(t)
+    const end = this.endPoint(t)
+    const at = t.mixPoint > t.cueIn ? t.mixPoint : end
+    if (t.kind !== 'music') return at
+    return Math.max(t.cueIn, Math.min(at, end - MIN_MUSIC_OVERLAP_SECONDS))
   }
 
   /** Falso per i brani di cui non si conosce la fine (durata 0, non ancora analizzati). */

@@ -144,9 +144,9 @@ Oltre al mix lungo, il Mix DJ conosce gli altri **passaggi** di un DJ:
 |---|---|
 | Mix lungo | i due brani a tempo per 8 o 16 battute, con lo scambio dei bassi (quello descritto sopra) |
 | Filtro | a tempo come il mix lungo, ma il brano che esce si chiude in un filtro e quello che entra si apre |
-| Eco | il brano che esce si ripete in eco sul battito e si spegne; il nuovo entra sulla battuta dopo |
-| Riverbero | il brano che esce si scioglie in un riverbero lungo e il nuovo entra subito dopo |
-| Stacco | stacco secco sul primo tempo di una battuta: il nuovo brano parte pieno |
+| Eco ★ | il brano che esce si ripete in eco sul battito e si spegne; il nuovo entra sulla battuta dopo |
+| Riverbero ★ | il brano che esce si scioglie in un riverbero lungo e il nuovo entra subito dopo |
+| Stacco ★ | stacco secco sul primo tempo di una battuta: il nuovo brano parte pieno |
 | Rullo ★ | il primo battito si ripete in un loop sempre più corto (1, 1/2, 1/4, 1/8) e il nuovo brano "esplode" |
 | Frenata ★ | il brano rallenta fino a fermarsi, come un giradischi spento |
 | Riavvolto ★ | il disco gira all'indietro (spinback) e parte il nuovo |
@@ -155,11 +155,11 @@ Oltre al mix lungo, il Mix DJ conosce gli altri **passaggi** di un DJ:
 
 - BPM vicini: **mix lungo**, oppure **filtro** se le tonalità stridono, oppure ogni tanto **rullo** se il nuovo
   brano è molto più carico;
-- BPM lontani (dove prima c'era la dissolvenza normale): **stacco** se il nuovo brano parte pieno, ogni tanto
-  **frenata** o **riavvolto** se è molto più calmo, ogni tanto **rullo** se è molto più carico, altrimenti **eco** e
-  **riverbero** alternati.
+- BPM lontani: di solito la **sfumatura incrociata** (le due canzoni si sovrappongono e quella che esce sfuma);
+  ogni tanto un effetto: **stacco** se il nuovo brano parte pieno, **frenata** o **riavvolto** se è molto più
+  calmo, **rullo** se è molto più carico, altrimenti **eco** e **riverbero** alternati.
 
-I passaggi con ★ sono vistosi: la regia li usa al massimo una volta ogni 4 cambi. I passaggi che non mettono i
+I passaggi con ★ sono effetti: la regia li usa al massimo una volta ogni 4 cambi, così le canzoni non suonano mai "una in coda all'altra". I passaggi che non mettono i
 brani a tempo cadono comunque sul battito del brano che esce, all'inizio di una frase del finale, e funzionano anche
 con i brani lenti senza ritmo regolare (basta che sia regolare quello che esce).
 
@@ -178,13 +178,16 @@ Si usa in due modi:
 Con il Mix DJ acceso, la rotazione automatica **sceglie di preferenza brani mixabili** con quello prima (BPM
 entro il limite e tonalità compatibile). Non è un obbligo: se nessun brano va bene sceglie come sempre. Per non
 restare sempre sullo stesso tempo, **ogni 4-6 brani cambia tempo**: sceglie un brano con BPM diversi (sempre dentro
-la fascia di energia del profilo e senza salti di energia), e il passaggio sarà eco, riverbero, stacco o uno di
-quelli vistosi.
+la fascia di energia del profilo e senza salti di energia), e il passaggio sarà la sfumatura incrociata o, ogni
+tanto, un effetto.
 
 Il Mix DJ funziona solo con la musica già analizzata (riga "Analisi per il Mix DJ" in Libreria). Il mix lungo e il
 filtro chiedono due brani con ritmo regolare e tempi vicini (entro il ±6%, si cambia in **Impostazioni**); gli altri
 passaggi solo che il brano che esce abbia un ritmo regolare. Con jingle, notiziari e brani parlati, o se il brano
 che esce non ha un ritmo regolare, la regia usa la dissolvenza normale. **AVANTI** e **STOP** funzionano come sempre.
+
+In automatico due canzoni si sovrappongono **sempre almeno 4 secondi**, anche quelle che finiscono secche: la
+successiva parte e quella che esce sfuma fino alla sua fine. Jingle, annunci e notiziari invece si sentono interi.
 
 ### Titolo quando si parla
 
