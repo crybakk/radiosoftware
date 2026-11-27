@@ -6,7 +6,7 @@ volta sola) è più in fondo.
 La guida si apre anche **dentro la regia** (scheda **Guida**) e **nel pannello** dal telefono (menu **☰** →
 **📖 Guida**). I numeri gialli sulle immagini corrispondono ai numeri nel testo.
 
-**Ultimo aggiornamento:** 27/11/2026, Radio Esterna più semplice: parole chiare, conferme, testo grande e regolazioni tecniche dietro **Avanzate**.
+**Ultimo aggiornamento:** 27/11/2026, il player della radio si installa come app su telefono e computer.
 
 ## Indice
 
@@ -889,6 +889,18 @@ la copertina del programma o il logo. `https://<indirizzo della radio>/podcast.h
 `/ascolta.html` porta al player. Le puntate si possono **solo
 ascoltare**, non scaricare (la licenza SIAE permette lo streaming, non il download).
 
+**Il player come app.** Gli ascoltatori possono mettere la radio tra le loro app, con un'icona come le altre:
+
+1. Aprono il player dal telefono o dal computer.
+2. Premono **📲 Installa l'app** (in alto) oppure **Installa** nel riquadro sotto il player.
+3. Su Android, Chrome ed Edge si apre la finestra del telefono o del browser: basta confermare. Su iPhone e iPad
+   la pagina mostra i tre passi da fare (pulsante **Condividi** → **Aggiungi alla schermata Home** → **Aggiungi**).
+
+L'icona è fatta dal **logo della radio** (lo stesso delle dirette video, si carica dal pannello in **Dirette
+video**); senza logo c'è un'icona rossa con le onde radio. Se cambi il logo, l'icona si aggiorna da sola. Nell'app
+la radio continua a suonare anche a schermo spento, con titolo, copertina e pulsante play/pausa nella schermata di
+blocco. Chi non vuole installarla preme **No, grazie** e il riquadro non ricompare.
+
 **App della radio.** Il server risponde agli stessi indirizzi di AzuraCast per i podcast
 (`/api/station/<nome breve>/public/podcasts`…) e per il titolo in onda (`/api/nowplaying`), così l'app funziona
 cambiando solo l'indirizzo del server. Il **nome breve della stazione** si imposta in **Impostazioni** (in fondo
@@ -1461,3 +1473,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 26/11/2026 | Regia più semplice: Benvenuto alla prima accensione, codice di collegamento dal pannello, conferme su STOP / Svuota / MANUALE / Rimuovi cartella, avviso quando la musica sta per finire, scritte chiare sul collegamento, Testo grande, cose avanzate nascoste; impostazioni della musica a scelte, una sola barra di preparazione in Libreria, eventi già pronti, messaggi di errore con cosa fare |
 | 26/11/2026 | Rotazioni con l'AI: **Esporta per Claude** e **Importa piano** (file .md) spiegati, ora anche nel pannello del server |
 | 27/11/2026 | Radio Esterna a prova di anziano: frasi in alto, pulsanti e messaggi senza parole tecniche, conferme (FUORI ONDA, Programma finito, Togli microfono, Esci), **Testo grande**, regolazioni tecniche dietro **Avanzate**; riquadro di chi è fuori in regia e nel pannello con frasi semplici |
+| 27/11/2026 | Player della radio installabile come app (telefono e computer), icona dal logo |
