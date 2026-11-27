@@ -6,3 +6,6 @@ Dockerfile    text eol=lf
 *.yml         text eol=lf
 .env.esempio  text eol=lf
 ponte/**      text eol=lf
+# immagini: mai toccate (la regola sopra le rovinerebbe)
+*.png         binary
+*.jpg         binary

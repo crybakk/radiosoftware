@@ -95,6 +95,7 @@ import { appTitle, SpokenText, SpokenTitles, spokenTitle, TESTO_MAX, type Spoken
 import { Impostazioni, NOMI_PARTI } from './impostazioni.ts'
 import { Attivazione, PAGINA_ATTIVAZIONE } from './attivazione.ts'
 import { AggiornamentoServer } from './aggiornamentoServer.ts'
+import { IconeApp, manifest, nomeIcona } from './installabile.ts'
 
 const env = (k: string, d = ''): string => process.env[k] ?? d
 const num = (k: string, d: number): number => {
@@ -850,6 +851,25 @@ async function handleNowPlaying(req: IncomingMessage, res: ServerResponse, url: 
 const LOGO_FILES = { png: join(DATA_DIR, 'logo-video.png'), jpg: join(DATA_DIR, 'logo-video.jpg') }
 const MAX_LOGO_BYTES = 5 * 1024 * 1024
 const logoFile = (): string | null => (existsSync(LOGO_FILES.png) ? LOGO_FILES.png : existsSync(LOGO_FILES.jpg) ? LOGO_FILES.jpg : null)
+// player pubblico installabile come app: icone fatte dal logo della radio (installabile.ts)
+const iconeApp = new IconeApp({ logo: logoFile, cartella: join(DATA_DIR, 'icone-app'), pannello: PANEL_DIR, log: (t) => console.log(t) })
+
+/** Manifest e icone dell'app del player (pubblici, come il player). */
+async function handleApp(req: IncomingMessage, res: ServerResponse, path: string): Promise<boolean> {
+  if (path === '/manifest.webmanifest') {
+    const m = manifest(env('NOME_RADIO', 'Radio'), env('DESCRIZIONE_RADIO'), await iconeApp.versione())
+    res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' })
+    res.end(req.method === 'HEAD' ? undefined : JSON.stringify(m))
+    return true
+  }
+  const nome = nomeIcona(path)
+  if (!nome) return false
+  const png = await iconeApp.icona(nome)
+  if (!png) return false
+  res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' })
+  res.end(req.method === 'HEAD' ? undefined : png)
+  return true
+}
 let video: VideoLive | null = null
 if (env('DIRETTE_VIDEO', 'si') !== 'no') {
   video = new VideoLive({
@@ -1257,6 +1277,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
     if (req.method === 'GET' && (url.pathname === '/guida' || url.pathname.startsWith('/guida/'))) return await serveGuide(req, res, url.pathname)
     // anche HEAD (anteprime dei link, controlli di disponibilità): Node non manda il corpo
     if ((req.method === 'GET' || req.method === 'HEAD') && !url.pathname.startsWith('/api/')) {
+      if (await handleApp(req, res, url.pathname)) return
       if (await serveStatic(res, url.pathname)) return
       return json(res, 404, { error: 'non trovato' })
     }

@@ -41,7 +41,8 @@ async function refresh() {
     // si tengono le letture degli ultimi minuti: bastano per qualsiasi ritardo
     storico = storico.filter((x) => ora - x.t < 180_000)
   } catch {
-    // riprova al prossimo giro
+    // riprova al prossimo giro; senza Internet lo si dice (app aperta senza rete)
+    if (!navigator.onLine && !playing) $('msg').textContent = 'Nessuna connessione a Internet. Quando torna la rete, premi ▶.'
   }
   draw()
 }
@@ -62,7 +63,7 @@ function draw() {
   $('onair').textContent = vista.live?.is_live ? `IN DIRETTA · ${vista.live.streamer_name}` : 'IN DIRETTA'
   setArt($('art'), song?.art || '')
   $('noart').hidden = !!song?.art
-  if (!$('play').classList.contains('loading')) {
+  if (!$('play').classList.contains('loading') && navigator.onLine) {
     $('msg').textContent = st.listen_url || st.hls_url ? (info.is_online === false ? 'La radio in questo momento non trasmette.' : '') : 'Indirizzo d\'ascolto non configurato sul server.'
   }
   mediaSession(song, st.name)
@@ -80,7 +81,8 @@ function mediaSession(song, name) {
     title: song?.title || name,
     artist: song?.artist || '',
     album: name,
-    artwork: song?.art ? [{ src: song.art, sizes: '512x512' }] : []
+    // senza copertina né logo: l'icona dell'app della radio
+    artwork: song?.art ? [{ src: song.art, sizes: '512x512' }] : [{ src: '/icona-512.png', sizes: '512x512', type: 'image/png' }]
   })
 }
 
@@ -97,6 +99,8 @@ function setButton(state) {
   b.textContent = state === 'stopped' ? '▶' : state === 'playing' ? '■' : ''
   b.setAttribute('aria-label', state === 'stopped' ? 'Ascolta' : state === 'playing' ? 'Ferma' : 'Sto caricando, premi per fermare')
   b.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false')
+  // schermata di blocco e cuffie: pulsante play/pausa giusto anche con l'app chiusa o in sottofondo
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state === 'stopped' ? 'paused' : 'playing'
   if (state === 'loading') $('msg').textContent = 'Sto caricando…'
   else if ($('msg').textContent === 'Sto caricando…') $('msg').textContent = ''
 }
