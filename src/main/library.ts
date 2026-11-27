@@ -1,7 +1,7 @@
 import { ANALYSIS_TIMEOUT_MS, analyzeFile } from '../core/analyzer'
 import { fingerprintFile } from '../core/fingerprintFile'
 import { secondiApplausi } from '../core/liveAudio'
-import { DjAnalyzer, decodeMono } from './djAnalyzer'
+import { DjAnalyzer, DjWorkerError, decodeMono } from './djAnalyzer'
 import type { RadioDb } from '../core/db'
 import { scanLibrary, type ScanProgress } from '../core/scanner'
 import type { LibraryStatus } from '../shared/api'
@@ -24,7 +24,9 @@ export class LibraryService {
   constructor(
     private db: RadioDb,
     private ffmpegPath: string | null,
-    djWorkerUrl?: URL
+    djWorkerUrl?: URL,
+    /** Errori gravi (registro della regia). */
+    private log: (riga: string) => void = () => {}
   ) {
     this.dj = djWorkerUrl ? new DjAnalyzer(djWorkerUrl) : null
   }
@@ -211,6 +213,7 @@ export class LibraryService {
     const abort = (this.abort = new AbortController())
     this.emit()
     let lastEmit = 0
+    let crashes = 0
     try {
       for (;;) {
         const batch = this.db.pendingDj(20)
@@ -220,8 +223,18 @@ export class LibraryService {
           try {
             const pcm = await decodeMono(this.ffmpegPath, t.path, abort.signal)
             this.db.saveDj(t.id, await this.dj.analyze(pcm, t.cueIn, t.cueOut))
-          } catch {
+            crashes = 0
+          } catch (err) {
             if (abort.signal.aborted) break
+            if (err instanceof DjWorkerError) {
+              // il thread di analisi non parte: il brano resta da analizzare (non è "senza ritmo")
+              if (++crashes >= 3) {
+                this.log(`analisi per il Mix DJ ferma: il thread di analisi non parte (${err.message})`)
+                this.stopRequested = true
+                break
+              }
+              continue
+            }
             // file illeggibile o analisi fallita: niente Mix DJ per questo brano finché il file non cambia
             this.db.saveDj(t.id, null)
           }

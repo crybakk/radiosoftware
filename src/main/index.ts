@@ -132,7 +132,7 @@ if (primary) app.whenReady().then(async () => {
     return
   }
   db.closeDanglingLog(new Date())
-  const library = new LibraryService(db, ffmpegPath(), djWorkerUrl())
+  const library = new LibraryService(db, ffmpegPath(), djWorkerUrl(), (riga) => log(riga))
   const rotation = new RotationService(db)
   const ponte = new PonteService(db, app.getPath('userData'), ffmpegPath())
   // registrazione in regia dei programmi fatti dallo studio (stesso audio che va al ponte)

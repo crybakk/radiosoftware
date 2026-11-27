@@ -37,6 +37,9 @@ export function decodeMono(ffmpegPath: string, file: string, signal?: AbortSigna
   })
 }
 
+/** Il thread di analisi non parte o cade: non è colpa del brano. */
+export class DjWorkerError extends Error {}
+
 /** Un thread di Essentia che analizza un brano alla volta. */
 export class DjAnalyzer {
   private worker: Worker | null = null
@@ -65,7 +68,7 @@ export class DjAnalyzer {
       const onError = (e: Error): void => {
         cleanup()
         this.worker = null
-        reject(e)
+        reject(new DjWorkerError(e.message))
       }
       const cleanup = (): void => {
         clearTimeout(timer)
