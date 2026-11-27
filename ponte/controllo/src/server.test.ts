@@ -214,6 +214,36 @@ describe('pagine: player pubblico su / e pannello su /dashboard', () => {
   })
 })
 
+describe('player installabile come app', () => {
+  it('manifest con il nome della radio, icone, service worker e pulsante Installa', async () => {
+    const { port } = await startServer({ NOME_RADIO: 'Radio Attiva Informazione' })
+    const base = `http://127.0.0.1:${port}`
+    const html = await (await fetch(`${base}/`)).text()
+    expect(html).toContain('rel="manifest" href="/manifest.webmanifest"')
+    expect(html).toContain('/installa.js')
+    expect(html).toContain('apple-touch-icon')
+    const r = await fetch(`${base}/manifest.webmanifest`)
+    expect(r.status).toBe(200)
+    expect(r.headers.get('content-type')).toContain('application/manifest+json')
+    const m = await r.json()
+    expect(m.name).toBe('Radio Attiva Informazione')
+    expect(m.short_name.length).toBeLessThanOrEqual(12)
+    expect(m.display).toBe('standalone')
+    expect(m.start_url.startsWith('/')).toBe(true)
+    // senza logo: icone di base, PNG veri delle misure dichiarate
+    for (const i of m.icons) {
+      const png = Buffer.from(await (await fetch(base + i.src)).arrayBuffer())
+      expect(png.subarray(1, 4).toString()).toBe('PNG')
+      expect(`${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`).toBe(i.sizes)
+    }
+    expect((await fetch(`${base}/apple-touch-icon.png`)).headers.get('content-type')).toBe('image/png')
+    const sw = await fetch(`${base}/sw.js`)
+    expect(sw.status).toBe(200)
+    expect(sw.headers.get('content-type')).toContain('javascript')
+    expect((await fetch(`${base}/installa.js`)).status).toBe(200)
+  })
+})
+
 describe('copertine dei brani in onda', () => {
   it('copertina già trovata: nel titolo in onda e servita da /api/copertina', async () => {
     const dati = mkdtempSync(join(tmpdir(), 'ponte-'))
