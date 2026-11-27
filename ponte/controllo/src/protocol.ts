@@ -131,6 +131,8 @@ export interface RemoteAiSlot {
 
 export interface RemoteAiPlan {
   slots: RemoteAiSlot[]
+  /** Annunci con la voce a orario (solo dai piani preparati da Claude). */
+  announcements?: { name: string; days: number[]; start: string; end: string | null; everyMinutes: number; text: string }[]
 }
 
 export interface RemoteAiResult {
