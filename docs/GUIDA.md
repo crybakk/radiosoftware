@@ -602,6 +602,31 @@ brani sono nascosti. Jingle, notiziari e programmi non hanno limite.
 Il limite si cambia dal pannello: menu **☰** → **Impostazioni server** → **Radio** → **Durata massima dei brani
 (minuti)** (0 = nessun limite). La regia lo riceve dal server in pochi secondi.
 
+### Parti che non sono musica (tagliate da sole)
+
+All'inizio e alla fine di molti brani ci sono cose che non sono musica: **silenzio**, una **presentazione parlata**,
+**applausi** e pubblico dei live, **rumore**, oppure una **traccia fantasma** che parte dopo minuti di silenzio.
+L'analisi della Libreria le trova da sola e sposta l'**inizio** e la **fine** del brano: in onda si sente solo la
+musica, in regia, nella diretta autonoma e nella musica di emergenza del server. **I file non vengono toccati.**
+
+Per non sbagliare, la regia taglia solo all'inizio e alla fine (mai in mezzo), al massimo 45 secondi all'inizio e
+90 alla fine (il silenzio puro si toglie sempre), e confronta ogni pezzo con il resto del brano: una canzone tutta
+voce e chitarra non viene scambiata per parlato. Se un taglio non ti convince, apri il brano → **Dati per la SIAE e
+dati tecnici** e sposta inizio e fine a mano: le tue correzioni restano.
+
+Dopo l'aggiornamento la regia rianalizza da sola, in background, tutta la musica già in libreria (qualche ora per
+migliaia di brani); poi rifà l'analisi del Mix DJ dei brani che hanno cambiato inizio o fine.
+
+### Brani troppo corti (durata minima)
+
+I brani con meno di **2 minuti di musica** (intro, interludi, scenette degli album) restano in libreria e li puoi
+mettere a mano, ma **non vengono mai scelti da soli**: né dalle rotazioni, né dai brani a caso degli eventi, né
+dalla diretta autonoma o dalla musica di emergenza del server. Conta solo la musica: silenzi, parlato e applausi
+tagliati all'inizio e alla fine non valgono. Jingle, notiziari e programmi non hanno limite.
+
+Il limite si cambia dal pannello: menu **☰** → **Impostazioni server** → **Radio** → **Durata minima dei brani
+(secondi di musica)** (120 = 2 minuti, 0 = nessun limite). La regia lo riceve dal server in pochi secondi.
+
 Se rinomini un file cambiando solo maiuscole e minuscole (per esempio `canzone.mp3` → `Canzone.mp3`), su Windows
 resta lo stesso brano, con correzioni e storico.
 
@@ -1461,3 +1486,4 @@ indirizzo, il pannello blocca i tentativi per un minuto.
 | 26/11/2026 | Regia più semplice: Benvenuto alla prima accensione, codice di collegamento dal pannello, conferme su STOP / Svuota / MANUALE / Rimuovi cartella, avviso quando la musica sta per finire, scritte chiare sul collegamento, Testo grande, cose avanzate nascoste; impostazioni della musica a scelte, una sola barra di preparazione in Libreria, eventi già pronti, messaggi di errore con cosa fare |
 | 26/11/2026 | Rotazioni con l'AI: **Esporta per Claude** e **Importa piano** (file .md) spiegati, ora anche nel pannello del server |
 | 27/11/2026 | Radio Esterna a prova di anziano: frasi in alto, pulsanti e messaggi senza parole tecniche, conferme (FUORI ONDA, Programma finito, Togli microfono, Esci), **Testo grande**, regolazioni tecniche dietro **Avanzate**; riquadro di chi è fuori in regia e nel pannello con frasi semplici |
+| 27/11/2026 | Parti che non sono musica (silenzio, parlato, applausi, rumore, tracce fantasma) tagliate da sole all'inizio e alla fine dei brani, in regia e sul server; durata minima di 2 minuti di musica per le scelte automatiche |

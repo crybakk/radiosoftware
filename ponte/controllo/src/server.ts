@@ -280,6 +280,9 @@ const library = new Library(MUSIC_DIR, join(DATA_DIR, 'libreria.json'))
 // durata massima dei brani (premixati): la usa anche la regia, che la riceve a ogni battito
 const MAX_TRACK_MINUTES = Math.max(0, num('DURATA_MASSIMA_MINUTI', 10))
 library.maxSeconds = MAX_TRACK_MINUTES * 60
+// durata minima NETTA (solo musica, senza silenzi, parlato e applausi tagliati): anche questa va alla regia
+const MIN_TRACK_SECONDS = Math.max(0, num('DURATA_MINIMA_SECONDI', 120))
+library.minSeconds = MIN_TRACK_SECONDS
 
 async function lqPost(path: string, body: unknown = {}): Promise<boolean> {
   const r = await fetch(`${LIQUIDSOAP}${path}`, {
@@ -1649,7 +1652,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       lastStudio = { ...(await readJson(req)), receivedAt: new Date().toISOString() }
       alarms.onHeartbeat()
       relay.setAlarms(alarms.status().alarms)
-      return json(res, 200, { ok: true, alarms: alarms.status().alarms, maxTrackMinutes: MAX_TRACK_MINUTES })
+      return json(res, 200, { ok: true, alarms: alarms.status().alarms, maxTrackMinutes: MAX_TRACK_MINUTES, minTrackSeconds: MIN_TRACK_SECONDS })
     }
     if (req.method === 'POST' && url.pathname === '/api/metadata') {
       const body = await readJson(req)
@@ -1707,7 +1710,10 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
         const list = Array.isArray(body.tracks) ? (body.tracks as Record<string, unknown>[]) : []
         let n = 0
         for (const m of list) {
-          if (library.setMeta(String(m.id), { title: String(m.title ?? ''), artist: String(m.artist ?? ''), duration: Number(m.duration), gainDb: Number(m.gainDb) })) n++
+          const meta = { title: String(m.title ?? ''), artist: String(m.artist ?? ''), duration: Number(m.duration), gainDb: Number(m.gainDb) }
+          // inizio e fine della musica: solo dalle regie che li mandano (le più vecchie no)
+          const cues = m.cueOut != null ? { cueIn: Number(m.cueIn ?? 0), cueOut: Number(m.cueOut) } : {}
+          if (library.setMeta(String(m.id), { ...meta, ...cues })) n++
         }
         library.save()
         return json(res, 200, { ok: true, updated: n })
@@ -1723,7 +1729,8 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
           title: q.get('titolo') ?? undefined,
           artist: q.get('artista') ?? undefined,
           duration: Number(q.get('durata')),
-          gainDb: Number(q.get('guadagno'))
+          gainDb: Number(q.get('guadagno')),
+          ...(q.get('fine') != null ? { cueIn: Number(q.get('inizio') ?? 0), cueOut: Number(q.get('fine')) } : {})
         })
         library.save()
         return json(res, 200, { ok: true, id: t.id, size: t.size })
@@ -1793,7 +1800,7 @@ async function handlePublic(req: IncomingMessage, res: ServerResponse): Promise<
       await mkdir(dirname(dest), { recursive: true })
       await rename(library.path(t), dest)
       library.remove(t.id)
-      const moved = await library.addFile(dest, { title: t.title, artist: t.artist, duration: t.duration, gainDb: t.gainDb })
+      const moved = await library.addFile(dest, { title: t.title, artist: t.artist, duration: t.duration, gainDb: t.gainDb, cueIn: t.cueIn, cueOut: t.cueOut })
       library.save()
       relay.setAuto(auto.state())
       console.log(`[libreria] ${t.id} spostato in ${moved.id} (catalogato dalla regia)`)

@@ -113,6 +113,13 @@ export interface Settings {
    */
   maxTrackMinutes: number
   /**
+   * Durata minima NETTA della musica in secondi (0 = nessun limite): netta = senza le parti non musicali tagliate
+   * all'inizio e alla fine. I brani più corti (intro, interludi, scenette degli album) restano in libreria ma la regia
+   * non li sceglie mai da sola (rotazioni, brani a caso); il server neanche (diretta autonoma, emergenza).
+   * Si cambia dal pannello del server; di base 2 minuti (scelta di cristian del 27/11/2026).
+   */
+  minTrackSeconds: number
+  /**
    * Modalità della regia (AUTOMATICO / MANUALE), salvata a ogni cambio: dopo un riavvio
    * o un blackout la regia riparte com'era (in automatico riprende a suonare da sola).
    */
@@ -209,6 +216,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mbContact: '',
   acoustidKey: '',
   maxTrackMinutes: 10,
+  minTrackSeconds: 120,
   playoutMode: 'manual',
   mostraAvanzate: false,
   testoGrande: false,

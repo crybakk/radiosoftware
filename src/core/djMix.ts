@@ -255,7 +255,12 @@ function round(n: number): number {
 // ---------- gli altri passaggi ----------
 
 function gridOk(t: Track): boolean {
-  return !!t.dj && t.dj.bpm > 0 && t.dj.gridConfidence >= MIN_GRID_CONFIDENCE
+  if (!t.dj || !(t.dj.bpm > 0) || t.dj.gridConfidence < MIN_GRID_CONFIDENCE) return false
+  // analisi DJ fatta prima che inizio o fine si spostassero (parlato o applausi tagliati): finché non si rifà,
+  // il primo "uno" potrebbe cadere nella parte tagliata e il mix non sul battito
+  if (t.dj.firstDownbeat < t.cueIn - 0.3) return false
+  if (t.cueOut > t.cueIn && t.dj.outroStart > t.cueOut + 0.3) return false
+  return true
 }
 
 /** Battuta di uscita di A: inizio di una frase nell'outro, almeno una battuta prima della fine. */

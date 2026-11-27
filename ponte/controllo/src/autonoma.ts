@@ -6,7 +6,7 @@
  * In Liquidsoap c'è sempre al massimo un brano "preparato" oltre a quello in onda:
  * il successivo si decide 20 secondi prima della fine, così la coda resta modificabile.
  */
-import type { Library, ServerTrack } from './libreria.ts'
+import { netDuration, type Library, type ServerTrack } from './libreria.ts'
 import type { AutoCommand, AutoState, AutoTrack } from './protocol.ts'
 
 export interface LiquidsoapAuto {
@@ -19,19 +19,26 @@ const PREPARE_BEFORE_END_S = 20
 const RECENT_TRACKS = 30
 const RECENT_ARTISTS = 6
 
-const pub = (t: ServerTrack): AutoTrack => ({ id: t.id, title: t.title, artist: t.artist, duration: t.duration })
+const pub = (t: ServerTrack): AutoTrack => ({ id: t.id, title: t.title, artist: t.artist, duration: netDuration(t) })
 
 /** Valore tra virgolette per "annotate:" di Liquidsoap (virgolette e barre protette, niente a capo). */
 const annotateValue = (v: string): string =>
   v.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 300).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 
 /**
- * URI per Liquidsoap, con la correzione di volume e, se ci sono, titolo e artista
+ * URI per Liquidsoap, con la correzione di volume, inizio e fine della musica e, se ci sono, titolo e artista
  * (metadati che arrivano a Icecast e ai lettori degli ascoltatori).
  */
-export function annotate(path: string, gainDb: number, meta?: { title?: string; artist?: string }): string {
+export function annotate(path: string, gainDb: number, meta?: { title?: string; artist?: string; cueIn?: number; cueOut?: number }): string {
   const parts: string[] = []
   if (gainDb) parts.push(`liq_amplify="${gainDb.toFixed(1)} dB"`)
+  // inizio e fine della musica (secondi): Liquidsoap salta da solo silenzi, parlato e applausi prima e dopo
+  const a = meta?.cueIn ?? 0
+  const b = meta?.cueOut ?? 0
+  if (b > a) {
+    if (a > 0) parts.push(`liq_cue_in="${a.toFixed(2)}"`)
+    parts.push(`liq_cue_out="${b.toFixed(2)}"`)
+  }
   if (meta?.title) parts.push(`title="${annotateValue(meta.title)}"`)
   if (meta?.artist) parts.push(`artist="${annotateValue(meta.artist)}"`)
   return parts.length ? `annotate:${parts.join(',')}:${path}` : path
@@ -164,9 +171,10 @@ export class AutonomousPlayer {
     this.history.push(t)
     if (this.history.length > RECENT_TRACKS) this.history.shift()
     this.clearTimer()
-    const wait = t.duration > 0 ? Math.max(0, t.duration - PREPARE_BEFORE_END_S) : 0
+    const len = netDuration(t)
+    const wait = len > 0 ? Math.max(0, len - PREPARE_BEFORE_END_S) : 0
     // il prossimo parte alla fine di questo: un annuncio dirà l'ora di quel momento
-    const endsAt = this.onAir.startedAt + Math.max(0, t.duration) * 1000
+    const endsAt = this.onAir.startedAt + Math.max(0, len) * 1000
     this.timer = setTimeout(() => void this.prepareNext(endsAt).catch(() => {}), wait * 1000)
     this.emit()
   }
@@ -236,7 +244,7 @@ export class AutonomousPlayer {
       this.history.slice(-RECENT_ARTISTS).map((x) => x.artist)
     )
     if (!t) return null
-    this.reserveGiven(this.lib.path(t), t.duration)
+    this.reserveGiven(this.lib.path(t), netDuration(t))
     this.history.push(t)
     if (this.history.length > RECENT_TRACKS) this.history.shift()
     return annotate(this.lib.path(t), t.gainDb, t)
@@ -251,7 +259,10 @@ export class AutonomousPlayer {
   /** Liquidsoap avvisa che è partito un brano della riserva (il file, come l'ha avuto). */
   onReserveStart(file: string): void {
     const i = this.reserveQueued.findIndex((q) => q.path === file)
-    const seconds = i >= 0 ? this.reserveQueued[i].seconds : (this.lib.all().find((x) => this.lib.path(x) === file)?.duration ?? 0)
+    const seconds = i >= 0 ? this.reserveQueued[i].seconds : (() => {
+          const x = this.lib.all().find((y) => this.lib.path(y) === file)
+          return x ? netDuration(x) : 0
+        })()
     if (i >= 0) this.reserveQueued.splice(0, i + 1)
     this.reserveEndsAt = seconds > 0 ? this.now() + seconds * 1000 : null
   }

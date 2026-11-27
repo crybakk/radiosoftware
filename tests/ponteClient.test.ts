@@ -29,7 +29,7 @@ describe('client del ponte', () => {
   const client = new PonteClient('127.0.0.1', port, TOKEN)
 
   it('segnale di vita e stato', async () => {
-    expect(await client.heartbeat({ mode: 'auto' })).toEqual({ alarms: [], maxTrackMinutes: 10 })
+    expect(await client.heartbeat({ mode: 'auto' })).toEqual({ alarms: [], maxTrackMinutes: 10, minTrackSeconds: 120 })
     const st = await client.state()
     expect(st.lastHeartbeat).not.toBeNull()
     expect(st.notifiche).toEqual([])
@@ -72,7 +72,7 @@ describe('backup automatico', () => {
     const { vi } = await import('vitest')
     const { PonteService } = await import('../src/main/ponte')
     const { DEFAULT_PONTE } = await import('../src/core/types')
-    const hb = vi.spyOn(PonteClient.prototype, 'heartbeat').mockResolvedValue({ alarms: [], maxTrackMinutes: null })
+    const hb = vi.spyOn(PonteClient.prototype, 'heartbeat').mockResolvedValue({ alarms: [], maxTrackMinutes: null, minTrackSeconds: null })
     const up = vi.spyOn(PonteClient.prototype, 'uploadBackup').mockRejectedValue(new Error('ponte non raggiungibile'))
     const db = { backupTo: (p: string) => writeFileSync(p, 'SQLite format 3\0') }
     const svc = new PonteService(db as never, mkdtempSync(join(tmpdir(), 'regia-')), null)

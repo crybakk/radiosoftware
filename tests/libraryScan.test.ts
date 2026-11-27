@@ -93,6 +93,8 @@ describe('scansione della libreria', () => {
 
   it('togliere una cartella disabilita i suoi brani, ma non quelli di cartelle con nome simile', async () => {
     const db = new RadioDb(':memory:')
+    // file di prova di pochi secondi: senza durata minima, così entrano nelle rotazioni
+    db.saveSettings({ minTrackSeconds: 0 })
     db.addFolder(join(dir, 'natale'), 'music')
     db.addFolder(join(dir, 'natale2'), 'music')
     await scanLibrary(db)
