@@ -625,6 +625,22 @@ function drawAiResult(r) {
     })
   )
   if (!aiPlan.slots.length) $('ai-slots').append(el('li', 'hint', 'Nessuna fascia.'))
+  // annunci con la voce (solo dai piani di Claude): elenco con ✕ per toglierli
+  const ann = aiPlan.announcements ?? []
+  $('ai-annunci').replaceChildren(
+    ...(ann.length ? [el('li', 'hint', 'Annunci con la voce:')] : []),
+    ...ann.map((a, n) => {
+      const li = el('li', 'row')
+      const quando = a.everyMinutes > 0 ? `dalle ${a.start} alle ${a.end}, ogni ${a.everyMinutes} minuti` : `alle ${a.start}`
+      const giorni = a.days.length === 7 ? 'tutti i giorni' : EV_DAY_ORDER.filter((d) => a.days.includes(d)).map((d) => EV_DAYS[d]).join(', ')
+      li.append(el('span', null, `🔊 ${a.name} · ${giorni} · ${quando} · «${a.text}»`), el('span', 'spacer'))
+      li.append(button('✕', "Togli l'annuncio", () => {
+        aiPlan.announcements.splice(n, 1)
+        drawAiResult(r)
+      }, 'small ghost'))
+      return li
+    })
+  )
 }
 
 $('ai-go').addEventListener('click', async () => {
@@ -644,8 +660,10 @@ $('ai-recalc').addEventListener('click', async () => {
   }
 })
 $('ai-apply').addEventListener('click', async () => {
-  if (!aiPlan?.slots.length) return
-  if (!confirm(`Creare gli eventi per ${aiPlan.slots.length} ${aiPlan.slots.length === 1 ? 'fascia' : 'fasce'}?`)) return
+  const nAnn = aiPlan?.announcements?.length ?? 0
+  if (!aiPlan?.slots.length && !nAnn) return
+  const cosa = [aiPlan.slots.length ? `${aiPlan.slots.length} ${aiPlan.slots.length === 1 ? 'fascia' : 'fasce'}` : '', nAnn ? `${nAnn} ${nAnn === 1 ? 'annuncio' : 'annunci'}` : ''].filter(Boolean).join(' e ')
+  if (!confirm(`Creare gli eventi per ${cosa}?`)) return
   try {
     await evSend({ type: 'aiApply', plan: aiPlan, replace: $('ai-replace').checked })
     notice('Eventi creati in regia')
@@ -670,7 +688,11 @@ function aiParsePlan(text) {
       if (v && typeof v === 'object' && Array.isArray(v.slots)) {
         // solo i campi delle fasce (la regia ricontrolla comunque tutto)
         const keys = ['name', 'days', 'start', 'end', 'genres', 'yearFrom', 'yearTo', 'artistSeparationMinutes', 'jingleEvery', 'energyMin', 'energyMax']
-        return { slots: v.slots.slice(0, 30).map((s) => Object.fromEntries(keys.filter((k) => s && k in s).map((k) => [k, s[k]]))) }
+        const pick = (o, ks) => Object.fromEntries(ks.filter((k) => o && k in o).map((k) => [k, o[k]]))
+        const plan = { slots: v.slots.slice(0, 30).map((s) => pick(s, keys)) }
+        // annunci con la voce (facoltativi): li ricontrolla la regia
+        if (Array.isArray(v.announcements)) plan.announcements = v.announcements.slice(0, 20).map((x) => pick(x, ['name', 'days', 'start', 'end', 'everyMinutes', 'text']))
+        return plan
       }
     } catch {
       // prova il prossimo
