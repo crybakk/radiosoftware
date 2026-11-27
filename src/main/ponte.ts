@@ -236,7 +236,7 @@ export class PonteService {
     }
     try {
       const up = this.uplink.getStatus()
-      const { alarms, maxTrackMinutes } = await c.heartbeat({
+      const { alarms, maxTrackMinutes, minTrackSeconds } = await c.heartbeat({
         ...this.report,
         uplink: up.state,
         uplinkMessage: up.message,
@@ -245,6 +245,10 @@ export class PonteService {
       // durata massima dei brani (premixati): si sceglie nel pannello del server, la regia la segue
       if (maxTrackMinutes !== null && maxTrackMinutes !== this.db.getSettings().maxTrackMinutes) {
         this.db.saveSettings({ maxTrackMinutes })
+      }
+      // durata minima netta (intro, interludi): anche questa dal pannello
+      if (minTrackSeconds !== null && minTrackSeconds !== this.db.getSettings().minTrackSeconds) {
+        this.db.saveSettings({ minTrackSeconds })
       }
       this.status = { ...this.status, controlOk: true, controlError: null, alarms }
     } catch (e) {

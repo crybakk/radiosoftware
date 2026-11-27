@@ -25,6 +25,10 @@ export interface LibraryStatus {
   hiddenLong: number
   /** Durata massima in minuti (0 = nessun limite), impostata dal pannello del server. */
   maxTrackMinutes: number
+  /** Musica che la regia non sceglie da sola: meno musica della durata minima netta (intro, interludi). */
+  hiddenShort: number
+  /** Durata minima netta in secondi (0 = nessun limite), impostata dal pannello del server. */
+  minTrackSeconds: number
   scanning: ScanProgress | null
   analyzing: boolean
   /** Impronte audio calcolate sulla musica (riconoscimento nelle esterne). */

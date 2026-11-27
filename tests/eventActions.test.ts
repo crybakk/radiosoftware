@@ -14,7 +14,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }))
 function add(db: RadioDb, path: string, kind: 'music' | 'jingle', genre = '') {
   return db.upsertScanned({
     path, kind, size: 1, mtime: 1, title: path, artist: 'A', album: '', year: 2000, genre,
-    composer: '', publisher: '', isrc: '', duration: 100, bitrate: 192, sampleRate: 44100
+    composer: '', publisher: '', isrc: '', duration: 200, bitrate: 192, sampleRate: 44100
   })
 }
 const ev = (actions: EventAction[]): ScheduledEvent => ({

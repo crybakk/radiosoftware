@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { DJ_ANALYSIS_VERSION, type DjAnalysis } from './djAnalysis'
+import { CUE_ANALYSIS_VERSION } from './musicBounds'
 import { resolve } from 'node:path'
 import { chiaveDoppione, copiaDaTenere, motivoNonRadiofonico } from './pulizia'
 import { SECONDI_LIVE } from './liveAudio'
@@ -410,7 +411,9 @@ export class RadioDb {
       ['dj_at', 'TEXT'],
       // "uno" di ogni battuta (JSON) e versione dell'analisi: le analisi vecchie si rifanno in background
       ['dj_beats', "TEXT NOT NULL DEFAULT ''"],
-      ['dj_ver', 'INTEGER NOT NULL DEFAULT 0']
+      ['dj_ver', 'INTEGER NOT NULL DEFAULT 0'],
+      // versione del calcolo di inizio/fine: con la 2 si tolgono anche parlato, applausi e tracce fantasma
+      ['cue_ver', 'INTEGER NOT NULL DEFAULT 0']
     ] as const) {
       if (!cols.includes(col)) this.db.exec(`ALTER TABLE tracks ADD COLUMN ${col} ${def}`)
     }
@@ -451,9 +454,31 @@ export class RadioDb {
    * I brani restano nel database e ricompaiono se si alza il limite.
    */
   private short(alias = ''): string {
+    return this.notLong(alias)
+  }
+
+  /**
+   * Brani che la regia può scegliere da sola (rotazioni, brani a caso degli eventi): oltre alla durata massima
+   * conta anche quella minima netta. I brani più corti restano in libreria e si possono mettere a mano.
+   */
+  private auto(alias = ''): string {
+    const parts = [this.notLong(alias), this.notShort(alias)].filter((c) => c !== '1')
+    return parts.length ? `(${parts.join(' AND ')})` : '1'
+  }
+
+  /** Solo la durata massima (lorda: un premixato resta un premixato). */
+  private notLong(alias = ''): string {
     const min = Number(this.getSettings().maxTrackMinutes)
     if (!Number.isFinite(min) || min <= 0) return '1'
     return `(${alias}kind != 'music' OR ${alias}duration <= ${Math.round(min * 60)})`
+  }
+
+  /** Solo la durata minima, netta: dall'inizio alla fine della musica (prima dell'analisi vale la durata del file). */
+  private notShort(alias = ''): string {
+    const sec = Number(this.getSettings().minTrackSeconds)
+    if (!Number.isFinite(sec) || sec <= 0) return '1'
+    const net = `(CASE WHEN ${alias}cue_out > ${alias}cue_in THEN ${alias}cue_out - ${alias}cue_in ELSE ${alias}duration END)`
+    return `(${alias}kind != 'music' OR ${alias}duration <= 0 OR ${net} >= ${Math.round(sec)})`
   }
 
   // ---------- impostazioni ----------
@@ -656,19 +681,32 @@ export class RadioDb {
   }
 
   saveAnalysis(id: number, a: AnalysisResult): void {
+    const old = this.db.prepare('SELECT cue_in, cue_out FROM tracks WHERE id = ?').get(id) as Row | undefined
     this.db
       .prepare(
         `UPDATE tracks SET duration=?, loudness=?, ${unlessManual('cue_in', 'cueIn')}, ${unlessManual('cue_out', 'cueOut')},
-           ${unlessManual('mix_point', 'mixPoint')}, analyzed_at=datetime('now') WHERE id=?`
+           ${unlessManual('mix_point', 'mixPoint')}, cue_ver=?, analyzed_at=datetime('now') WHERE id=?`
       )
-      .run(a.duration, a.loudness, a.cueIn, a.cueOut, a.mixPoint, id)
+      .run(a.duration, a.loudness, a.cueIn, a.cueOut, a.mixPoint, CUE_ANALYSIS_VERSION, id)
+    // inizio o fine spostati: l'analisi DJ (battiti, intro, outro) va rifatta dentro i punti nuovi
+    const now = this.db.prepare('SELECT cue_in, cue_out FROM tracks WHERE id = ?').get(id) as Row | undefined
+    if (old && now && (Math.abs(Number(old.cue_in) - Number(now.cue_in)) > 0.3 || Math.abs(Number(old.cue_out) - Number(now.cue_out)) > 0.3)) {
+      this.db.prepare('UPDATE tracks SET dj_at = NULL WHERE id = ?').run(id)
+    }
   }
 
+  /**
+   * Brani da analizzare: mai analizzati, o musica analizzata con un calcolo di inizio/fine più vecchio
+   * (si rifà in background). Conta solo la durata massima: quella minima dipende proprio dall'analisi.
+   */
   pendingAnalysis(limit = 50): Track[] {
     return (
       this.db
-        .prepare(`SELECT * FROM tracks WHERE analyzed_at IS NULL AND enabled = 1 AND ${this.short()} ORDER BY id LIMIT ?`)
-        .all(limit) as Row[]
+        .prepare(
+          `SELECT * FROM tracks WHERE enabled = 1 AND ${this.notLong()} AND (analyzed_at IS NULL OR (kind = 'music' AND cue_ver < ?))
+           ORDER BY (analyzed_at IS NOT NULL), id LIMIT ?`
+        )
+        .all(CUE_ANALYSIS_VERSION, limit) as Row[]
     ).map(rowToTrack)
   }
 
@@ -716,7 +754,9 @@ export class RadioDb {
   }
 
   countPendingAnalysis(): number {
-    const r = this.db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE analyzed_at IS NULL AND enabled = 1 AND ${this.short()}`).get() as Row
+    const r = this.db
+      .prepare(`SELECT COUNT(*) AS n FROM tracks WHERE enabled = 1 AND ${this.notLong()} AND (analyzed_at IS NULL OR (kind = 'music' AND cue_ver < ?))`)
+      .get(CUE_ANALYSIS_VERSION) as Row
     return Number(r.n)
   }
 
@@ -1004,10 +1044,19 @@ export class RadioDb {
 
   /** Brani candidati per la rotazione automatica (senza gli "uno" delle battute: per il Mix DJ si rileggono con getTracks). */
   rotationCandidates(kind: TrackKind): Track[] {
-    return (this.db.prepare(`SELECT * FROM tracks WHERE kind = ? AND enabled = 1 AND ${this.short()}`).all(kind) as Row[]).map(rowToTrackLight)
+    return (this.db.prepare(`SELECT * FROM tracks WHERE kind = ? AND enabled = 1 AND ${this.auto()}`).all(kind) as Row[]).map(rowToTrackLight)
   }
 
-  libraryStats(): { total: number; byKind: Record<string, number>; pendingAnalysis: number; hiddenLong: number; maxTrackMinutes: number } {
+  libraryStats(): {
+    total: number
+    byKind: Record<string, number>
+    pendingAnalysis: number
+    hiddenLong: number
+    maxTrackMinutes: number
+    /** Musica che resta in libreria ma la regia non sceglie da sola (meno musica della durata minima netta). */
+    hiddenShort: number
+    minTrackSeconds: number
+  } {
     const rows = this.db
       .prepare(`SELECT kind, COUNT(*) AS n FROM tracks WHERE enabled = 1 AND ${this.short()} GROUP BY kind`)
       .all() as Row[]
@@ -1017,14 +1066,19 @@ export class RadioDb {
       byKind[String(r.kind)] = Number(r.n)
       total += Number(r.n)
     }
-    const ok = this.short()
-    const hidden = ok === '1' ? 0 : Number((this.db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE enabled = 1 AND NOT ${ok}`).get() as Row).n)
+    const hiddenBy = (ok: string): number =>
+      ok === '1' ? 0 : Number((this.db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE enabled = 1 AND NOT ${ok}`).get() as Row).n)
+    const s = this.getSettings()
     return {
       total,
       byKind,
       pendingAnalysis: this.countPendingAnalysis(),
-      hiddenLong: hidden,
-      maxTrackMinutes: this.getSettings().maxTrackMinutes
+      hiddenLong: hiddenBy(this.notLong()),
+      maxTrackMinutes: s.maxTrackMinutes,
+      hiddenShort: Number(
+        (this.db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE enabled = 1 AND ${this.notLong()} AND NOT ${this.notShort()}`).get() as Row).n
+      ),
+      minTrackSeconds: s.minTrackSeconds
     }
   }
 
@@ -1118,7 +1172,7 @@ export class RadioDb {
 
   /** Brano casuale che rispetta i filtri, evitando quelli andati in onda di recente se possibile. */
   randomTrack(f: { kind?: TrackKind | ''; folder?: string; genre?: string }, avoidSince?: Date): Track | null {
-    const where = ['enabled = 1', this.short()]
+    const where = ['enabled = 1', this.auto()]
     const params: (string | number)[] = []
     if (f.kind) {
       where.push('kind = ?')

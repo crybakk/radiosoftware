@@ -90,7 +90,8 @@ export class LibraryService {
           try {
             // tempo massimo: 60 s o tre volte la durata del brano
             const timeout = Math.max(ANALYSIS_TIMEOUT_MS, 3 * t.duration * 1000)
-            const r = await analyzeFile(this.ffmpegPath, t.path, abort.signal, timeout)
+            // per la musica si tolgono anche parlato, applausi e tracce fantasma all'inizio e alla fine
+            const r = await analyzeFile(this.ffmpegPath, t.path, abort.signal, timeout, t.kind === 'music')
             this.db.saveAnalysis(t.id, r)
           } catch {
             // analisi interrotta da stop(): il brano resta da analizzare
@@ -99,6 +100,11 @@ export class LibraryService {
               // né i tag né ffmpeg sanno quanto dura: non è un brano da mandare in onda.
               // Viene disabilitato come un file sparito, una nuova scansione lo riprova.
               this.db.markMissing(t.id)
+              continue
+            }
+            // brano già analizzato con il calcolo vecchio e ora illeggibile: restano i punti che aveva
+            if (t.cueOut > t.cueIn) {
+              this.db.saveAnalysis(t.id, { duration: t.duration, loudness: t.loudness, cueIn: t.cueIn, cueOut: t.cueOut, mixPoint: t.mixPoint })
               continue
             }
             // file illeggibile: lo segniamo come analizzato con i dati del tag, per non riprovarlo all'infinito

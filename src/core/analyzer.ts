@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import type { AnalysisResult } from './db'
+import { BOUNDS_SAMPLE_RATE, findMusicBounds } from './musicBounds'
 
 /** Soglia sotto la quale l'audio è considerato silenzio (LUFS momentanei). */
 const SILENCE_LUFS = -45
@@ -40,20 +41,26 @@ export function parseEbur128(stderr: string): { frames: LoudnessFrame[]; integra
 export function computeCuePoints(
   frames: LoudnessFrame[],
   integrated: number | null,
-  duration: number
+  duration: number,
+  /** Dove comincia e finisce la musica (senza parlato, applausi, tracce fantasma): i punti restano dentro. */
+  music?: { start: number; end: number }
 ): Omit<AnalysisResult, 'loudness' | 'duration'> {
   const end = duration > 0 ? duration : frames.length ? frames[frames.length - 1].t : 0
   const audible = frames.filter((f) => f.m > SILENCE_LUFS)
   if (!audible.length) return { cueIn: 0, cueOut: end, mixPoint: end }
 
-  const cueIn = Math.max(0, audible[0].t - MOMENTARY_WINDOW)
-  const cueOut = Math.min(end, audible[audible.length - 1].t)
+  let cueIn = Math.max(0, audible[0].t - MOMENTARY_WINDOW)
+  let cueOut = Math.min(end, audible[audible.length - 1].t)
+  if (music && music.end - music.start > 0 && music.start < cueOut && music.end > cueIn) {
+    cueIn = Math.max(cueIn, music.start)
+    cueOut = Math.min(cueOut, music.end)
+  }
 
   let mixPoint = cueOut
   if (integrated != null) {
     const threshold = integrated - MIX_DROP_LU
     for (let i = frames.length - 1; i >= 0; i--) {
-      if (frames[i].m >= threshold) {
+      if (frames[i].t <= cueOut && frames[i].m >= threshold) {
         mixPoint = Math.min(cueOut, frames[i].t)
         break
       }
@@ -81,6 +88,8 @@ export const ANALYSIS_TIMEOUT_MS = 60_000
 
 /**
  * Analizza un file con ffmpeg: loudness EBU R128, inizio/fine dell'audio, punto di mix.
+ * Per la musica (`music`) si legge anche l'audio, per togliere dall'inizio e dalla fine quello che non è musica
+ * (parlato, applausi, rumore, tracce fantasma dopo un lungo silenzio): vedi musicBounds.ts. Il file non si tocca.
  * Una sola lettura del file. ffmpeg viene terminato se `signal` viene annullato o dopo `timeoutMs`
  * (per esempio un file su una cartella di rete che non risponde più).
  */
@@ -88,20 +97,37 @@ export function analyzeFile(
   ffmpegPath: string,
   file: string,
   signal?: AbortSignal,
-  timeoutMs = ANALYSIS_TIMEOUT_MS
+  timeoutMs = ANALYSIS_TIMEOUT_MS,
+  music = false
 ): Promise<AnalysisResult> {
   return new Promise((resolvePromise, reject) => {
-    const proc = spawn(
-      ffmpegPath,
-      ['-hide_banner', '-nostdin', '-loglevel', 'verbose', '-protocol_whitelist', 'file', '-i', file, '-vn', '-af', 'ebur128', '-f', 'null', '-'],
-      { windowsHide: true, signal, killSignal: 'SIGKILL' }
-    )
+    const input = ['-hide_banner', '-nostdin', '-loglevel', 'verbose', '-protocol_whitelist', 'file', '-i', file]
+    const args = music
+      ? [
+          ...input,
+          '-filter_complex',
+          `[0:a:0]asplit=2[a][b];[a]ebur128[e];[b]aresample=${BOUNDS_SAMPLE_RATE},aformat=sample_fmts=flt:channel_layouts=mono[p]`,
+          '-map',
+          '[e]',
+          '-f',
+          'null',
+          '-',
+          '-map',
+          '[p]',
+          '-f',
+          'f32le',
+          'pipe:1'
+        ]
+      : [...input, '-vn', '-af', 'ebur128', '-f', 'null', '-']
+    const proc = spawn(ffmpegPath, args, { windowsHide: true, signal, killSignal: 'SIGKILL' })
     let stderr = ''
+    const chunks: Buffer[] = []
     let timedOut = false
     const timer = setTimeout(() => {
       timedOut = true
       proc.kill('SIGKILL')
     }, timeoutMs)
+    proc.stdout.on('data', (c: Buffer) => chunks.push(c))
     proc.stderr.setEncoding('utf8')
     proc.stderr.on('data', (d: string) => (stderr += d))
     proc.on('error', (err) => {
@@ -120,7 +146,20 @@ export function analyzeFile(
       }
       const { frames, integrated } = parseEbur128(stderr)
       const duration = parseDuration(stderr)
-      resolvePromise({ duration, loudness: integrated, ...computeCuePoints(frames, integrated, duration) })
+      let bounds: { start: number; end: number } | undefined
+      if (music && chunks.length) {
+        const all = Buffer.concat(chunks)
+        const pcm = new Float32Array(Math.floor(all.length / 4))
+        new Uint8Array(pcm.buffer).set(all.subarray(0, pcm.length * 4))
+        chunks.length = 0
+        const silence = computeCuePoints(frames, integrated, duration)
+        try {
+          bounds = findMusicBounds(pcm, BOUNDS_SAMPLE_RATE, silence.cueIn, silence.cueOut)
+        } catch {
+          // misura non riuscita: restano i punti del solo silenzio
+        }
+      }
+      resolvePromise({ duration, loudness: integrated, ...computeCuePoints(frames, integrated, duration, bounds) })
     })
   })
 }

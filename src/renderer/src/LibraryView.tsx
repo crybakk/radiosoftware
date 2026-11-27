@@ -134,6 +134,13 @@ export function LibraryView({ radio }: { radio: Radio }) {
                 Radio).
               </div>
             )}
+            {avanzate && status.hiddenShort > 0 && (
+              <div>
+                {status.hiddenShort} brani con meno di {durataLeggibile(status.minTrackSeconds)} di musica (intro, interludi):
+                restano qui e li puoi mettere a mano, ma la regia e il server non li scelgono mai da soli. Il limite si cambia
+                dal pannello del server (☰ → Impostazioni server → Radio).
+              </div>
+            )}
             {status.scanning && (
               <div>
                 Scansione: {status.scanning.seen} file letti, {status.scanning.added} nuovi, {status.scanning.updated}{' '}
@@ -447,4 +454,13 @@ function djLine(t: Track): string {
   ]
     .filter(Boolean)
     .join(' · ')
+}
+
+/** 120 → "2 minuti", 90 → "1 minuto e 30 secondi", 45 → "45 secondi". */
+function durataLeggibile(sec: number): string {
+  const m = Math.floor(sec / 60)
+  const s = Math.round(sec % 60)
+  const min = m === 1 ? '1 minuto' : `${m} minuti`
+  if (!m) return `${s} secondi`
+  return s ? `${min} e ${s} secondi` : min
 }

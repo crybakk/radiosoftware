@@ -584,5 +584,15 @@ export class ServerLibrarySync {
 }
 
 function metaFor(id: string, t: Track, target: number): LibraryMeta {
-  return { id, title: t.title, artist: t.artist, duration: Math.round(t.duration * 10) / 10, gainDb: gainFor(t.loudness, target) }
+  const r = (n: number): number => Math.round(n * 100) / 100
+  return {
+    id,
+    title: t.title,
+    artist: t.artist,
+    duration: Math.round(t.duration * 10) / 10,
+    gainDb: gainFor(t.loudness, target),
+    // inizio e fine della musica: il server salta silenzi, parlato e applausi come la regia
+    cueIn: t.cueOut > t.cueIn ? r(t.cueIn) : 0,
+    cueOut: t.cueOut > t.cueIn ? r(t.cueOut) : 0
+  }
 }

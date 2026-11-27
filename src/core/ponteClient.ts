@@ -137,12 +137,20 @@ export class PonteClient {
     return r
   }
 
-  /** Segnale di vita: risponde con gli allarmi e la durata massima dei brani scelta nel pannello (se il server la conosce). */
-  async heartbeat(payload: Record<string, unknown>): Promise<{ alarms: PonteAlarm[]; maxTrackMinutes: number | null }> {
+  /**
+   * Segnale di vita: risponde con gli allarmi e le durate massima e minima dei brani scelte nel pannello
+   * (null = il server non le conosce, per esempio un server più vecchio).
+   */
+  async heartbeat(
+    payload: Record<string, unknown>
+  ): Promise<{ alarms: PonteAlarm[]; maxTrackMinutes: number | null; minTrackSeconds: number | null }> {
     const r = await this.request('POST', '/api/heartbeat', JSON.stringify(payload), 'application/json')
-    const j = (await r.json()) as { alarms?: PonteAlarm[]; maxTrackMinutes?: unknown }
-    const max = Number(j.maxTrackMinutes)
-    return { alarms: j.alarms ?? [], maxTrackMinutes: j.maxTrackMinutes != null && Number.isFinite(max) && max >= 0 ? max : null }
+    const j = (await r.json()) as { alarms?: PonteAlarm[]; maxTrackMinutes?: unknown; minTrackSeconds?: unknown }
+    const num = (v: unknown): number | null => {
+      const n = Number(v)
+      return v != null && Number.isFinite(n) && n >= 0 ? n : null
+    }
+    return { alarms: j.alarms ?? [], maxTrackMinutes: num(j.maxTrackMinutes), minTrackSeconds: num(j.minTrackSeconds) }
   }
 
   async metadata(artist: string, title: string, duration = 0): Promise<void> {
@@ -195,7 +203,9 @@ export class PonteClient {
       titolo: meta.title,
       artista: meta.artist,
       durata: String(meta.duration),
-      guadagno: String(meta.gainDb)
+      guadagno: String(meta.gainDb),
+      inizio: String(meta.cueIn ?? 0),
+      fine: String(meta.cueOut ?? 0)
     })
     await this.request('PUT', `/api/libreria?${q}`, body, 'application/octet-stream', 60 * 60_000, signal)
   }
@@ -412,6 +422,9 @@ export interface LibraryMeta {
   artist: string
   duration: number
   gainDb: number
+  /** Secondi: inizio e fine della musica (0 e 0 = non si sa, si suona tutto il file). */
+  cueIn?: number
+  cueOut?: number
 }
 
 /** Il backup automatico è dovuto? Una volta al giorno, all'ora scelta o appena dopo. */

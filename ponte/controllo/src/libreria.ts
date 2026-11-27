@@ -18,8 +18,21 @@ export interface ServerTrack {
   bitrate: number
   /** Correzione di volume in dB (dalla regia, che conosce il volume misurato); 0 = nessuna. */
   gainDb: number
+  /**
+   * Secondi: inizio e fine della musica (dalla regia, che toglie silenzi, parlato, applausi e tracce fantasma).
+   * Assenti o 0 e 0 = non si sa: si suona tutto il file.
+   */
+  cueIn?: number
+  cueOut?: number
   mtime: number
   size: number
+}
+
+/** Secondi di musica che vanno in onda: tra inizio e fine se si sanno, altrimenti tutto il file. */
+export function netDuration(t: Pick<ServerTrack, 'duration' | 'cueIn' | 'cueOut'>): number {
+  const a = t.cueIn ?? 0
+  const b = t.cueOut ?? 0
+  return b > a ? b - a : t.duration
 }
 
 /** Dati che la regia conosce meglio dei tag del file (titolo corretto, volume misurato). */
@@ -28,6 +41,8 @@ export interface StudioMeta {
   artist?: string
   duration?: number
   gainDb?: number
+  cueIn?: number
+  cueOut?: number
 }
 
 export const AUDIO_EXT = new Set(['.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus', '.wav'])
@@ -66,6 +81,12 @@ export class Library {
    * ma non si cercano e non li suonano né la diretta autonoma né la musica di emergenza.
    */
   maxSeconds = 0
+  /**
+   * Durata minima NETTA in secondi (0 = nessun limite): i brani con meno musica di così (intro, interludi) non li
+   * sceglie mai da sola né la diretta autonoma né la musica di emergenza; si trovano e si mettono in coda a mano.
+   * Netta = tra inizio e fine della musica.
+   */
+  minSeconds = 0
 
   constructor(root: string, indexFile: string) {
     this.root = root
@@ -163,6 +184,18 @@ export class Library {
     if (meta.artist) t.artist = meta.artist
     if (meta.duration && meta.duration > 0) t.duration = meta.duration
     if (meta.gainDb != null && Number.isFinite(meta.gainDb)) t.gainDb = Math.max(-20, Math.min(20, meta.gainDb))
+    // inizio e fine della musica: solo se hanno senso per questo file (dentro la durata, inizio prima della fine)
+    const a = Number(meta.cueIn)
+    const b = Number(meta.cueOut)
+    if (meta.cueOut != null && Number.isFinite(a) && Number.isFinite(b)) {
+      if (b > a && a >= 0 && (!(t.duration > 0) || b <= t.duration + 1)) {
+        t.cueIn = Math.round(a * 100) / 100
+        t.cueOut = Math.round(b * 100) / 100
+      } else if (a === 0 && b === 0) {
+        delete t.cueIn
+        delete t.cueOut
+      }
+    }
     return true
   }
 
@@ -179,6 +212,11 @@ export class Library {
   /** Brano da usare: non più lungo della durata massima (durata 0 = sconosciuta, si usa). */
   usable(t: ServerTrack): boolean {
     return !(this.maxSeconds > 0 && t.duration > this.maxSeconds)
+  }
+
+  /** Brano che si può scegliere da soli: anche non più corto della durata minima netta. */
+  autoUsable(t: ServerTrack): boolean {
+    return this.usable(t) && !(this.minSeconds > 0 && t.duration > 0 && netDuration(t) < this.minSeconds)
   }
 
   search(q: string, limit = 50): ServerTrack[] {
@@ -203,7 +241,7 @@ export class Library {
    * Se la libreria è piccola, le regole si allentano invece di fermare la musica.
    */
   pickRandom(recentIds: string[], recentArtists: string[], rnd: () => number = Math.random): ServerTrack | null {
-    const all = this.all().filter((t) => (t.duration === 0 || t.duration > 60) && this.usable(t))
+    const all = this.all().filter((t) => (t.duration === 0 || t.duration > 60) && this.autoUsable(t))
     if (!all.length) return null
     const ids = new Set(recentIds)
     const artists = new Set(recentArtists.map(norm).filter(Boolean))

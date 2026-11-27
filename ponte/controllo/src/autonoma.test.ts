@@ -57,6 +57,31 @@ describe('libreria del server', () => {
     expect(lib.search('vasco')).toHaveLength(2)
   })
 
+  it('inizio e fine della musica dalla regia; la durata minima netta vale solo per le scelte automatiche', () => {
+    const lib = new Library(dir, join(dir, '.indice.json'))
+    // Albachiara: 70 s di file, ma la musica va da 5 a 60 (prima parlato, dopo applausi)
+    expect(lib.setMeta('regia/Rock/a.mp3', { cueIn: 5, cueOut: 60 })).toBe(true)
+    expect(lib.get('regia/Rock/a.mp3')).toMatchObject({ cueIn: 5, cueOut: 60 })
+    // valori senza senso (fine oltre il file, fine prima dell'inizio) non si prendono
+    lib.setMeta('regia/Rock/b.mp3', { cueIn: 0, cueOut: 500 })
+    lib.setMeta('regia/c.mp3', { cueIn: 30, cueOut: 10 })
+    expect(lib.get('regia/Rock/b.mp3')?.cueOut).toBeUndefined()
+    expect(lib.get('regia/c.mp3')?.cueOut).toBeUndefined()
+    // durata minima 65 s: Albachiara ha solo 55 s di musica, non va mai in onda da sola ma si trova e si mette a mano
+    lib.minSeconds = 65
+    const picks = new Set(Array.from({ length: 40 }, (_, i) => lib.pickRandom([], [], () => (i + 0.5) / 40)?.id))
+    expect(picks.has('regia/Rock/a.mp3')).toBe(false)
+    expect(picks.has('regia/Rock/b.mp3')).toBe(true)
+    expect(lib.search('albachiara').map((t) => t.id)).toEqual(['regia/Rock/a.mp3'])
+    lib.minSeconds = 0
+    const all = new Set(Array.from({ length: 40 }, (_, i) => lib.pickRandom([], [], () => (i + 0.5) / 40)?.id))
+    expect(all.has('regia/Rock/a.mp3')).toBe(true)
+    // a Liquidsoap si passano inizio e fine: salta da solo quello che non è musica
+    expect(annotate('/musica/x.mp3', 0, { title: 'T', cueIn: 5, cueOut: 60 })).toBe('annotate:liq_cue_in="5.00",liq_cue_out="60.00",title="T":/musica/x.mp3')
+    expect(annotate('/musica/x.mp3', 0, { cueIn: 0, cueOut: 60 })).toBe('annotate:liq_cue_out="60.00":/musica/x.mp3')
+    expect(annotate('/musica/x.mp3', 0, { cueIn: 0, cueOut: 0 })).toBe('/musica/x.mp3')
+  })
+
   it('un brano caricato durante la scansione resta nell\'indice', async () => {
     const d = mkdtempSync(join(tmpdir(), 'lib-'))
     copyFileSync(join(dir, 'regia/c.mp3'), join(d, 'a.mp3'))
